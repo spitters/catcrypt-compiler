@@ -19,7 +19,7 @@ public import CatCrypt.Quantum.QrunchRound
 `lake exe catq-compile` reads an OpenQASM 2 file as qelib1 statements
 (`OpenQASMBytes.importQB`), elides its `swap` statements into an output permutation
 (`SwapElide.elideQ`), snaps its angles (`AngleSnap.snapQ`) and iterates the round
-`QrunchRound.round` of the pipeline to a fixed point (`QrunchRound.runCompile`). A round
+`QrunchRound.round` of the pipeline to a fixed point (`QrunchRound.compileQGates`). A round
 lowers the statements
 (`OpenQASMImport.lowerQ`), runs one level of the optimizer (`levelStage`): `1` and `2` are
 `fullOptimize .Level1` and `fullOptimize .Level2` (`PassPipeline.levelPasses`), `2r` is the
@@ -34,7 +34,7 @@ iterate (`QrunchRound.better_runRounds`). The executable writes it with `printQe
 The answer line reports the phase that relates the qelib1 matrices of input and output, the
 sum of the exact phases of the rounds (`QrunchRound.sumPhase`), the bound, the snap bound plus
 the sum of the bounds of the rounds (`QrunchRound.sumEps`), and the output permutation. By the
-compile theorem `QrunchRound.norm_runCompile_sub_le` the qelib1 matrix of the input is within
+compile theorem `QrunchRound.norm_compileQGates_sub_le` the qelib1 matrix of the input is within
 the bound of the output permutation after the phase times the qelib1 matrix of the output, in
 the `ℓ²` operator norm, at every level whose stage satisfies `QrunchRound.StageBound`: `2r`
 with `--check` (`stageBound_levelStage_l2r`) and `2`, with bound `0` for the rounds
@@ -147,7 +147,7 @@ def roundsArg : List String → Option (ℕ × List String)
 
 /-- Compile the OpenQASM 2 file `inp` at `level` into the OpenQASM 2 file `outp` over the
     Qrunch basis `{rx, ry, cx, p}` by swap elision (when `elide`), angle snapping (when
-    `snap`) and at most `rounds` rounds (`QrunchRound.runCompile` at the stage
+    `snap`) and at most `rounds` rounds (`QrunchRound.compileQGates` at the stage
     `levelStage level check`, `printQelib`), and return the answer line `ok <qubits> <cx_in>
     <cx_l2> <cx_out> <gates_out> <us> <us_import> <us_rounds> <us_kak> <us_zyz> <us_print>
     <phase> <eps> <rounds_run> <perm>` or `error <reason>`. `<cx_in>` is the CNOT count of the
@@ -163,7 +163,7 @@ def roundsArg : List String → Option (ℕ × List String)
     floating point, reduced to `[-π, π]` and printed as the rational `roundQ` gives.
 
     With `check`, or at `1` and `2`, `<eps>` is the snap bound plus `QrunchRound.sumEps`
-    (`epsString`): by `QrunchRound.norm_runCompile_sub_le` the qelib1 matrix of the input is
+    (`epsString`): by `QrunchRound.norm_compileQGates_sub_le` the qelib1 matrix of the input is
     within `eps` of `W(π) e^{-iΦ}` times the qelib1 matrix of the output, in the `ℓ²` operator
     norm. Without it the `2r` fits are unchecked and `<eps>` is `unchecked`. -/
 def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := false)
@@ -174,7 +174,7 @@ def compileFile (inp outp : String) (level : Level := .l2r) (check : Bool := fal
   let (qs?, tI) ← timed fun _ => OpenQASMBytes.importQB n src.toUTF8
   let some qs := qs? | pure "error a line the importer does not recognise"
   let (o, tR) ← timed fun _ =>
-    QrunchRound.runCompile (levelStage level check) rounds elide snap qs
+    QrunchRound.compileQGates (levelStage level check) rounds elide snap qs
   let rs := o.rounds
   let some o₁ := rs.head? |
     pure "error a statement with repeated operands or a real-valued Rz in the output"

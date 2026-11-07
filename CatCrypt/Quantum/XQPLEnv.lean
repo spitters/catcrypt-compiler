@@ -22,7 +22,7 @@ theorem of the construct:
   computed into the ancilla `a` by a multi-controlled `X`, the block is controlled on `a`,
   and the AND is uncomputed (`AndAncilla.ancillaCtrlGates`);
 * `XQPL.withEq r v a p h` — Qrisp's `with r == v:` (`QRegister.Reg.withEq`);
-* `XQPL.uncompute C U hC hU` — compute; use; uncompute over the reversible atoms
+* `XQPL.computeUseUncompute C U hC hU` — compute; use; uncompute over the reversible atoms
   `Uncomputation.RevOp n`, on programs over `Ops ⊕ RevOp n`; `XQPL.toRevOps` reads such a
   program as a list of atoms, an operation of `Ops` as the gate atoms of its gate list.
 
@@ -39,8 +39,8 @@ and `XQPL.noRz_seq`, `XQPL.noRz_mcontrolled` and `XQPL.noRz_withEq` through the 
 
 ## Main results
 
-* `XQPL.unitary_mcontrolled`, `XQPL.unitary_withEq`, `XQPL.unitary_uncompute` — the unitary
-  of each environment on ancilla `|0⟩`;
+* `XQPL.unitary_mcontrolled`, `XQPL.unitary_withEq`, `XQPL.unitary_computeUseUncompute` — the
+  unitary of each environment on ancilla `|0⟩`;
 * `noRz_ctrlList`, `noRz_invGates` — control and inversion keep exact angles;
 * `XQPL.qelibListMatrix_export_xqpl` — the export of a measurement-free program.
 -/
@@ -239,7 +239,8 @@ theorem toGates_ofRevOps (l : List (RevOp n)) :
 
 /-- Compute; use; uncompute: the atoms of `C`, those of `U`, and the inverses of the atoms
     of `C` in reverse order. -/
-def uncompute (C U : XQPL (Ops ⊕ RevOp n) n Unit) (hC : C.isMeasFree) (hU : U.isMeasFree) :
+def computeUseUncompute (C U : XQPL (Ops ⊕ RevOp n) n Unit) (hC : C.isMeasFree)
+    (hU : U.isMeasFree) :
     XQPL (Ops ⊕ RevOp n) n Unit :=
   ofRevOps (C.toRevOps hC ++ U.toRevOps hU ++ (C.toRevOps hC).reverse.flatMap RevOp.inv)
 
@@ -247,13 +248,14 @@ def uncompute (C U : XQPL (Ops ⊕ RevOp n) n Unit) (hC : C.isMeasFree) (hU : U.
     two-branch matrix on the ancilla `a`, and on ancilla `|0⟩` the program applies its
     branch `U₀` where the predicate `P` of the inputs computed by `C` fails and `U₁` where it
     holds, and returns the ancilla to `|0⟩`. -/
-theorem unitary_uncompute {a : Fin n} {ins : List (Fin n)} {C U : XQPL (Ops ⊕ RevOp n) n Unit}
+theorem unitary_computeUseUncompute {a : Fin n} {ins : List (Fin n)}
+    {C U : XQPL (Ops ⊕ RevOp n) n Unit}
     {hC : C.isMeasFree} {hU : U.isMeasFree}
     (hchk : uncomputable a ins (C.toRevOps hC) (U.toRevOps hU) = true) :
     ∃ P U₀ U₁, IsPred ins P ∧ CommOn a U₀ ∧ CommOn a U₁ ∧ U.unitary hU = branchMatrix a U₀ U₁ ∧
-      (uncompute C U hC hU).unitary (isMeasFree_ofRevOps _) * embedGate1 n a proj0
+      (computeUseUncompute C U hC hU).unitary (isMeasFree_ofRevOps _) * embedGate1 n a proj0
         = ((1 - P) * U₀ + P * U₁) * embedGate1 n a proj0 ∧
-      embedGate1 n a proj1 * (uncompute C U hC hU).unitary (isMeasFree_ofRevOps _)
+      embedGate1 n a proj1 * (computeUseUncompute C U hC hU).unitary (isMeasFree_ofRevOps _)
         * embedGate1 n a proj0 = 0 := by
   have hchk' := hchk
   simp only [uncomputable, Bool.and_eq_true, decide_eq_true_eq] at hchk'
@@ -261,7 +263,7 @@ theorem unitary_uncompute {a : Fin n} {ins : List (Fin n)} {C U : XQPL (Ops ⊕ 
   obtain ⟨D, P, hD, hP, hV⟩ := computes_of_check ha hq hw hp
   obtain ⟨U₀, U₁, h₀, h₁, hB⟩ := branch_of_permeable fun o ho =>
     List.all_eq_true.mp (List.all_eq_true.mp hUp o ho) a List.mem_cons_self
-  have hK : (uncompute C U hC hU).unitary (isMeasFree_ofRevOps _) = listMatrix (revGates
+  have hK : (computeUseUncompute C U hC hU).unitary (isMeasFree_ofRevOps _) = listMatrix (revGates
       (C.toRevOps hC ++ U.toRevOps hU ++ (C.toRevOps hC).reverse.flatMap RevOp.inv)) :=
     congrArg listMatrix (toGates_ofRevOps _)
   obtain ⟨e₁, e₂⟩ := listMatrix_uncompute hchk hD hP hV h₀ h₁ hB

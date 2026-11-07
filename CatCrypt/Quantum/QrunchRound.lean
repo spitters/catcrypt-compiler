@@ -38,10 +38,10 @@ the bounds of its rounds and its phase the sum of their phases, since every phas
 norm one and errors of approximations add (`ResynthLevel.norm_sub_smul_trans_le`). The CX
 count never rises after the first round (`cxCount_runRounds_le`).
 
-The whole run `runCompile` prepares the input before the first round (`prepQ`): swap elision
+The whole run `compileQGates` prepares the input before the first round (`prepQ`): swap elision
 `SwapElide.elideQ`, which drops the `swap` statements and returns an output permutation `π`,
 then angle snapping `AngleSnap.snapQ`, which moves angles near multiples of `π/16` onto them
-with a bound. **The compile theorem** `norm_runCompile_sub_le`: the qelib1 matrix of the input
+with a bound. **The compile theorem** `norm_compileQGates_sub_le`: the qelib1 matrix of the input
 is within the snap bound plus the sum of the bounds of the rounds of
 `wireMatrix π * e^{-iΦ} • M_out`; `wireMatrix π` is unitary, so the bounds of the rounds
 transfer through it.
@@ -51,14 +51,14 @@ transfer through it.
 * `round` — one round of the pipeline, with its phase and bound (`RoundOut`).
 * `runRounds` — the iteration of the round to a fixed point, at most `k` rounds.
 * `finalOut` — the statements after a list of rounds.
-* `prepQ`, `runCompile` — the preparation of the input and the whole run (`CompileOut`).
+* `prepQ`, `compileQGates` — the preparation of the input and the whole run (`CompileOut`).
 
 ## Main results
 
 * `norm_round_sub_le` — the round theorem.
 * `norm_runRounds_sub_le` — the iteration theorem.
 * `cxCount_runRounds_le` — the CX count of the iteration is at most that of its first round.
-* `norm_runCompile_sub_le` — the compile theorem.
+* `norm_compileQGates_sub_le` — the compile theorem.
 -/
 
 @[expose] public section
@@ -374,7 +374,7 @@ structure CompileOut (n : ℕ) where
   snapEps : ℚ
 
 /-- **The whole run**: `prepQ`, then at most `k` rounds of the pipeline (`runRounds`). -/
-def runCompile (stage : Circuit n → Resynth n) (k : ℕ) (elide snap : Bool)
+def compileQGates (stage : Circuit n → Resynth n) (k : ℕ) (elide snap : Bool)
     (qs : List (QGate n)) : CompileOut n :=
   let p := prepQ elide snap qs
   let rs := runRounds stage k p.1
@@ -420,15 +420,16 @@ theorem qelibListMatrix_eq_prepQ (elide snap : Bool) (qs : List (QGate n)) :
 of the input is within the snap bound plus the sum of the bounds of the rounds of the output
 permutation `wireMatrix perm` after `e^{-iΦ}` times the qelib1 matrix of the output, `Φ` the
 sum of the exact phases of the rounds, in the `ℓ²` operator norm. -/
-theorem norm_runCompile_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
+theorem norm_compileQGates_sub_le {stage : Circuit n → Resynth n} (hS : StageBound stage)
     (k : ℕ) (elide snap : Bool) (qs : List (QGate n))
-    (h : (runCompile stage k elide snap qs).rounds ≠ []) :
-    ‖qelibListMatrix qs - SwapElide.wireMatrix (runCompile stage k elide snap qs).perm *
-        (Complex.exp (-(Complex.I * (sumPhase (runCompile stage k elide snap qs).rounds).toReal)) •
-          qelibListMatrix (runCompile stage k elide snap qs).out)‖ ≤
-      ((runCompile stage k elide snap qs).snapEps +
-        sumEps (runCompile stage k elide snap qs).rounds : ℚ) := by
-  simp only [runCompile] at h ⊢
+    (h : (compileQGates stage k elide snap qs).rounds ≠ []) :
+    ‖qelibListMatrix qs - SwapElide.wireMatrix (compileQGates stage k elide snap qs).perm *
+        (Complex.exp
+            (-(Complex.I * (sumPhase (compileQGates stage k elide snap qs).rounds).toReal)) •
+          qelibListMatrix (compileQGates stage k elide snap qs).out)‖ ≤
+      ((compileQGates stage k elide snap qs).snapEps +
+        sumEps (compileQGates stage k elide snap qs).rounds : ℚ) := by
+  simp only [compileQGates] at h ⊢
   set p := prepQ elide snap qs with hp
   set rs := runRounds stage k p.1
   set e := (if elide then SwapElide.elideQ qs else (qs, 1)).1

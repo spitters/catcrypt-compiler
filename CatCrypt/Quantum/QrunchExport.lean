@@ -204,7 +204,7 @@ theorem bracketIndices_go_digits (ds r : List Char) (v : ℕ) (acc : List ℕ)
     exact ih _ (fun d h => hd d (by simp [h]))
 
 /-- The digits of a printed natural number fold back to it. -/
-theorem foldl_toDigits (k : ℕ) :
+theorem foldl_toDigits_eq_self (k : ℕ) :
     (Nat.toDigits 10 k).foldl (fun v c => v * 10 + (c.toNat - '0'.toNat)) 0 = k := by
   have hv := Nat.ofDigitChars_ten_toDigits (n := k)
   rw [Nat.ofDigitChars_eq_foldl] at hv
@@ -218,7 +218,7 @@ theorem bracketIndices_angle (pre : List Char) (a : PiLin) (k : ℕ) (hpre : '['
   rw [bracketIndices_go_skip _ _ _ hpre, bracketIndices_go_skip _ _ _ ha]
   simp only [bracketIndices.go]
   rw [bracketIndices_go_digits _ _ _ _
-    (fun c hc => Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc), foldl_toDigits]
+    (fun c hc => Nat.isDigit_of_mem_toDigits (by decide) (by decide) hc), foldl_toDigits_eq_self]
   rfl
 
 /-- The angle text of a one-qubit statement. -/

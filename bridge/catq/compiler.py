@@ -195,7 +195,7 @@ class VerifiedCompiler:
     Before the rounds Lean elides `swap` statements into an output permutation
     (`SwapElide.elideQ`, off with `elide=False`) and snaps angles near multiples of `π/16`
     (`AngleSnap.snapQ`, off with `snap=False`; its bound is part of `eps`); the compile
-    theorem is `QrunchRound.norm_runCompile_sub_le`. The permutation is carried across
+    theorem is `QrunchRound.norm_compileQGates_sub_le`. The permutation is carried across
     segments: every later operation and boundary instruction is relabelled to the wire that
     carries its qubit, so final measurements absorb it, and swaps (three `cx` each) are
     appended only when a moved qubit is not ended by a measurement (`CompileReport`).

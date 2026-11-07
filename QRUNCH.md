@@ -33,7 +33,7 @@ count the statement count, falls, at most eight times (`--rounds k`); the bounds
 add up, and so do their exact phases
 ([`norm_runRounds_sub_le`](CatCrypt/Quantum/QrunchRound.lean)), and the whole run satisfies
 `M_in ≈ P_π · e^{i·phase} M_out` within the snapping bound plus the bounds of the rounds
-([`norm_runCompile_sub_le`](CatCrypt/Quantum/QrunchRound.lean)). The bridge applies π by
+([`norm_compileQGates_sub_le`](CatCrypt/Quantum/QrunchRound.lean)). The bridge applies π by
 relabelling later operations and the qubits final measurements read, and appends a swap
 network where neither absorbs it.
 
@@ -142,7 +142,7 @@ register operations are one instance. On measurement-free programs:
 - Uncomputation has a Boolean qfree and permeable check on reversible atoms; a computation
   that passes it is undone by its inverse with the ancilla restored
   ([`computes_of_check`](CatCrypt/Quantum/Uncomputation.lean),
-  [`unitary_uncompute`](CatCrypt/Quantum/XQPLEnv.lean)).
+  [`unitary_computeUseUncompute`](CatCrypt/Quantum/XQPLEnv.lean)).
 - The exported text of a program reads back as its matrix times an exact phase
   ([`qelibListMatrix_export_xqpl`](CatCrypt/Quantum/XQPLEnv.lean)).
 

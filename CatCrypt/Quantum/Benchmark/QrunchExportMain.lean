@@ -41,7 +41,7 @@ def hadamards (n : ℕ) : List (Gate n) := (List.finRange n).map Gate.H
 
 /-- The exported programs: a name and the text and phase of the export, `none` for a list
     with the real-angle `Rz`. -/
-def programs : List (String × Option (String × PiLin)) :=
+def exportedPrograms : List (String × Option (String × PiLin)) :=
   [("qft4", exportChecked (QFT.qftGates 4)),
    ("qft6", exportChecked (QFT.qftGates 6)),
    ("qpe3_t", exportChecked (n := 4) (HQPL.phaseEstimationGates 0 3 [Gate.T 3])),
@@ -55,7 +55,7 @@ def programs : List (String × Option (String × PiLin)) :=
 def run (dir : System.FilePath) : IO UInt32 := do
   IO.FS.createDirAll dir
   let mut rc : UInt32 := 0
-  for (name, r) in programs do
+  for (name, r) in exportedPrograms do
     match r with
     | some (text, ph) =>
       IO.FS.writeFile (dir / s!"{name}.qasm") text

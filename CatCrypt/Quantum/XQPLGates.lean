@@ -284,29 +284,6 @@ def mcontrolledNoAnc [OpGateList Ops n] (cs : List (Fin n))
     (p : XQPL Ops n Unit) (h : p.isMeasFree) : XQPL Ops n Unit :=
   ofGates ((p.toGates h).flatMap (mctrlGates cs))
 
-end XQPL
-
-/-- A gate list controlled gate by gate on every qubit of `cs` realises the matrix of the
-    list controlled on every qubit of `cs`, for distinct controls the list avoids. -/
-theorem listMatrix_flatMap_mctrlGates (L : List (Gate n)) :
-    ∀ {cs : List (Fin n)}, cs.Nodup → (∀ c ∈ cs, ∀ g ∈ L, Avoids c g) →
-      listMatrix (L.flatMap (mctrlGates cs)) = mctrlMatrix cs (listMatrix L)
-  | [], _, _ => by simp only [mctrlGates, List.flatMap_singleton', mctrlMatrix]
-  | c :: cs, hnd, h => by
-    rw [List.nodup_cons] at hnd
-    have hcs : ∀ c' ∈ cs, ∀ g ∈ L, Avoids c' g := fun c' hc' => h c' (List.mem_cons_of_mem c hc')
-    have hav : ∀ g' ∈ L.flatMap (mctrlGates cs), Avoids c g' := by
-      intro g' hg'
-      obtain ⟨g, hg, hg'⟩ := List.mem_flatMap.mp hg'
-      exact avoids_mctrlGates (h c List.mem_cons_self g hg) hnd.1 g' hg'
-    have hfl : L.flatMap (mctrlGates (c :: cs)) = ctrlList c (L.flatMap (mctrlGates cs)) := by
-      simp only [mctrlGates, ctrlList, List.flatMap_assoc]
-    rw [hfl, listMatrix_ctrlList hav, listMatrix_flatMap_mctrlGates L hnd.2 hcs, mctrlMatrix]
-
-namespace XQPL
-
-variable {Ops : Type}
-
 /-- For distinct controls that the program's gates avoid, the unitary of the
     multi-controlled program is the unitary controlled on every qubit of `cs`. -/
 theorem unitary_mcontrolledNoAnc [OpGateList Ops n] (cs : List (Fin n))

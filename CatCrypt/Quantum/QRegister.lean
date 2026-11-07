@@ -551,21 +551,6 @@ theorem listMatrix_withEq {v : Fin (2 ^ w)} {a : Fin n} {body : List (Gate n)}
         obtain ⟨i, rfl⟩ := List.mem_ofFn.mp hc
         exact (hb g hg).2 i⟩
 
-/-- Each gate of a list controlled on every qubit of `cs`: the matrix of the list controlled
-    on `cs`. -/
-theorem listMatrix_flatMap_mctrlGates {cs : List (Fin n)} (hnd : cs.Nodup) :
-    ∀ {body : List (Gate n)}, (∀ g ∈ body, ∀ c ∈ cs, Avoids c g) →
-      listMatrix (body.flatMap (mctrlGates cs)) = mctrlMatrix cs (listMatrix body)
-  | [], _ => by
-    rw [List.flatMap_nil, listMatrix_nil, mctrlMatrix_eq, sub_self, mul_zero, add_zero]
-  | g :: body, hb => by
-    have hb' : ∀ g' ∈ body, ∀ c ∈ cs, Avoids c g' := fun g' hg' =>
-      hb g' (List.mem_cons_of_mem g hg')
-    have hPU := commute_of_phaseOn (isPred_prod_proj1 cs).1 hb'
-    rw [List.flatMap_cons, listMatrix_append, listMatrix_flatMap_mctrlGates hnd hb',
-      listMatrix_mctrlGates hnd (hb g List.mem_cons_self), mctrlMatrix_eq, mctrlMatrix_eq,
-      one_add_mul_one_add (isPred_prod_proj1 cs).2 hPU, listMatrix_cons, mctrlMatrix_eq]
-
 /-- `body` under the condition `r == v` without ancilla: the `X` pattern of `v`, each gate of
     `body` controlled on every qubit of the register, and the `X` pattern again. -/
 def withEqNoAnc (v : Fin (2 ^ w)) (body : List (Gate n)) : List (Gate n) :=
@@ -577,15 +562,15 @@ theorem listMatrix_withEqNoAnc {v : Fin (2 ^ w)} {body : List (Gate n)}
     (hb : ∀ g ∈ body, ∀ i, Avoids (r.q i) g) :
     listMatrix (r.withEqNoAnc v body) = 1 + r.proj v * (listMatrix body - 1) := by
   have hnd : (List.ofFn r.q).Nodup := List.nodup_ofFn.mpr r.inj
-  have hb' : ∀ g ∈ body, ∀ c ∈ List.ofFn r.q, Avoids c g := fun g hg c hc => by
+  have hb' : ∀ c ∈ List.ofFn r.q, ∀ g ∈ body, Avoids c g := fun c hc g hg => by
     obtain ⟨i, rfl⟩ := List.mem_ofFn.mp hc
     exact hb g hg i
   have hC : Commute (listMatrix (r.xPattern v)) (listMatrix body) :=
     commute_listMatrix_X fun q hq => commOn_listMatrix fun g hg => by
       obtain ⟨i, -, rfl⟩ := List.mem_map.mp hq
       exact hb g hg i
-  rw [withEqNoAnc, listMatrix_append, listMatrix_append, listMatrix_flatMap_mctrlGates hnd hb',
-    mctrlMatrix_eq, ← mul_assoc,
+  rw [withEqNoAnc, listMatrix_append, listMatrix_append,
+    listMatrix_flatMap_mctrlGates body hnd hb', mctrlMatrix_eq, ← mul_assoc,
     conj_one_add (r.xPattern_mul_self v) hC, xPattern_conj_prod_proj1]
 
 end Reg
