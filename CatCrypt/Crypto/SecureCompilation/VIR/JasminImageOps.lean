@@ -411,6 +411,10 @@ theorem notChain_mem {Δ : Ctxt catCryptDialect} (w : Nat) (a : Ctxt.Var Δ (.sw
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl, rfl⟩
 
+theorem bswapChain_mem {Δ : Ctxt catCryptDialect} (a : Ctxt.Var Δ (.sword 64)) :
+    OpResMem (bswapChain a) :=
+  ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
+
 theorem unChain_mem {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
     (a : Ctxt.Var Δ (.sword 64)) : OpResMem (unChain o w a) := by
   cases o
@@ -418,6 +422,7 @@ theorem unChain_mem {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
   · exact ⟨rfl, rfl⟩
+  · exact bswapChain_mem a
 
 theorem geChain_mem {Δ : Ctxt catCryptDialect} (c : BitVec 1) (x y : Ctxt.Var Δ (.sword 64)) :
     OpResMem (geChain c x y) :=

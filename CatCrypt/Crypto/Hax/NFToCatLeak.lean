@@ -668,6 +668,8 @@ theorem unChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDiale
   · simp [unChain, OpRes.Quiet, cstE, catKind, opVT_none hP]
   · simp [unChain, OpRes.Quiet, cstE, andE, catKind, opVT_none hP]
   · simp [unChain, OpRes.Quiet, cstE, catKind, opVT_none hP]
+  · simp [unChain, bswapChain, swapPre, swapOrE, OpRes.Quiet, cstE, andE, catKind,
+      opVT_none hP]
 
 /-- The translation of a comparison is quiet. -/
 theorem cmpChain_quiet {P : CatLeakParams} (hP : NoVT P) {Δ : Ctxt catCryptDialect}

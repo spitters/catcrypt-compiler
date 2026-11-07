@@ -238,6 +238,12 @@ theorem notChain_image {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword
   · exact ⟨by image_op, by image_op⟩
   · exact ⟨by image_op, by image_op, by image_op⟩
 
+theorem bswapChain_image {Δ : Ctxt catCryptDialect} (a : Var Δ (.sword 64)) :
+    OpResImages (bswapChain a) :=
+  ⟨by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+    by image_op, by image_op, by image_op, by image_op, by image_op, by image_op,
+    by image_op, by image_op, by image_op, by image_op, by image_op, by image_op⟩
+
 theorem unChain_image {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
     (a : Var Δ (.sword 64)) : OpResImages (unChain o w a) := by
   cases o
@@ -245,6 +251,7 @@ theorem unChain_image {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Na
   · exact ⟨by image_op, by image_op⟩
   · exact ⟨by image_op, by image_op⟩
   · exact ⟨by image_op, by image_op⟩
+  · exact bswapChain_image a
 
 theorem geChain_image {Δ : Ctxt catCryptDialect} (c : BitVec 1) (x y : Var Δ (.sword 64)) :
     OpResImages (geChain c x y) :=

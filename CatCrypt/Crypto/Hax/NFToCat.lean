@@ -701,10 +701,36 @@ def notChain {Δ : Ctxt catCryptDialect} (w : Nat) (a : Var Δ (.sword 64)) :
       (.bind _ ⟨.bvXor 64, rfl, .cons a.there (.cons .here .nil)⟩
         (.expr (andE .here (Var.there .here))))
 
+/-- The context of a step of `swapPre`: five words in front of `Δ`. -/
+abbrev SwapCtx (Δ : Ctxt catCryptDialect) : Ctxt catCryptDialect :=
+  .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: .sword 64 :: Δ
+
+/-- One step of the byte reversal of the word `x`: the bindings of the mask `m`, of
+    `x &&& m`, of its shift left by `k`, of the shift right of `x` by `k` and of the
+    conjunction of that with `m`, in front of `k'`. In the context of `k'` the two shifted
+    words are the variables numbered `2` and `0`; their disjunction is `swapOrE`. -/
+def swapPre {Δ : Ctxt catCryptDialect} {t : NfTy} (m : BitVec 64) (k : Nat)
+    (x : Var Δ (.sword 64)) (k' : OpRes (SwapCtx Δ) t) : OpRes Δ t :=
+  .bind _ (cstE m) (.bind _ (andE x.there .here)
+    (.bind _ ⟨.bvShiftL 64 k, rfl, .cons .here .nil⟩
+      (.bind _ ⟨.bvShiftR 64 k, rfl, .cons x.there.there.there .nil⟩
+        (.bind _ (andE .here (Var.there (Var.there (Var.there .here)))) k'))))
+
+/-- The disjunction of the two shifted words of a step of `swapPre`. -/
+def swapOrE {Δ : Ctxt catCryptDialect} : Expr catCryptDialect (SwapCtx Δ) (.sword 64) :=
+  ⟨.bvOr 64, rfl, .cons (Var.there (Var.there .here)) (.cons .here .nil)⟩
+
+/-- **The byte reversal of a word**: three steps of `swapPre`, which exchange the bytes of each
+    half-word, the half-words of each half and the two halves. -/
+def bswapChain {Δ : Ctxt catCryptDialect} (a : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
+  swapPre (BitVec.ofNat 64 0x00FF00FF00FF00FF) 8 a (.bind _ swapOrE
+    (swapPre (BitVec.ofNat 64 0x0000FFFF0000FFFF) 16 .here (.bind _ swapOrE
+      (swapPre (BitVec.ofNat 64 0x00000000FFFFFFFF) 32 .here (.expr swapOrE)))))
+
 /-- The translation of a unary operation of the scalar table at the width `w` on a word: the
     complement by `notChain`, the negation as `0 - x`, the truncation as the conjunction
-    with the mask, and the increment as `x + 1`, exact on a value of the increment that
-    decodes as a `64`-bit word. -/
+    with the mask, the increment as `x + 1`, exact on a value of the increment that
+    decodes as a `64`-bit word, and the byte reversal by `bswapChain`. -/
 def unChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
     (a : Var Δ (.sword 64)) : OpRes Δ (.word 64) :=
   match o with
@@ -712,6 +738,7 @@ def unChain {Δ : Ctxt catCryptDialect} (o : ImpToNF.ScalarUn) (w : Nat)
   | .neg => .bind _ (cstE 0) (.expr ⟨.bvSub 64, rfl, .cons .here (.cons a.there .nil)⟩)
   | .cast => .bind _ (cstE (maskW w)) (.expr (andE a.there .here))
   | .incc => .bind _ (cstE 1) (.expr ⟨.bvAdd 64, rfl, .cons a.there (.cons .here .nil)⟩)
+  | .bswap => bswapChain a
 
 /-- The bit of an ordering of two words: the complement of `y` as the exclusive or with the
     all-ones word, the carry-in `c`, the sum `x + ~~~y + c` and its carry as two adjacent
@@ -2028,6 +2055,27 @@ theorem notChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {w : Nat} (h
     apply BitVec.eq_of_toNat_eq
     rw [hy, toNat_and_maskW _ hw]
 
+/-- One step of the byte reversal on a word: `((x &&& m) <<< k) ||| ((x >>> k) &&& m)`, the
+    value of a step of `swapPre` followed by `swapOrE`. -/
+def swapStepBV (m : BitVec 64) (k : Nat) (x : BitVec 64) : BitVec 64 :=
+  ((x &&& m) <<< shiftMask 64 k) ||| ((x >>> shiftMask 64 k) &&& m)
+
+/-- **Three steps reverse the bytes of a word.** -/
+theorem bswap64_eq_swapSteps (x : BitVec 64) :
+    _root_.Hax.bswap64 x = swapStepBV (BitVec.ofNat 64 0x00000000FFFFFFFF) 32
+      (swapStepBV (BitVec.ofNat 64 0x0000FFFF0000FFFF) 16
+        (swapStepBV (BitVec.ofNat 64 0x00FF00FF00FF00FF) 8 x)) := by
+  simp only [swapStepBV, shiftMask, ite_true, Nat.reduceMod, _root_.Hax.bswap64]
+  bv_decide
+
+/-- The translation of the byte reversal is related to the three steps on the value of its
+    operand. -/
+theorem bswapChain_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) (a : Var Δ (.sword 64)) :
+    OpResRel W (.word 64) (swapStepBV (BitVec.ofNat 64 0x00000000FFFFFFFF) 32
+      (swapStepBV (BitVec.ofNat 64 0x0000FFFF0000FFFF) 16
+        (swapStepBV (BitVec.ofNat 64 0x00FF00FF00FF00FF) 8 (a.lookup W)))) (bswapChain a) :=
+  rfl
+
 /-- **The translation of a unary operation is related to its value.** -/
 theorem unChain_rel{Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.ScalarUn)
     {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w = 32 ∨ w = 64) (hneg : o = .neg → w = 64)
@@ -2075,6 +2123,14 @@ theorem unChain_rel{Δ : Ctxt catCryptDialect} (W : Valuation Δ) (o : ImpToNF.S
     change BitVec.ofNat 64 _ = (show BitVec 64 from a.lookup W) + BitVec.ofNat 64 1
     apply BitVec.eq_of_toNat_eq
     simp only [BitVec.toNat_ofNat, BitVec.toNat_add]
+  · simp only [ImpToNF.ScalarUn.val, _root_.Hax.u64UnOp, Int.natCast_nonneg, true_and,
+      Int.toNat_natCast] at hv
+    split at hv
+    · obtain rfl := Option.some.inj hv
+      refine ⟨_, rfl, ?_⟩
+      simp only [BitVec.ofNat_toNat, BitVec.setWidth_eq, bswap64_eq_swapSteps]
+      exact bswapChain_rel W a
+    · cases hv
 
 /-- The carry of `x + ~~~y + 1` is `1` exactly when `y ≤ x`. -/
 theorem carry_not_eq_one (x y : BitVec 64) :

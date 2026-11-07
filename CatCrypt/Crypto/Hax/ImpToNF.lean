@@ -4771,8 +4771,8 @@ def ScalarBin.nat : ScalarBin → Nat → Nat → Nat → Option Nat
   | .mulc, w, x, y => if x < 2 ^ w ∧ y < 2 ^ w ∧ x * y < 2 ^ w then some (x * y) else none
 
 /-- The unary integer operations of `u64` code: the complement at a width, the wrapping
-    negation of a `64`-bit word, the truncation to a width, and the increment, the end of an
-    inclusive range. -/
+    negation of a `64`-bit word, the truncation to a width, the increment, the end of an
+    inclusive range, and the byte reversal of a `64`-bit word. -/
 inductive ScalarUn where
   /-- Complement. -/
   | not
@@ -4782,6 +4782,8 @@ inductive ScalarUn where
   | cast
   /-- Increment on the integers, the exclusive end `range_incl_end` of an inclusive range. -/
   | incc
+  /-- Byte reversal of a `64`-bit word, the Rust `u64::swap_bytes`. -/
+  | bswap
   deriving DecidableEq, Repr
 
 /-- The value of a unary operation at the width `w` on an integer, as `Hax.hax64WordOps`
@@ -4791,6 +4793,7 @@ def ScalarUn.val : ScalarUn → Nat → Int → Option Value
   | .neg, _, a => _root_.Hax.u64UnOp a fun x => (2 ^ 64 - x % 2 ^ 64) % 2 ^ 64
   | .cast, w, a => if 0 ≤ a then some (.int (a.toNat % 2 ^ w : Nat)) else none
   | .incc, _, a => some (.int (a + 1))
+  | .bswap, _, a => _root_.Hax.u64UnOp a fun x => (_root_.Hax.bswap64 (BitVec.ofNat 64 x)).toNat
 
 /-- The comparisons of `u64` code, with a Boolean result. -/
 inductive ScalarCmp where
@@ -4856,7 +4859,7 @@ def hax64UnTable : List (String × ScalarUn × Nat) :=
   [("Not#8", .not, 8), ("Not#16", .not, 16), ("Not#32", .not, 32), ("Not#64", .not, 64),
     ("Not#size", .not, 64), ("wrapping_neg#64", .neg, 64), ("cast#8", .cast, 8),
     ("cast#16", .cast, 16), ("cast#32", .cast, 32), ("cast#64", .cast, 64),
-    ("cast#size", .cast, 64), ("range_incl_end", .incc, 64)]
+    ("cast#size", .cast, 64), ("range_incl_end", .incc, 64), ("swap_bytes#64", .bswap, 64)]
 
 /-- The comparison calls of `u64` code with their comparison. -/
 def hax64CmpTable : List (String × ScalarCmp) :=
@@ -5374,6 +5377,7 @@ theorem ScalarUn.val_int (o : ScalarUn) (ho : o ≠ .incc) {w : Nat} (hw : w ≤
   · exact ⟨_, rfl, by omega⟩
   · exact ⟨_, rfl, Nat.mod_lt _ (by positivity)⟩
   · exact ⟨_, rfl, lt_of_lt_of_le (Nat.mod_lt _ h0) hp⟩
+  · exact ⟨_, rfl, BitVec.isLt _⟩
 
 /-- A natural number below `2 ^ 64` decodes as a `64`-bit word. -/
 theorem dec_word64_nat {r : Nat} (hr : r < 2 ^ 64) :

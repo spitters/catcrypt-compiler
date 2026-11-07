@@ -529,6 +529,9 @@ theorem total_hax64Builtins {g : String} {τs : List STy} {τ : STy}
           simp only [ScalarUn.val, ite_eq_left ha'.1]
           exact ⟨_, rfl, _, lt_of_lt_of_le (Nat.mod_lt _ (Nat.two_pow_pos w)) hP, rfl⟩
         | incc => exact absurd rfl hinc
+        | bswap =>
+          simp only [ScalarUn.val, _root_.Hax.u64UnOp, ite_eq_left ha']
+          exact ⟨_, rfl, _, BitVec.isLt _, rfl⟩
     · rw [hc] at h
       cases h
       obtain ⟨a, b, -, -, rfl⟩ := forall₂_word2 hv
