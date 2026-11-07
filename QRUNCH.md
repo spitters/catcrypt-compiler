@@ -123,8 +123,10 @@ compiles again. On IQM Garnet, IQM Aphrodite and IBM Kolkata
 given the map on Q-Synth, and 8–15% below it on Qrisp's algorithms; no gate leaves the map.
 
 `--cost t` orders the rounds by T-count first, never raises it
-([`tCost_runRounds_le`](CatCrypt/Quantum/QrunchRound.lean)), and runs the exact passes without the
-floating-point resynthesis, which turns T gates into arbitrary rotations.
+([`tCost_runRounds_le`](CatCrypt/Quantum/QrunchRound.lean)), and keeps a block's KAK or ZYZ
+template only where it does not raise the block's T-cost
+([`tCostG_resynthT_out_le`](CatCrypt/Quantum/Optimization/ResynthLevel.lean)), since the
+floating-point fits turn T gates into arbitrary rotations.
 
 ## What is trusted
 
