@@ -52,3 +52,27 @@ Before writing proofs over a compiled template, evaluate each stage of `compileR
 (`regionExportableB`, `exportR`, `regionCallee`, `regionLprogC`, the printed body,
 `encodableLinstrR` per instruction, the conjuncts of `regionCoB` and `regionCtB`). A
 `native_decide` over the result of a refused compile crashes the language-server worker.
+
+## Whole hashes over the linked templates
+
+The orchestration of a whole hash is Rust of the dev checkout, compiled by `compileA` with
+the template kernel linked at its System V contract (`LinkedAbi`): `sha3_256_words`,
+`shake128_256_words`, `shake256_512_words` (`sponge-hax`, module `words`) call
+`keccak_f(dst, src)` (`keccakFKernelAbi`); `blake2b_512_words` (`blake2b-hax`) calls
+`blake2b_compress(h, f0, t1, t0, hm)` (`blake2bKernelAbi`); `sha512_words` (`sha512-hax`) calls
+`sha512_compress(h, hm)` (`sha512KernelAbi`). Each crate function of these names has a reference
+body; the module lists the kernel in `linked` and not in `fns`. Every entry takes the message as
+2048 words (`%rdi`) with the memory layout of the byte buffer, the byte length at most 16384
+(`%rsi`, a bound of the layout), two storage arrays (`%rdx`, `%rcx`) and the output array
+(`%r8`), and keeps to the front's domain: storage arrays are parameters, message indices are
+masked into the buffer (the index check reads the mask), and the division by a Keccak rate is a
+product and a shift. SHA-512 reverses the bytes of its words with `swap_bytes#64`, translated by
+`NFToCat.bswapChain`. The known-answer harness is `bench/hash_whole_compare`.
+
+Not done: the extraction of the three crates (`cargo hax json --use-ids`, then
+`scripts/reextract.sh` of the dev checkout), the modules stating `compileA` acceptance and the
+instances of `haxc_correct_auto_one` and `haxc_ct_proved_all` (the pattern of
+`FAEST/FaestV3Compile`), the rows of `EmitRegistry` and `scripts/acceptance-registry.tsv`, and
+the objects in `bench/hash_whole_compare/gen/`. A `BSWAP` or `MOVBE` lowering of the byte
+reversal needs a `jasminDialect` operation, its `Lprog` op, the encoder and decoder entries and
+its `aMachine` semantics.
