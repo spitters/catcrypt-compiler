@@ -27,9 +27,11 @@ flowchart LR
 
 ## Compiler
 
-The compiler has two fronts: Rust through hax, and Lean through
-[relational compilation](CatCrypt/Crypto/SecureCompilation/RelationalFront.lean) in the style of
-Rupicola. An Aeneas front is in progress.
+A compiler input is a Rust function taken in by hax, or a Lean function taken in by
+[`reifyField%`](CatCrypt/Hax/ReifyField.lean), which reads a function over machine words or a prime
+field as a typed hax term and proves that the term computes the function; both are compiled by the
+same pipeline ([`leanFront_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/LeanFront.lean)). A
+hand-written `Com` or `NFProg` term is not an input. An Aeneas front is in progress.
 
 Every intermediate language is a typed SSA dialect with a Lean denotation, in the style of
 lean-mlir.
