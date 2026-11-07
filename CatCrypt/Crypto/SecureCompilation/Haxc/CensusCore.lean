@@ -889,6 +889,17 @@ def regionWhy (stage : String) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasmin
   | .reg 64, p => regionWhyBody stage σ a p
   | _, _ => ""
 
+/-- The reason `regionWhy` of the refusing stage `stage` of `compileRegion σ a p`, at the program
+    that stage reads: `p` for `regionExportableB`, and for a later stage the legalised result of
+    the narrow-word stages `narrowPrep p`, as `RegionStages.compileTrace` runs them. -/
+def compileWhy (stage : String) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (p : NFProg jasminDialect Γ [t]) : String :=
+  if stage == "regionExportableB" then regionWhy stage σ a p
+  else
+    match VIR.NarrowWords.narrowPrep p with
+    | some q => regionWhy stage σ a (legalizeRegion q)
+    | none => ""
+
 end Region
 
 /-- The outcome of the stages on one function under one layout: the refusing stage (or
@@ -925,7 +936,7 @@ def lateRun (fname : String) (σ : AbiLayout) (D : List CatCrypt.Crypto.Hax.NFTo
       let reg := regionStage σ a q
       let why : String :=
         if reg == "ownedCheckMC" || reg == "regionPrintedB" || reg == "regionExportableB"
-            || regionCoStages.contains reg then regionWhy reg σ a q
+            || regionCoStages.contains reg then compileWhy reg σ a q
         else ""
       { stage := reg, construct := "-", regionWhy := why, cat := fires.1, jas := fires.2 }
 
