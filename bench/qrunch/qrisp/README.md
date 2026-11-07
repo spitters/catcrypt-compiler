@@ -89,7 +89,7 @@ they were taken with load average 15 (other jobs on the box), and ours includes 
 | Backtracking, binary tree of depth 3 | 16 | 989 | 975 / 972 (975) | 596 / 596 | 2076 / 2614 | 2.5·10⁻¹⁵ / 1.3·10⁻¹⁵ | 2066 / 32 |
 | Backtracking, Sudoku with 3 empty fields | 24 | 3037 | 3037 / 3034 (3037) | 1227 / 1227 | 7166 / 7777 | 1.8·10⁻¹⁶ / 3.8·10⁻¹⁶ | 1603 / 95 |
 | HHL, 2x2 system, precision 3 | 6 | 256 | 231 / 231 (237) | 163 / 163 | 516 / 538 | 3.3·10⁻¹⁵ / 6.7·10⁻¹⁵ | 61 / 8 |
-| QMCI, one IQAE round (K = 3) | 25 | 2489 | 2347 / 2347 | 808 / 808 | 4832 / 4950 | not simulated | 2923 / 133 |
+| QMCI, one IQAE round (K = 3) | 25 | 2489 | 2347 / 2347 | 808 / 808 | 4853 / 4950 | 1.1·10⁻¹⁶ / 2.8·10⁻¹⁷ | 1609 / 84 |
 | Quantum counting, 4 qubits, precision 4 | 8 | 528 | 513 / 507 (513) | 439 / 436 | 1157 / 1260 | 1.2·10⁻¹⁴ / 1.0·10⁻¹⁴ | 227 / 19 |
 
 The figure in parentheses is Qiskit's CX count without `ElidePermutations`, as above. With
@@ -105,8 +105,8 @@ with `Statevector.evolve` to 6·10⁻¹⁷, and appending `rz(10⁻³)` to the i
 of 7·10⁻⁶ there. An entry of a random state has magnitude about 2^(-n/2), so the statevector
 deviations are smaller than the Operator deviations of the small rows. The TSP and Sudoku rows
 were rerun for this check (22:57 and 23:23), so their times come from that run, and Qiskit's
-gate count on the Sudoku differs by 3 from the first run. The QMCI row (25 qubits, 0.5 GiB per
-state) is not checked: its run was killed for low memory, and it needs MemAvailable above
-3 GB. The checker's
+gate count on the Sudoku differs by 3 from the first run. The QMCI row (25 qubits) was rerun on
+2026-11-07 with the compiler of that night, whose stopping rule ends the rounds earlier (4853
+gates against 4832 before); its check over two random statevectors peaked at 2.6 GiB. The checker's
 summed bound `eps` is at most 2.3·10⁻¹² on every row. Qrisp built every program, and
 catq-compile refused none.
