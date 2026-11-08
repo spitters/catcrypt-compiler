@@ -86,8 +86,9 @@ change of representation, by parametricity.
 
 - [lean4lean](https://github.com/spitters/lean4lean) is a Lean kernel with verified limb arithmetic
   for natural numbers.
-- [Lean with verified mpn](https://github.com/spitters/lean4/tree/catcrypt-mpn-4.35) is a Lean 4.35
-  runtime whose bignum addition and subtraction use verified kernels.
+- [Lean with verified mpn](https://github.com/spitters/lean4/tree/catcrypt-mpn-4.35.0) is Lean
+  v4.35.0 whose non-GMP runtime runs bignum addition, subtraction, comparison, multiplication,
+  bitwise operations and shifts on kernels emitted by this compiler.
 
 ## Example
 

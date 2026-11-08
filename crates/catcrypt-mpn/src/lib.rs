@@ -31,8 +31,8 @@
 //!   `staticlib` yields an archive with these entries and the raw kernel
 //!   symbols, for C callers with 32-bit digits.
 //!
-//! The Lean runtime of the CatCrypt lean4 branch `catcrypt-mpn-4.35` links this archive
-//! and calls the entries over 32-bit digits.
+//! The Lean runtime of the CatCrypt lean4 branch `catcrypt-mpn-4.35.0` links this archive
+//! and calls the kernels on its own 64-bit digit arrays.
 //!
 //! ## Trust boundary
 //!

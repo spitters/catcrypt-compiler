@@ -5,8 +5,8 @@ kernels are emitted by the CatCrypt compiler: the equal-length limb loops
 `mpn_{add,sub,and,ior,xor}_n`, the shift funnel `mpn_shift_rt`, the
 constant-time comparison `mpn_cmp_ct`, and the schoolbook product
 `mpn_mul_basecase_rt`, with safe Rust wrappers and a C ABI over 32-bit or
-64-bit digit arrays. The branch `catcrypt-mpn-4.35` of the CatCrypt fork of Lean 4 links the static library
-of this crate into its runtime and calls the entries over 32-bit digits.
+64-bit digit arrays. The branch `catcrypt-mpn-4.35.0` of the CatCrypt fork of Lean 4 links the static library
+of this crate into its runtime and calls the kernels on its own 64-bit digit arrays.
 
 ## Generated vs hand-written
 
