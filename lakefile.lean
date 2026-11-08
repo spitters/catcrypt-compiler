@@ -2862,12 +2862,13 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedAddrWEncodable,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteLegal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredPasses,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RInstrSemantics,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ReduceZModTie,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RedundantReloadElim,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillLowerSeq,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence,
@@ -3067,9 +3068,9 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.MsmToyVerified,
     Lake.Glob.one `CatCrypt.Crypto.Util.P25519PrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256NPrimeCert,
-    Lake.Glob.one `CatCrypt.Crypto.Util.P256PrimeCert,
   ]
 def pkgModules16 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.P256PrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P256Verified,
     Lake.Glob.one `CatCrypt.Crypto.Util.P384NPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P384PPrimeCert,
@@ -3269,9 +3270,9 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.TensorProduct,
     Lake.Glob.one `CatCrypt.Quantum.Uncomputation,
     Lake.Glob.one `CatCrypt.Quantum.UnitaryChannel,
-    Lake.Glob.one `CatCrypt.Quantum.XQPLEnv,
   ]
 def pkgModules17 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Quantum.XQPLEnv,
     Lake.Glob.one `CatCrypt.Quantum.XQPLGates,
     Lake.Glob.one `CatCrypt.Quantum.ZXCalculus,
     Lake.Glob.one `CatCrypt.Quantum.ZXOptimize,
