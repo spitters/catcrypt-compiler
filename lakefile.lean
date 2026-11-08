@@ -2717,6 +2717,7 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCmovTestElim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogControlFlow,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogCopyCoalesce,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogDeadFlag,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpRealloc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCT,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocCfg,
@@ -2865,9 +2866,9 @@ def pkgModules14 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RejectLoop,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleEquivalence,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch,
-    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree,
   ]
 def pkgModules15 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ResolverAgree,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RodataProbe,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunASim,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgree,
@@ -3067,9 +3068,9 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Util.P384NPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.P384PPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.PallasPrimeCert,
-    Lake.Glob.one `CatCrypt.Crypto.Util.PrattCertificate,
   ]
 def pkgModules16 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Crypto.Util.PrattCertificate,
     Lake.Glob.one `CatCrypt.Crypto.Util.SM2PPrimeCert,
     Lake.Glob.one `CatCrypt.Crypto.Util.ScalarFieldVerified,
     Lake.Glob.one `CatCrypt.Crypto.Util.Secp256k1NPrimeCert,
@@ -3269,9 +3270,9 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.ZXCalculus,
     Lake.Glob.one `CatCrypt.Quantum.ZXOptimize,
     Lake.Glob.one `CatCrypt.Relational.Approx,
-    Lake.Glob.one `CatCrypt.Relational.BadEventAlgebra,
   ]
 def pkgModules17 : Array Lake.Glob := #[
+    Lake.Glob.one `CatCrypt.Relational.BadEventAlgebra,
     Lake.Glob.one `CatCrypt.Relational.Basic,
     Lake.Glob.one `CatCrypt.Relational.ForLoop,
     Lake.Glob.one `CatCrypt.Relational.Frame,

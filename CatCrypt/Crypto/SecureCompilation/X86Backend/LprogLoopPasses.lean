@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogOptPipeline
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogDeadFlag
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.AdxChainFuse
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeak
 
@@ -14,21 +15,17 @@ public import CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLeak
 
 The runtime-trip loop export closes a loop body with a run of flag-only compares
 `CMP:64 [c] [c, x]` before the conditional back-edge; only the last of them sets
-the flags the branch reads. A flag-only instruction (`CMP:64` or `TEST:64` over a
-register and a register or immediate) writes the five arithmetic flags and no
-register or memory cell, so when the next instruction is again flag-only, the
-first one has no observable effect.
+the flags the branch reads. A flag-only compare writes the five arithmetic flags and
+no register or memory cell, so when the next instruction is again a flag-only
+compare, the first one has no observable effect.
 
-`dropDeadFlagOpsBody` deletes every flag-only instruction directly followed by
-another flag-only instruction. Its machine image is the `JasminModel`
-instruction `cmp` or `test` (`flagOnlyJ`), the form the gather of
-`GatherFullBody.lowerFlagClassJ` gives a two-address `CMP:64`.
+The pass `dropDeadFlagOpsBody` and its recogniser `isDeadFlagPair` are defined in
+`LprogDeadFlag`. Their machine image is the `JasminModel` instruction `cmp`
+(`flagOnlyJ`), the form the gather of `GatherFullBody.lowerFlagClassJ` gives a
+two-address `CMP:64`. This module states the pass on the machine model.
 
 ## Main results
 
-* `flagOnlyJ`, `isDeadFlagPair`: the recogniser and its machine image.
-* `dropDeadFlagOpsBody`, `dropDeadFlagOpsFundef`, `dropDeadFlagOpsLprog`: the pass.
-* `dropDeadFlagOpsBody_sublist`: the output is a sublist of the input.
 * `isDeadFlagPair_jimage`: the machine images of an accepted pair `i, j` satisfy
   `runBlock s [ji, jj] = runBlock s [jj]` on every machine state.
 * `dropDeadFlagOpsBody_runBlock`: for every per-instruction image that sends a
@@ -51,66 +48,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime (IsDirect)
 
-/-! ## 1. The recogniser -/
-
-/-- The machine operand of a register or immediate `Lprog` source; `none` for an
-    array operand. -/
-def flagSrcJ : LOperand → Option JOperand
-  | .reg r => some (.reg r)
-  | .imm v => some (.imm v)
-  | _ => none
-
-/-- The machine image of a flag-only instruction: `Lopn [c] CMP:64 [c, x]` is
-    `cmp c x` and `Lopn [c] TEST:64 [c, x]` is `test c x`, for a register or
-    immediate `x`. `none` for every other instruction. -/
-def flagOnlyJ (i : Linstr) : Option (JInstr 64) :=
-  match i.li_i with
-  | .Lopn [.reg d] opn [.reg a, b] =>
-      if a = d then
-        match flagSrcJ b with
-        | some jb =>
-            if opn = "CMP:64" then some (.cmp a jb)
-            else if opn = "TEST:64" then some (.test a jb)
-            else none
-        | none => none
-      else none
-  | _ => none
-
-/-- A pair of adjacent instructions whose first one is dead: both are
-    flag-only. -/
-def isDeadFlagPair (i j : Linstr) : Bool :=
-  (flagOnlyJ i).isSome && (flagOnlyJ j).isSome
-
-/-! ## 2. The pass -/
-
-/-- Delete every flag-only instruction that is directly followed by a flag-only
-    instruction. -/
-def dropDeadFlagOpsBody : Lcmd → Lcmd
-  | i :: j :: rest =>
-      if isDeadFlagPair i j then dropDeadFlagOpsBody (j :: rest)
-      else i :: dropDeadFlagOpsBody (j :: rest)
-  | l => l
-
-/-- The pass on one function: its body rewritten by `dropDeadFlagOpsBody`. -/
-def dropDeadFlagOpsFundef (f : Lfundef) : Lfundef :=
-  { f with lfd_body := dropDeadFlagOpsBody f.lfd_body }
-
-/-- The pass on every function body of an `Lprog`. -/
-def dropDeadFlagOpsLprog (p : Lprog) : Lprog :=
-  { p with lp_funcs := p.lp_funcs.map (fun (n, f) => (n, dropDeadFlagOpsFundef f)) }
-
-/-- The output of the pass is a sublist of its input: the pass only deletes. -/
-theorem dropDeadFlagOpsBody_sublist : ∀ b : Lcmd, (dropDeadFlagOpsBody b).Sublist b
-  | [] => by simp [dropDeadFlagOpsBody]
-  | [i] => by simp [dropDeadFlagOpsBody]
-  | i :: j :: rest => by
-      have ih := dropDeadFlagOpsBody_sublist (j :: rest)
-      unfold dropDeadFlagOpsBody
-      split
-      · exact ih.cons i
-      · exact ih.cons_cons i
-
-/-! ## 3. Machine semantics of one deletion -/
+/-! ## 1. Machine semantics of one deletion -/
 
 /-- The image of a flag-only instruction is a `cmp` or a `test`. -/
 theorem flagOnlyJ_cases {i : Linstr} {ji : JInstr 64} (h : flagOnlyJ i = some ji) :
@@ -143,13 +81,13 @@ theorem isDeadFlagPair_jimage {i j : Linstr} (h : isDeadFlagPair i j = true) :
     ∃ ji jj, flagOnlyJ i = some ji ∧ flagOnlyJ j = some jj ∧
       ∀ s : JState 64, runBlock s [ji, jj] = runBlock s [jj] := by
   simp only [isDeadFlagPair, Bool.and_eq_true] at h
-  obtain ⟨ji, hji⟩ := Option.isSome_iff_exists.mp h.1
-  obtain ⟨jj, hjj⟩ := Option.isSome_iff_exists.mp h.2
-  refine ⟨ji, jj, hji, hjj, fun s => ?_⟩
+  obtain ⟨a, b, hji⟩ := isFlagCmp_flagOnlyJ h.1
+  obtain ⟨c, d, hjj⟩ := isFlagCmp_flagOnlyJ h.2
+  refine ⟨_, _, hji, hjj, fun s => ?_⟩
   simp only [runBlock_cons, runBlock_nil]
   exact evalInstr_flagOnly_flagOnly s (flagOnlyJ_cases hji) (flagOnlyJ_cases hjj)
 
-/-! ## 4. The pass on a gathered block -/
+/-! ## 2. The pass on a gathered block -/
 
 /-- The block of a body under a per-instruction image: the concatenation of the
     images, `none` when an instruction has none. -/
