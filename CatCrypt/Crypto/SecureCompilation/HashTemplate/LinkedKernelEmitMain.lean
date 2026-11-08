@@ -49,7 +49,11 @@ half widens its words to 64-bit slots with zero high bits (`compileRegion`); it 
 function.
 
 The linked functions are `Sha2Linked.sha512Kernel`, `Blake2Linked.blake2bKernel` and
-`KeccakLinked.keccakFKernel`.
+`KeccakLinked.keccakFKernel`. The same bytes at the System V calling convention, with clobber
+sets that hold no callee-saved register (the code saves and restores each one its body
+writes), are the linked functions `Sha2Linked.sha512KernelAbi`, `Blake2Linked.blake2bKernelAbi`
+and `KeccakLinked.keccakFKernelAbi` (module `LinkedAbi`), so a C caller calls the objects
+directly.
 
 The command line and the printed line of a row are those of `LinkedKernelEmit.runCli`.
 

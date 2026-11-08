@@ -43,7 +43,17 @@ HACL_CFLAGS := -I$(HACL_SRC) -I$(HACL_INC) -I$(HACL_INT) -I$(HACL_KRM) -I$(HACL_
 # XKCP KeccakP-1600 opt64, as vendored by the FAEST reference implementation.
 XKCP_DIR ?= $(abspath $(COMPILER)/../faest-ref-v3/sha3)
 XKCP_CFLAGS := -I$(XKCP_DIR)/opt64 -I$(XKCP_DIR)
+# XKCP KeccakP-1600 AVX2 and AVX-512 (CRYPTOGAMS assembly), from the XKCP submodule of
+# formosa-keccak in the development checkout's reference installs.
+XKCP_REPO ?= $(HOME)/Claude/SSProve-lean/bench/reference_install/formosa-mlkem/formosa-keccak/submodules/XKCP
+XKCP_P1600 := $(XKCP_REPO)/lib/low/KeccakP-1600
 OPENSSL_LIBS ?= -lcrypto
+# HACL* 256-bit vector code: AVX2 and the feature flags libcrux's build.rs sets on x86-64.
+SIMDFLAGS := -mavx2 -DHACL_CAN_COMPILE_VEC128 -DHACL_CAN_COMPILE_VEC256
+# Compiler and flags, printed in the header of `compare conform` and `compare bench`.
+CC_VERSION := $(shell $(CC) --version 2>/dev/null | head -n1)
+HDR_DEFS = -DHARNESS_CC='"$(CC) = $(CC_VERSION)"' -DHARNESS_CFLAGS='"$(OPTFLAGS)"' \
+  -DHARNESS_SIMDFLAGS='"$(OPTFLAGS) $(SIMDFLAGS)"'
 
 MEASLIB_DIR := $(DEV)/bench/measurement_lib
 include $(MEASLIB_DIR)/Makefile.inc
@@ -83,26 +93,50 @@ gen: $(EMIT_DEPS)
 	cd $(DEV) && bash scripts/run-exe-rows.sh $(EMIT_EXE) --no-build --rows $(CURDIR)/gen/rows.txt
 	cp $(DEV)/bench/hash_linked_compare/gen/*.o gen/
 
-# Peer and adapter objects at -O3 -march=native (the peers' best portable build here).
+# Every C object (peers, adapters, block wrappers, harness) at $(OPTFLAGS), default
+# -O3 -march=native; the HACL* vector objects add $(SIMDFLAGS).  The XKCP AVX2 and
+# AVX-512 peers are assembly and take no optimisation flags.
 $(BUILD)/refs.o: refs.c arms.h | $(BUILD)
 	$(CC) $(OPTFLAGS) -w $(HACL_CFLAGS) $(XKCP_CFLAGS) -c $< -o $@
+$(BUILD)/refs_hacl_blake2b_simd256.o: refs_hacl_blake2b_simd256.c arms.h | $(BUILD)
+	$(CC) $(OPTFLAGS) $(SIMDFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
+$(BUILD)/refs_hacl_vec256.o: refs_hacl_vec256.c arms.h | $(BUILD)
+	$(CC) $(OPTFLAGS) $(SIMDFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
 $(BUILD)/hacl_sha2.o: $(HACL_SRC)/Hacl_Hash_SHA2.c | $(BUILD)
 	$(CC) $(OPTFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
 $(BUILD)/hacl_sha3.o: $(HACL_SRC)/Hacl_Hash_SHA3.c | $(BUILD)
 	$(CC) $(OPTFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
+$(BUILD)/hacl_sha3_scalar.o: $(HACL_SRC)/Hacl_Hash_SHA3_Scalar.c | $(BUILD)
+	$(CC) $(OPTFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
+$(BUILD)/hacl_sha3_simd256.o: $(HACL_SRC)/Hacl_Hash_SHA3_Simd256.c | $(BUILD)
+	$(CC) $(OPTFLAGS) $(SIMDFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
 $(BUILD)/lib_memzero0.o: $(HACL_SRC)/Lib_Memzero0.c | $(BUILD)
 	$(CC) $(OPTFLAGS) -w $(HACL_CFLAGS) -c $< -o $@
 $(BUILD)/xkcp_opt64.o: $(XKCP_DIR)/opt64/KeccakP-1600-opt64.c | $(BUILD)
 	$(CC) $(OPTFLAGS) -w $(XKCP_CFLAGS) -c $< -o $@
-$(BUILD)/tramp.o: tramp.c | $(BUILD)
-	$(CC) -O2 $(WARNFLAGS) -c $< -o $@
+$(BUILD)/xkcp_avx2.o: $(XKCP_P1600)/AVX2/KeccakP-1600-AVX2.s | $(BUILD)
+	$(CC) -c $< -o $@
+$(BUILD)/xkcp_avx512.o: $(XKCP_P1600)/AVX512/KeccakP-1600-AVX512.s | $(BUILD)
+	$(CC) -c $< -o $@
+$(BUILD)/tramp.o: tramp.c arms.h | $(BUILD)
+	$(CC) $(OPTFLAGS) $(WARNFLAGS) -c $< -o $@
 
-PEER_OBJS := $(BUILD)/refs.o $(BUILD)/hacl_sha2.o $(BUILD)/hacl_sha3.o \
-  $(BUILD)/lib_memzero0.o $(BUILD)/xkcp_opt64.o
+PEER_OBJS := $(BUILD)/refs.o $(BUILD)/refs_hacl_blake2b_simd256.o $(BUILD)/refs_hacl_vec256.o \
+  $(BUILD)/hacl_sha2.o $(BUILD)/hacl_sha3.o $(BUILD)/hacl_sha3_scalar.o \
+  $(BUILD)/hacl_sha3_simd256.o $(BUILD)/lib_memzero0.o $(BUILD)/xkcp_opt64.o \
+  $(BUILD)/xkcp_avx2.o $(BUILD)/xkcp_avx512.o
 
-$(BUILD)/compare: compare.c arms.h $(OURS) $(BUILD)/tramp.o $(PEER_OBJS) $(MEASLIB_OBJS) | $(BUILD)
-	$(CC) $(OPTFLAGS) $(WARNFLAGS) $(MEASLIB_CFLAGS) compare.c $(BUILD)/tramp.o $(OURS) \
-	  $(PEER_OBJS) $(MEASLIB_OBJS) $(OPENSSL_LIBS) $(LDFLAGS) -o $@
+# Rust BLAKE2b peers (RustCrypto blake2 0.10.6, libcrux-blake2) as one static library, built
+# offline from the local cargo registry and the libcrux checkout, at opt-level 3 with LTO and
+# -C target-cpu=native. Run make under heavy-run (scripts/heavy-run.sh), which covers cargo.
+RUST_REFS := $(BUILD)/rust/release/libhash_rust_refs.a
+$(RUST_REFS): rust_refs/Cargo.toml rust_refs/lib.rs | $(BUILD)
+	cd rust_refs && RUSTFLAGS="-C target-cpu=native" CARGO_TARGET_DIR=$(abspath $(BUILD))/rust \
+	  cargo build --release --offline
+
+$(BUILD)/compare: compare.c arms.h Makefile $(OURS) $(BUILD)/tramp.o $(PEER_OBJS) $(RUST_REFS) $(MEASLIB_OBJS) | $(BUILD)
+	$(CC) $(OPTFLAGS) $(WARNFLAGS) $(HDR_DEFS) $(MEASLIB_CFLAGS) compare.c $(BUILD)/tramp.o $(OURS) \
+	  $(PEER_OBJS) $(RUST_REFS) $(MEASLIB_OBJS) $(OPENSSL_LIBS) -lpthread -ldl -lm $(LDFLAGS) -o $@
 
 conform: $(BUILD)/compare
 	./$(BUILD)/compare conform $(NRAND) | tee results/conform.txt
@@ -132,6 +166,8 @@ provenance:
 	@echo "OpenSSL: $$(openssl version)"
 	@echo "HACL*: libcrux $$(git -C $(LIBCRUX) rev-parse HEAD 2>/dev/null) (sys/hacl/c)"
 	@echo "XKCP: faest-ref $$(git -C $(XKCP_DIR)/.. rev-parse HEAD 2>/dev/null) (sha3/opt64)"
+	@echo "XKCP: $$(git -C $(XKCP_REPO) rev-parse HEAD 2>/dev/null) (lib/low/KeccakP-1600/AVX2, AVX512)"
+	@echo "CC: $(CC) = $(CC_VERSION); C flags $(OPTFLAGS); HACL* vector flags $(OPTFLAGS) $(SIMDFLAGS)"
 	@md5sum $(OURS)
 	@stat -c '%y  %n' $(OURS)
 

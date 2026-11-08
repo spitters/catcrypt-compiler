@@ -7,9 +7,16 @@
  *            one-block compression with an arbitrary counter and final flag is
  *            reachable), Hacl_Hash_SHA3_state_permute.
  *   XKCP     KeccakP1600 opt64 (KeccakP-1600-opt64.c, plain lanes: the vendored
- *            configuration defines no lane complementing).
+ *            configuration defines no lane complementing); KeccakP1600_AVX2 and
+ *            KeccakP1600_AVX512 (KeccakP-1600-AVX2.s, KeccakP-1600-AVX512.s, the
+ *            CRYPTOGAMS permutations), declared here with an opaque state because the
+ *            AVX2 state holds the lanes in a permuted order; both are read and written
+ *            through their AddBytes and ExtractBytes.
+ *
+ * The HACL* 256-bit vector arms are in refs_hacl_blake2b_simd256.c and refs_hacl_vec256.c.
  */
 #define OPENSSL_SUPPRESS_DEPRECATED
+#include <openssl/crypto.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <stdlib.h>
@@ -84,6 +91,42 @@ void *peer_xkcp_state(void) {
 void peer_xkcp_state_step(void *st) { KeccakP1600_Permute_24rounds((KeccakP1600_state *)st); }
 
 void peer_hacl_keccak_f1600(uint64_t lanes[25]) { Hacl_Hash_SHA3_state_permute(lanes); }
+
+/* XKCP AVX2 and AVX-512 (assembly).  A state is 200 bytes; it is allocated with 64-byte
+ * alignment and 256 bytes, as the opt64 state above. */
+#define XKCP_ASM_ARM(tag, pfx)                                                           \
+  void pfx##_Initialize(void *state);                                                    \
+  void pfx##_AddBytes(void *state, const unsigned char *data, unsigned int offset,       \
+                      unsigned int length);                                              \
+  void pfx##_Permute_24rounds(void *state);                                              \
+  void pfx##_ExtractBytes(const void *state, unsigned char *data, unsigned int offset,   \
+                          unsigned int length);                                          \
+  void peer_xkcp_##tag##_keccak_f1600(uint64_t lanes[25]) {                              \
+    uint64_t st[32] __attribute__((aligned(64)));                                       \
+    uint8_t bytes[200];                                                                  \
+    for (int i = 0; i < 25; i++)                                                         \
+      for (int b = 0; b < 8; b++) bytes[8 * i + b] = (uint8_t)(lanes[i] >> (8 * b));     \
+    pfx##_Initialize(st);                                                                \
+    pfx##_AddBytes(st, bytes, 0, 200);                                                   \
+    pfx##_Permute_24rounds(st);                                                          \
+    pfx##_ExtractBytes(st, bytes, 0, 200);                                               \
+    for (int i = 0; i < 25; i++) {                                                       \
+      uint64_t w = 0;                                                                    \
+      for (int b = 0; b < 8; b++) w |= (uint64_t)bytes[8 * i + b] << (8 * b);            \
+      lanes[i] = w;                                                                      \
+    }                                                                                    \
+  }                                                                                      \
+  void *peer_xkcp_##tag##_state(void) {                                                  \
+    void *st = aligned_alloc(64, 256);                                                   \
+    pfx##_Initialize(st);                                                                \
+    return st;                                                                           \
+  }                                                                                      \
+  void peer_xkcp_##tag##_state_step(void *st) { pfx##_Permute_24rounds(st); }
+
+XKCP_ASM_ARM(avx2, KeccakP1600_AVX2)
+XKCP_ASM_ARM(avx512, KeccakP1600_AVX512)
+
+const char *peer_openssl_version(void) { return OpenSSL_version(OPENSSL_VERSION); }
 
 int evp_digest(const char *name, const uint8_t *msg, unsigned long len, uint8_t *out,
                unsigned *outlen) {

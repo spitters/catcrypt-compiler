@@ -14,10 +14,21 @@ public import CatCrypt.Crypto.SecureCompilation.Dialects.NFMapLeak
 # The narrow-word stages of the region back half
 
 `narrowPrep p` is the widening `widenJ` of the narrow words of a structured Jasmin program
-`p`, followed by the elimination of redundant masks `maskElim` and dead-binding elimination
-`NFProg.dce`. Its result is a program over the context `Γ.map wideTy` with results
-`ts.map wideTy`, in which every word is held in a 64-bit register or 64-bit array slot, zero
-extended (`transTy`).
+`p`, followed by the elimination of redundant masks `maskElim`, dead-binding elimination
+`NFProg.dce` and the carry pairs `carryPair`. Its result is a program over the context
+`Γ.map wideTy` with results `ts.map wideTy`, in which every word is held in a 64-bit register or
+64-bit array slot, zero extended (`transTy`), and every carry-out binding `addCarryHi w`
+directly follows the data binding `addCarryLo w` of the same add.
+
+The carry pairs serve the printed class of the back half, which reads the carry-out of an add as
+the second half of the add whose data binding is the instruction before it
+(`DecodePrintedAddrW.carryPrevB`): dead-binding elimination drops a data binding whose value no
+instruction reads, such as the low word of the first limb of a Montgomery reduction, and a field
+template may bind the carry-out of an add alone, such as the top carry of a trial subtraction.
+`carryPair` puts the data binding back before such a carry-out; the inserted binding denotes a
+value that nothing reads (`denote_carryPair`), emits no event at parameters with no
+variable-time operation (`leakRunM_carryPairGo`), and is an operation of the gate
+(`regionExportableB_carryPairGo`).
 
 The stages keep the meaning of the program along the transport `mapVal`: a run of `p` to `v`
 at `V` is a run of the result to the transported `v` at `mapVal V` (`narrowPrep_denote`). They
@@ -36,12 +47,17 @@ by `@[csimp]`; the theorems below are about the stages as defined.
 
 ## Main definitions
 
-* `narrowPrep` — `widenJ`, then `maskElim`, then `NFProg.dce`.
+* `carryPairGo`, `carryPair`, `carryInsert` — the carry pairs.
+* `narrowPrep` — `widenJ`, then `maskElim`, then `NFProg.dce`, then `carryPair`.
 * `allSpecTraits` — the operation traits at which every operation is speculatable.
 * `castProg` — a program carried along equalities of its context and result types.
 
 ## Main results
 
+* `denote_carryInsert`, `denote_carryPairGo`, `denote_carryPair` — the carry pairs keep the
+  denotation of a Jasmin program.
+* `regionExportableB_carryPairGo`, `callFree_carryPairGo`, `leakRunM_carryInsert`,
+  `leakRunM_carryPairGo` — they keep the gate, the calls and the leakage run.
 * `narrowPrep_denote` — the stages preserve the denotation along `mapVal` and `transArgs`.
 * `regionExportableB_maskElimGo`, `regionExportableB_rename?`, `regionExportableB_dce` — mask
   elimination and dead-binding elimination keep `regionExportableB`.
@@ -84,33 +100,93 @@ open CatCrypt.Crypto.SecureCompilation.VIR.NFProg (appLift bindHom varTyCast)
 
 /-! ## 1. The stages -/
 
+/-- The de Bruijn index of a variable. -/
+def varIdx {Γ : Ctxt jasminDialect} {t : JasminTy} : Var Γ t → Nat
+  | .here => 0
+  | .there v => varIdx v + 1
+
+/-- The de Bruijn indices of a vector of variables. -/
+def argIdxs {Γ : Ctxt jasminDialect} :
+    {ts : List JasminTy} → HVector (fun t => Var Γ t) ts → List Nat
+  | [], .nil => []
+  | _ :: _, .cons v vs => varIdx v :: argIdxs vs
+
+/-- The weakening past one new binding. -/
+def wk1 {Γ : Ctxt jasminDialect} {s : JasminTy} : PRen Γ (s :: Γ) := fun v => some (.there v)
+
+/-- The weakening relates a valuation to its extension by one value. -/
+theorem agrees_wk1 {Γ : Ctxt jasminDialect} {s : JasminTy} (V : Valuation Γ) (x : ⟦s⟧) :
+    PRen.Agrees (wk1 (s := s)) V (V.extend x) := by
+  intro t v v' h
+  simp only [wk1, Option.some.injEq] at h
+  subst h
+  rfl
+
+/-- The key of a carry-chain data binding `addCarryLo w`, as the next binding reads it: the
+    width and the indices of its arguments, shifted past the binding. -/
+def loKey {Γ : Ctxt jasminDialect} {t : JasminTy} (e : Expr jasminDialect Γ t) :
+    Option (Nat × List Nat) :=
+  match e.op with
+  | .addCarryLo w => some (w, (argIdxs e.args).map (· + 1))
+  | _ => none
+
+/-- The carry-out binding `addCarryHi w` on the arguments `args`, before the continuation `k`,
+    preceded by the data binding `addCarryLo w` on the same arguments: the carry-out and the
+    continuation are weakened past the new binding. When a weakening fails, the binding is
+    left as it is. -/
+def carryInsert {Γ : Ctxt jasminDialect} {ts : List JasminTy} {t : JasminTy} (w : Nat)
+    (h : DialectSignature.ret (d := jasminDialect) (.addCarryHi w) = t)
+    (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) (.addCarryHi w)))
+    (k : NFProg jasminDialect (t :: Γ) ts) : NFProg jasminDialect Γ ts :=
+  match Expr.rename? (wk1 (s := .reg w)) ⟨.addCarryHi w, h, args⟩,
+      NFProg.rename? (PRen.lift (wk1 (s := .reg w))) k with
+  | some e', some k' => .var ⟨.addCarryLo w, rfl, args⟩ (.var e' k')
+  | _, _ => .var ⟨.addCarryHi w, h, args⟩ k
+
+/-- **The carry pairs**, with the key `prev` of the binding before the program: a carry-out
+    binding `addCarryHi w` that does not directly follow the data binding `addCarryLo w` on its
+    arguments is preceded by that data binding (`carryInsert`). The printed class of the back
+    half reads a carry-out as the second half of an add whose data binding is the instruction
+    before it (`DecodePrintedAddrW.carryPrevB`); dead-binding elimination drops a data binding
+    whose value no instruction reads, and a field template may bind the carry-out of an add
+    alone. -/
+def carryPairGo (prev : Option (Nat × List Nat)) :
+    {Γ : Ctxt jasminDialect} → {ts : List JasminTy} → NFProg jasminDialect Γ ts →
+      NFProg jasminDialect Γ ts
+  | _, _, .ret vs => .ret vs
+  | _, _, .var e k =>
+      match e with
+      | ⟨.addCarryHi w, h, args⟩ =>
+          if prev = some (w, argIdxs args) then .var ⟨.addCarryHi w, h, args⟩ (carryPairGo none k)
+          else carryInsert w h args (carryPairGo none k)
+      | e => .var e (carryPairGo (loKey e) k)
+  | _, _, .forLoop count inits body k =>
+      .forLoop count inits (carryPairGo none body) (carryPairGo none k)
+  | _, _, .ifThenElse c thn els k =>
+      .ifThenElse c (carryPairGo none thn) (carryPairGo none els) (carryPairGo none k)
+  | _, _, .whileLoop inits body k => .whileLoop inits (carryPairGo none body) (carryPairGo none k)
+  | _, _, .call f args k => .call f args (carryPairGo none k)
+
+/-- **The carry pairs** of a program: `carryPairGo` with no binding before it. -/
+def carryPair {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    NFProg jasminDialect Γ ts :=
+  carryPairGo none p
+
 /-- **The narrow-word stages**: the widening `widenJ`, then mask elimination `maskElim`, then
-    dead-binding elimination `NFProg.dce`; `none` when the widening refuses an operation. -/
+    dead-binding elimination `NFProg.dce`, then the carry pairs `carryPair`; `none` when the
+    widening refuses an operation. -/
 def narrowPrep {Γ : Ctxt jasminDialect} {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
     Option (NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)) :=
-  (widenJ p).map fun q => NFProg.dce (maskElim q)
+  (widenJ p).map fun q => carryPair (NFProg.dce (maskElim q))
 
-/-- A result of `narrowPrep` is `dce (maskElim q₀)` for the widened program `q₀`. -/
+/-- A result of `narrowPrep` is `carryPair (dce (maskElim q₀))` for the widened program
+    `q₀`. -/
 theorem narrowPrep_eq_some {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p : NFProg jasminDialect Γ ts} {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)} :
-    narrowPrep p = some q ↔ ∃ q₀, widenJ p = some q₀ ∧ NFProg.dce (maskElim q₀) = q :=
+    narrowPrep p = some q ↔ ∃ q₀, widenJ p = some q₀ ∧ carryPair (NFProg.dce (maskElim q₀)) = q :=
   Option.map_eq_some_iff
 
 /-! ## 2. The denotation -/
-
-/-- **Preservation.** A run of `p` at `V` to `v` is a run of a result of `narrowPrep p` at the
-    widened valuation `mapVal V` to the widened `v`, at the same fuel. -/
-theorem narrowPrep_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
-    {p : NFProg jasminDialect Γ ts} {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)}
-    (hq : narrowPrep p = some q) {fuel : Nat} {V : Valuation Γ}
-    {v : Valuation (d := jasminDialect) ts} (hv : p.denote fuel V = some v) :
-    q.denote fuel (mapVal V) = some (transArgs wideTy (fun x => transTy x) v) := by
-  obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
-  apply NFProg.denote_dce
-  have hm := denoteAt_maskElim (CallDenote.env (d := jasminDialect)) fuel q₀ (mapVal V)
-  have hw := widenJ_denote_empty fuel p V q₀ h₀
-  rw [hv] at hw
-  exact hm.trans hw
 
 /-- The operation traits at which every operation of `jasminDialect` is speculatable. -/
 def allSpecTraits : OpTraits jasminDialect where
@@ -140,6 +216,63 @@ theorem denote_dce_jasmin [CallDenote jasminDialect] {Γ : Ctxt jasminDialect}
     (NFProg.dce p).denote fuel V = p.denote fuel V :=
   NFProg.denote_dce_eq allSpecTraits (SpecLaw.ofPure allSpecTraits) p (dceDrops_allSpec p) fuel V
 
+/-- **An inserted carry pair keeps the denotation**: the data binding denotes a value, which
+    nothing reads. -/
+theorem denote_carryInsert [CallDenote jasminDialect] {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {t : JasminTy} (w : Nat)
+    (h : DialectSignature.ret (d := jasminDialect) (.addCarryHi w) = t)
+    (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) (.addCarryHi w)))
+    (k : NFProg jasminDialect (t :: Γ) ts) (fuel : Nat) (V : Valuation Γ) :
+    (carryInsert w h args k).denote fuel V =
+      (NFProg.var ⟨JasminOp.addCarryHi w, h, args⟩ k).denote fuel V := by
+  unfold carryInsert
+  split
+  · rename_i e' k' he hk
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (Expr.isSome_denoteM_of_spec allSpecTraits
+      (SpecLaw.ofPure allSpecTraits) (⟨.addCarryLo w, rfl, args⟩ : Expr jasminDialect Γ (.reg w))
+      rfl V)
+    simp only [NFProg.denote, hx, Option.bind_eq_bind, Option.bind_some]
+    rw [Expr.denoteM_rename? (agrees_wk1 V x) _ he]
+    congr 1
+    funext c
+    exact NFProg.denote_rename? k hk (PRen.agrees_lift (agrees_wk1 V x) c) fuel
+  · rfl
+
+/-- **The carry pairs keep the denotation** of a Jasmin program, at every fuel. -/
+theorem denote_carryPairGo [CallDenote jasminDialect] {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    ∀ (prev : Option (Nat × List Nat)) (fuel : Nat) (V : Valuation Γ),
+      (carryPairGo prev p).denote fuel V = p.denote fuel V := by
+  induction p with
+  | ret vs => intro prev fuel V; rfl
+  | var e k ih =>
+      intro prev fuel V
+      unfold carryPairGo
+      split
+      · split
+        · simp only [NFProg.denote, ih]
+        · rw [denote_carryInsert]
+          simp only [NFProg.denote, ih]
+      · simp only [NFProg.denote, ih]
+  | forLoop count inits body k ihb ihk =>
+      intro prev fuel V
+      simp only [carryPairGo, NFProg.denote, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro prev fuel V
+      simp only [carryPairGo, NFProg.denote, iht, ihe, ihk]
+  | whileLoop inits body k ihb ihk =>
+      intro prev fuel V
+      simp only [carryPairGo, NFProg.denote, ihb, ihk]
+  | call fn args k ih =>
+      intro prev fuel V
+      simp only [carryPairGo, NFProg.denote, ih]
+
+/-- **The carry pairs keep the denotation** of a Jasmin program, at every fuel. -/
+theorem denote_carryPair [CallDenote jasminDialect] {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) (fuel : Nat) (V : Valuation Γ) :
+    (carryPair p).denote fuel V = p.denote fuel V :=
+  denote_carryPairGo p none fuel V
+
 /-- **The stages keep the denotation exactly** along `mapVal` and `transArgs`, at every fuel. -/
 theorem narrowPrep_denote_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p : NFProg jasminDialect Γ ts} {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)}
@@ -147,9 +280,19 @@ theorem narrowPrep_denote_eq {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     q.denote fuel (mapVal V) =
       (p.denote fuel V).map (transArgs wideTy (fun x => transTy x)) := by
   obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
-  rw [denote_dce_jasmin]
+  rw [denote_carryPair, denote_dce_jasmin]
   have hm := denoteAt_maskElim (CallDenote.env (d := jasminDialect)) fuel q₀ (mapVal V)
   exact hm.trans (widenJ_denote_empty fuel p V q₀ h₀)
+
+/-- **Preservation.** A run of `p` at `V` to `v` is a run of a result of `narrowPrep p` at the
+    widened valuation `mapVal V` to the widened `v`, at the same fuel. -/
+theorem narrowPrep_denote {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)}
+    (hq : narrowPrep p = some q) {fuel : Nat} {V : Valuation Γ}
+    {v : Valuation (d := jasminDialect) ts} (hv : p.denote fuel V = some v) :
+    q.denote fuel (mapVal V) = some (transArgs wideTy (fun x => transTy x) v) := by
+  rw [narrowPrep_denote_eq hq fuel V, hv]
+  rfl
 
 /-! ## 3. The gate -/
 
@@ -264,6 +407,42 @@ theorem regionExportableB_dce {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       simp only [NFProg.dce, regionExportableB, Bool.and_eq_true] at h ⊢
       exact ⟨h.1, ih h.2⟩
 
+/-- **The carry pairs keep `regionExportableB`**: an inserted data binding is an operation of
+    `opMemB`, and the weakening keeps the rest. -/
+theorem regionExportableB_carryPairGo {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) :
+    ∀ prev : Option (Nat × List Nat),
+      regionExportableB (carryPairGo prev p) = regionExportableB p := by
+  induction p with
+  | ret vs => intro prev; rfl
+  | var e k ih =>
+      intro prev
+      unfold carryPairGo
+      split
+      · split
+        · simp only [regionExportableB, ih]
+        · unfold carryInsert
+          split
+          · rename_i e' k' he hk
+            simp only [Expr.rename?, Option.map_eq_some_iff] at he
+            obtain ⟨_, -, rfl⟩ := he
+            simp only [regionExportableB, regionExportableB_rename? _ hk, ih]
+            rfl
+          · simp only [regionExportableB, ih]
+      · simp only [regionExportableB, ih]
+  | forLoop count inits body k ihb ihk =>
+      intro prev
+      simp only [carryPairGo, regionExportableB, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro prev
+      simp only [carryPairGo, regionExportableB, iht, ihe, ihk]
+  | whileLoop inits body k ihb ihk =>
+      intro prev
+      simp only [carryPairGo, regionExportableB, ihb, ihk]
+  | call fn args k ih =>
+      intro prev
+      simp only [carryPairGo, regionExportableB, ih]
+
 /-- **The gate.** A program that passes `regionExportableB` has a result of `narrowPrep`, and
     that result passes `regionExportableB`. -/
 theorem narrowPrep_of_exportable {Γ : Ctxt jasminDialect} {ts : List JasminTy}
@@ -275,8 +454,10 @@ theorem narrowPrep_of_exportable {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     simp only [Bool.and_eq_true] at h
     exact h.1.1
   obtain ⟨q₀, h₀⟩ := Option.isSome_iff_exists.mp (widenJ_isSome p hops)
-  exact ⟨_, narrowPrep_eq_some.mpr ⟨q₀, h₀, rfl⟩, regionExportableB_dce _
-    (regionExportableB_maskElim (widenJ_regionExportable_of_exportable p hp q₀ h₀))⟩
+  refine ⟨_, narrowPrep_eq_some.mpr ⟨q₀, h₀, rfl⟩, ?_⟩
+  rw [carryPair, regionExportableB_carryPairGo]
+  exact regionExportableB_dce _
+    (regionExportableB_maskElim (widenJ_regionExportable_of_exportable p hp q₀ h₀))
 
 /-! ## 4. The calls -/
 
@@ -422,12 +603,44 @@ theorem callFree_maskElimGo {Γ : Ctxt jasminDialect} {ts : List JasminTy}
       simp only [maskElimGo, NFProg.callFree, ihb, ihk]
   | call f args k ih => intro Δ A ren; rfl
 
+/-- **The carry pairs keep the calls**: an inserted binding is no call, and the weakening keeps
+    the calls of the rest. -/
+theorem callFree_carryPairGo {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) :
+    ∀ prev : Option (Nat × List Nat), (carryPairGo prev p).callFree = p.callFree := by
+  induction p with
+  | ret vs => intro prev; rfl
+  | var e k ih =>
+      intro prev
+      unfold carryPairGo
+      split
+      · split
+        · simp only [NFProg.callFree, ih]
+        · unfold carryInsert
+          split
+          · rename_i e' k' he hk
+            simp only [NFProg.callFree, callFree_rename? _ hk, ih]
+          · simp only [NFProg.callFree, ih]
+      · simp only [NFProg.callFree, ih]
+  | forLoop count inits body k ihb ihk =>
+      intro prev
+      simp only [carryPairGo, NFProg.callFree, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro prev
+      simp only [carryPairGo, NFProg.callFree, iht, ihe, ihk]
+  | whileLoop inits body k ihb ihk =>
+      intro prev
+      simp only [carryPairGo, NFProg.callFree, ihb, ihk]
+  | call fn args k ih =>
+      intro prev
+      simp only [carryPairGo, NFProg.callFree]
+
 /-- **The stages keep the absence of `call` and its presence.** -/
 theorem callFree_narrowPrep {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p : NFProg jasminDialect Γ ts} {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)}
     (hq : narrowPrep p = some q) : q.callFree = p.callFree := by
   obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
-  rw [callFree_dce]
+  rw [carryPair, callFree_carryPairGo, callFree_dce]
   exact (callFree_maskElimGo q₀ _ _).trans (callFree_map? widenP widenP_regionTypes p _ h₀)
 
 /-! ## 5. The events of the widening -/
@@ -628,6 +841,69 @@ theorem leakRun_maskElim (hV : ∀ op, Pj.opVT op = none) (fuel : Nat) {Γ : Ctx
 
 /-! ## 7. Constant time through the stages -/
 
+/-- **An inserted carry pair keeps the leakage run** at a leakage model under which a data
+    binding of a carry chain emits no event. -/
+theorem leakRunM_carryInsert (M : LeakModel jasminDialect)
+    (hq : ∀ w, M.kind (.addCarryLo w) = .quiet) (fuel : Nat) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {t : JasminTy} (w : Nat)
+    (h : DialectSignature.ret (d := jasminDialect) (.addCarryHi w) = t)
+    (args : HVector (fun t => Var Γ t) (DialectSignature.sig (d := jasminDialect) (.addCarryHi w)))
+    (k : NFProg jasminDialect (t :: Γ) ts) (V : Valuation Γ) :
+    Dialects.NFLeak.NFProg.leakRunM M fuel (carryInsert w h args k) V =
+      Dialects.NFLeak.NFProg.leakRunM M fuel (NFProg.var ⟨JasminOp.addCarryHi w, h, args⟩ k) V := by
+  unfold carryInsert
+  split
+  · rename_i e' k' he hk
+    obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (Expr.isSome_denoteM_of_spec allSpecTraits
+      (SpecLaw.ofPure allSpecTraits) (⟨.addCarryLo w, rfl, args⟩ : Expr jasminDialect Γ (.reg w))
+      rfl V)
+    have hl : ComLevelCheck.Expr.ctLeak M
+        (⟨.addCarryLo w, rfl, args⟩ : Expr jasminDialect Γ (.reg w)) V = [] := by
+      simp only [ComLevelCheck.Expr.ctLeak, opLeak, hq]
+    simp only [Dialects.NFLeak.NFProg.leakRunM, hx, Option.bind_some, hl, List.nil_append]
+    rw [Expr.denoteM_rename? (agrees_wk1 V x) _ he,
+      Dialects.NFLeak.Expr.ctLeak_rename? M (agrees_wk1 V x) _ he]
+    cases (⟨.addCarryHi w, h, args⟩ : Expr jasminDialect Γ t).denoteM (M := Option) V with
+    | none => rfl
+    | some c =>
+        simp only [Option.bind_some, Option.map_map]
+        rw [Dialects.NFLeak.NFProg.leakRunM_rename? M fuel k hk
+          (PRen.agrees_lift (agrees_wk1 V x) c)]
+        rfl
+  · rfl
+
+/-- **The carry pairs keep the leakage run** at a leakage model under which a data binding of
+    a carry chain emits no event. -/
+theorem leakRunM_carryPairGo (M : LeakModel jasminDialect)
+    (hq : ∀ w, M.kind (.addCarryLo w) = .quiet) (fuel : Nat) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    ∀ (prev : Option (Nat × List Nat)) (V : Valuation Γ),
+      Dialects.NFLeak.NFProg.leakRunM M fuel (carryPairGo prev p) V =
+        Dialects.NFLeak.NFProg.leakRunM M fuel p V := by
+  induction p with
+  | ret vs => intro prev V; rfl
+  | var e k ih =>
+      intro prev V
+      unfold carryPairGo
+      split
+      · split
+        · simp only [Dialects.NFLeak.NFProg.leakRunM, ih]
+        · rw [leakRunM_carryInsert M hq]
+          simp only [Dialects.NFLeak.NFProg.leakRunM, ih]
+      · simp only [Dialects.NFLeak.NFProg.leakRunM, ih]
+  | forLoop count inits body k ihb ihk =>
+      intro prev V
+      simp only [carryPairGo, Dialects.NFLeak.NFProg.leakRunM, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro prev V
+      simp only [carryPairGo, Dialects.NFLeak.NFProg.leakRunM, iht, ihe, ihk]
+  | whileLoop inits body k ihb ihk =>
+      intro prev V
+      simp only [carryPairGo, Dialects.NFLeak.NFProg.leakRunM, ihb, ihk]
+  | call fn args k ih =>
+      intro prev V
+      rfl
+
 /-- **The leakage transformer of the stages.** At parameters with no variable-time operation,
     a successful leakage run of `p` at `V` is matched by a leakage run of a result of
     `narrowPrep p` at `mapVal V` to the widened results, whose events are those
@@ -637,7 +913,7 @@ theorem narrowPrep_leakRun (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
     {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)} (hq : narrowPrep p = some q)
     (V : Valuation Γ) (r : Valuation (d := jasminDialect) ts × List CTLeak)
     (h : Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel p V = some r) :
-    ∃ q₀, widenJ p = some q₀ ∧ q = NFProg.dce (maskElim q₀) ∧ ∃ l,
+    ∃ q₀, widenJ p = some q₀ ∧ q = carryPair (NFProg.dce (maskElim q₀)) ∧ ∃ l,
       Dialects.NFLeak.NFProg.leakRun (jLeakModel Pj) fuel q (mapVal V) =
         some (transArgs wideTy (fun x => transTy x) r.1, l) ∧
       ∀ rest, Dialects.NFLeak.NFProg.dceErase (jLeakModel Pj) fuel (maskElim q₀) (r.2 ++ rest)
@@ -649,7 +925,9 @@ theorem narrowPrep_leakRun (hV : ∀ op, Pj.opVT op = none) (fuel : Nat)
       widenJ_leakRun hV fuel p V q₀ h₀, h]
     rfl
   obtain ⟨l, hl, el⟩ := Dialects.NFLeak.NFProg.leakRunM_dce _ fuel _ _ _ hm
-  rw [Dialects.NFLeak.NFProg.leakRunM_eq_leakRun] at hl
+  rw [← leakRunM_carryPairGo (jLeakModel Pj)
+    (fun w => jKind_quiet hV (.addCarryLo w) (by simp) (by simp) (by simp)) fuel _ none,
+    Dialects.NFLeak.NFProg.leakRunM_eq_leakRun] at hl
   exact ⟨q₀, h₀, rfl, l, hl, el⟩
 
 /-- **Constant time through the stages, relative to source runs.** At parameters with no
@@ -878,9 +1156,10 @@ theorem narrowPrep_denoteAt_eq (E E' : CallEnv jasminDialect) {Γ : Ctxt jasminD
     q.denoteAt E' fuel (mapVal V) =
       (p.denoteAt E fuel V).map (transArgs wideTy (fun x => transTy x)) := by
   obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
+  have hc := @denote_carryPair ⟨E'⟩ _ _ (NFProg.dce (maskElim q₀)) fuel (mapVal V)
   have hd := @denote_dce_jasmin ⟨E'⟩ _ _ (maskElim q₀) fuel (mapVal V)
   have hm := denoteAt_maskElim E' fuel q₀ (mapVal V)
-  exact (hd.trans hm).trans (widenJ_denote E E' fuel p hCall V q₀ h₀)
+  exact ((hc.trans hd).trans hm).trans (widenJ_denote E E' fuel p hCall V q₀ h₀)
 
 /-- Heterogeneously equal programs over equal contexts denote heterogeneously equal results
     at every call environment. -/

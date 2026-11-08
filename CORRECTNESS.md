@@ -199,7 +199,13 @@ tables with the accepted programs.
   narrow-word stages are the widening `widenJ`, which holds every word of width 8, 16 or
   32 zero extended in a 64-bit register or a 64-bit array slot, mask elimination
   `maskElim`, which removes a mask whose value reaches only width-insensitive operations,
-  and dead-binding elimination `NFProg.dce`. Their theorems are the denotation
+  dead-binding elimination `NFProg.dce`, and the carry pairs `carryPair`, which put the
+  data binding `addCarryLo` of an add back before a carry-out `addCarryHi` that does not
+  directly follow it (the printed class reads a carry-out as the second half of the add
+  before it, `carryPrevB`; dead-binding elimination drops an unread data binding and a
+  wide template may bind a carry-out alone), with `denote_carryPair`,
+  `regionExportableB_carryPairGo`, `callFree_carryPairGo` and `leakRunM_carryPairGo`.
+  Their theorems are the denotation
   (`narrowPrep_denote_eq`), acceptance by the export gate (`narrowPrep_of_exportable`),
   call freedom (`callFree_narrowPrep`) and the leakage relation and events
   (`narrowPrep_ctRel`, `narrowPrep_events`). The code that runs is the linear-time form of
@@ -284,6 +290,32 @@ tables with the accepted programs.
   `semScalar` run lemma by one kernel evaluation of `ScalarStraightRun.runProg`.
   `word_bound` (CatCrypt-core module `CatCryptCore.Tactics.WordBound`) closes
   word-bound side goals.
+
+#### The field instances of the Lean front
+
+The fronts of the compiler and their theorems are listed in [PIPELINE.md](PIPELINE.md). A Lean
+function over `ZMod p` enters through `reifyField%` (`CatCrypt/Hax/ReifyField.lean`), which reads
+its field operations as calls of the tagged heads `m#p<p>`. An element of `ZMod p` is encoded as the integer of its canonical representative below
+`2^64` and as the array of its `fieldLimbs p` little-endian limbs at `p ≥ 2^64`
+(`enc_zmod`, `enc_zmod_wide`), the values the table of `compileA` reads at a narrow and at a
+wide tagged head. `leanFront_correct_field2` and `leanFront_correct_field1` state the
+correctness of the bytes of one field operation under a layout with an output buffer at
+`%rdi`, with the literal ascended by `fnCorres_fieldOp2` and `fnCorres_fieldOp1`.
+
+The instances are in `Haxc/LeanFrontFields.lean`, the product, square, sum and difference at
+the base primes, each `compileA` on the typed literal under `FieldRoute.fieldAbi` (output
+buffer at `%rdi`, `y` at `%rsi`, `x` at `%rdx`; the square reads `x` at `%rsi`). The wide
+template of the modulus is Solinas at secp256k1 and canonical Montgomery at the others
+(`FieldWideInline.wideTemplateOf`). An accepted function has `<f>_compiles` (`native_decide`)
+and `<f>_bytes` (the decoded bytes halt with the canonical limbs of the value); the rows
+`field/<prime>_<op>` of `catcrypt-emit` write its object. The instances and their byte
+theorems:
+
+- secp256k1 (Solinas, 4 limbs): `secp256k1Mul_bytes`, `secp256k1Sqr_bytes`,
+  `secp256k1Add_bytes`, `secp256k1Sub_bytes`;
+- P-256 and BN254 (4 limbs) and P-384 (6 limbs), canonical Montgomery: `p256Add_bytes`,
+  `p256Sub_bytes`, `bn254Add_bytes`, `bn254Sub_bytes`, `p384Add_bytes`, `p384Sub_bytes`;
+- BLS12-381 (6 limbs): `bls12381Sub_bytes`.
 
 [HEADLINES.md](HEADLINES.md) lists the headline theorems, and
 [NAVIGATION.md](NAVIGATION.md) the directories that hold them.

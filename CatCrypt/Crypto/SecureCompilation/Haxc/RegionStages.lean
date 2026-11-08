@@ -14,8 +14,10 @@ The stages of `regionBack` on a structured program with one result and no `call`
 trace that is computed one node per stage: each node of a `StageTrace` holds the name of
 the stage, a size of its output, and the rest of the trace as a function of `Unit`, so that
 forcing a node runs exactly one stage. The census (`haxc-census`) reads the first refusing
-stage off the trace (`regionStage`); the profile of `field-bytes-emit` forces the nodes one
-after another between two clock reads (`StageTrace.profile`).
+stage off the trace of `compileRegion` (`regionStage`, on `compileTrace`), whose stages after
+the narrow-word stages run on the program they return, as `compileRegion` runs them; the profile
+of `catcrypt-emit` forces the nodes one after another between two clock reads
+(`StageTrace.profile`).
 
 ## Main results
 
@@ -27,8 +29,10 @@ after another between two clock reads (`StageTrace.profile`).
 * `gateTrace`, `gateTraceFine`: the gate `regionCoB` followed by the constant-time check
   `regionCtB` on a printed body, as two stages, or as their conjuncts.
 * `regionTraceBody`, `regionTrace`: the stages of `regionBack` on a structured program.
-* `regionStageBody`, `regionStage`: the first stage of `regionBack` that refuses, or
-  `accepted`.
+* `compileTrace`: the stages of `compileRegion`: the gate `regionExportableB`, the narrow-word
+  stages `narrowPrep`, then `regionTrace` on the program they return.
+* `regionStageBody`: the first stage of `regionBack` that refuses, or `accepted`;
+  `regionStage`: the first stage of `compileRegion` that refuses, or `accepted`.
 * `regionCoStages`: the stages of `regionCoStage` that `RegionDiag.regionCoWhy` explains.
 -/
 
@@ -274,6 +278,19 @@ def regionTrace (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminD
   | .reg 64, p => regionTraceBody fine σ a p
   | _, _ => .refused "resultTy"
 
+/-- The stages of `compileRegion σ a p` on the structured program `p` with one result, in the
+    order of its definition: the gate `regionExportableB` on `p`, the narrow-word stages
+    `narrowPrep` (size: the number of nodes of their result), then the stages of `regionBack`
+    (`regionTrace`) on the legalised result `legalizeRegion q`, the program `regionBack` reads.
+    Every stage after `narrowPrep` runs on the program `compileRegion` passes to it. -/
+def compileTrace (fine : Bool) (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect}
+    {t : JasminTy} (p : NFProg jasminDialect Γ [t]) : StageTrace :=
+  if regionExportableB p = false then .refused "regionExportableB" else
+  match VIR.NarrowWords.narrowPrep p with
+  | none => .refused "narrowPrep"
+  | some q =>
+      .stage "narrowPrep" (some (nfNodes q)) fun _ => regionTrace fine σ a (legalizeRegion q)
+
 /-- The first stage of `regionBack σ a p` that refuses the structured program `p` with
     one result, or `accepted`: the outcome of `regionTraceBody` with the gate as two
     stages. When the gate `regionCoB` refuses, the value is its first conjunct that is
@@ -282,11 +299,11 @@ def regionStageBody (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t
     (p : NFProg jasminDialect Γ [t]) : String :=
   (regionTraceBody false σ a p).outcome
 
-/-- The first stage of `regionBack` that refuses the structured program `p`, or
-    `accepted`: the outcome of `regionTrace` with the gate as two stages. -/
+/-- The first stage of `compileRegion` that refuses the structured program `p`, or
+    `accepted`: the outcome of `compileTrace` with the gate as two stages. -/
 def regionStage (σ : AbiLayout) (a : AbiNames) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (p : NFProg jasminDialect Γ [t]) : String :=
-  (regionTrace false σ a p).outcome
+  (compileTrace false σ a p).outcome
 
 /-- The stages of `regionCoStage`, other than `ownedCheckMC` and `regionPrintedB`, whose
     reason is `RegionDiag.regionCoWhy`. -/

@@ -12,6 +12,9 @@ round count.
 | `Sha2` | the SHA-2 family (`Sha2FamilyParams`; SHA-224/256/384/512/512-224/512-256) |
 | `Blake2` | BLAKE2b and BLAKE2s (`Blake2Params`) |
 | `Keccak` | Keccak-f[1600] |
+| `TemplateKernel` | region kernels and template kernels (`ProgKernelData`, `TemplateKernelData`): the linked function of the bytes of `compileRegion`, its contract (`meets`) and its linked-kernel structure (`linked`), and the check at the frame of the code (`frameCheck`) |
+| `TemplateKernelAbi` | the same kernels at the System V convention (`abiKernel`, `meets_abi`, `linked_abi`): the clobber set `abiClob` without the callee-saved registers, which the code saves and restores (`regionBack_restores`) |
+| `Sha2Linked`, `Blake2Linked`, `KeccakLinked`, `LinkedAbi` | the SHA-512, BLAKE2b and Keccak-f kernels (`sha512Kernel`, `blake2bKernel`, `keccakFKernel`) and their System V forms (`*KernelAbi`), the objects of `bench/hash_linked_compare/gen/` |
 
 The parameter tables are checked against the standards outside Lean, in the development
 checkout SSProve-lean: `bench/sha2_template_h0`, `bench/blake2_template_params`,

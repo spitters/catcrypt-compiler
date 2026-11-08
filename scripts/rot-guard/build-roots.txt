@@ -67,6 +67,7 @@ CatCrypt.Crypto.Jasmin.Examples.HkdfSha256JasminEmit
 CatCrypt.Crypto.Jasmin.Examples.HmacSha256JasminEmit
 CatCrypt.Crypto.Jasmin.Examples.InstrRReflectDemo
 CatCrypt.Crypto.Jasmin.Examples.JasminCoqSemMirrorDemo
+CatCrypt.Crypto.Jasmin.Examples.JincGrammarDemo
 CatCrypt.Crypto.Jasmin.Examples.MontUToEdwardsEmit
 CatCrypt.Crypto.Jasmin.Examples.SHA512CompressDSL
 CatCrypt.Crypto.Jasmin.Examples.Scalar25519OpsEmit
@@ -160,7 +161,7 @@ CatCrypt.Crypto.Optimizer.Rewrite.MontDomainElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.MontgomeryTransport
 CatCrypt.Crypto.Optimizer.Rewrite.NegElimPass
 CatCrypt.Crypto.Optimizer.Rewrite.RadixDecompGeneric
-CatCrypt.Crypto.Optimizer.Rewrite.RangeAnnSyn
+CatCrypt.Crypto.Optimizer.Rewrite.RangeSelSyn
 CatCrypt.Crypto.Optimizer.Rewrite.RegistryEgraphBridge
 CatCrypt.Crypto.Optimizer.Rewrite.WindowedScalarMulGeneric
 CatCrypt.Crypto.Optimizer.ScheduleSearchMontMulNtt
@@ -410,11 +411,9 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa
 CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
-CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked
-CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked
+CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedAbi
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
-CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
@@ -426,10 +425,11 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldLoopCT
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldMulCarryFlagsTest
 CatCrypt.Crypto.SecureCompilation.Haxc.FrontTysPos
 CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
 CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
-CatCrypt.Crypto.SecureCompilation.Haxc.LeanFront
+CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontFields
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
@@ -742,7 +742,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.ThirToJasminViaCatCryptOrFlat
 CatCrypt.Crypto.SecureCompilation.VIR.TileBridgeLegal
 CatCrypt.Crypto.SecureCompilation.VIR.TileLegalLaneMap
 CatCrypt.Crypto.SecureCompilation.VIR.ToomCookEmit
-CatCrypt.Crypto.SecureCompilation.VIR.Transforms.MulByConst
 CatCrypt.Crypto.SecureCompilation.VIR.UprogJasminWellFormed
 CatCrypt.Crypto.SecureCompilation.VIR.VecIsa
 CatCrypt.Crypto.SecureCompilation.VIR.WeilReciprocity
@@ -843,6 +842,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv
+CatCrypt.Crypto.SecureCompilation.X86Backend.LprogLoopPasses
 CatCrypt.Crypto.SecureCompilation.X86Backend.MemrefDialect
 CatCrypt.Crypto.SecureCompilation.X86Backend.MontRedc4RunBlockFused
 CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubOutFrame
@@ -874,7 +874,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.P256FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.P384FieldKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
-CatCrypt.Crypto.SecureCompilation.X86Backend.PhysImgSem
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedAddrWEncodable
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteX86
@@ -1010,7 +1009,12 @@ CatCrypt.Hax.ReprBridge
 CatCrypt.Hax.RustM
 CatCrypt.Hax.TypedToRawCode
 CatCrypt.Hax.VacuityAudit
+CatCrypt.Quantum.AffAngle
 CatCrypt.Quantum.Benchmark.QrunchCompile
+CatCrypt.Quantum.Benchmark.QrunchExportMain
+CatCrypt.Quantum.QRegisterMeas
+CatCrypt.Quantum.QrunchConnect
+CatCrypt.Quantum.XQPLEnv
 CatCrypt.Relational.BadEventAlgebra
 CatCrypt.Relational.Basic
 CatCrypt.Relational.ForLoop

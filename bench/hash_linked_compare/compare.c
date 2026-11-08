@@ -6,12 +6,17 @@
  *                             exit 1 on any mismatch.
  *   compare bench [--cpu C] [--samples S] [--inner I] [--run R] [--label L]
  *                             TSV: kernel, arm, median and minimum TSC cycles
- *                             per call over S samples of I chained calls.
+ *                             per call over S samples of I chained calls; for the
+ *                             4-lane rows (kernel *_x4), cycles per call / 4.
  *
  * Chaining: every arm's call depends on the previous call's output, so no arm
  * overlaps independent calls.  The peers update their state in place; ours
  * alternates two input arrays, writing each call's output words into the
- * chaining words (or lanes) of the other array.
+ * chaining words (or lanes) of the other array.  The SHA-512 and BLAKE2b arms all
+ * take the 128-byte block: ours through the block wrappers of tramp.c, which load
+ * the message words on every call.  Ours is called directly: the objects keep the
+ * System V callee-saved registers, which the conformance run checks
+ * (abi_check_call).
  */
 #include <stdint.h>
 #include <stdio.h>
@@ -37,11 +42,6 @@ static void rnd_bytes(uint8_t *p, int n) {
   for (int i = 0; i < n; i++) p[i] = (uint8_t)rnd64();
 }
 
-static uint64_t load_be64(const uint8_t *p) {
-  uint64_t w = 0;
-  for (int i = 0; i < 8; i++) w = (w << 8) | p[i];
-  return w;
-}
 static uint64_t load_le64(const uint8_t *p) {
   uint64_t w = 0;
   for (int i = 7; i >= 0; i--) w = (w << 8) | p[i];
@@ -61,21 +61,20 @@ static const uint64_t SHA512_IV[8] = {
 
 /* ---- the three kernels as functions of (state, block) ------------------------ */
 
+/* Ours through the block wrappers that the timing calls. */
 static void ours_sha512(uint64_t h[8], const uint8_t blk[128]) {
-  uint64_t hm[24], out[8];
-  for (int i = 0; i < 8; i++) hm[i] = h[i];
-  for (int j = 0; j < 16; j++) hm[8 + j] = load_be64(blk + 8 * j);
-  ours_sha512_compress(out, hm);
-  memcpy(h, out, sizeof out);
+  uint64_t src[24], dst[8];
+  memcpy(src, h, 8 * sizeof(uint64_t));
+  ours_sha512_block(dst, src, blk);
+  memcpy(h, dst, sizeof dst);
 }
 
 static void ours_blake2b(uint64_t h[8], const uint8_t blk[128], uint64_t t0, uint64_t t1,
                          int last) {
-  uint64_t hm[24], out[8];
-  for (int i = 0; i < 8; i++) hm[i] = h[i];
-  for (int j = 0; j < 16; j++) hm[8 + j] = load_le64(blk + 8 * j);
-  ours_blake2b_compress(out, last ? ~0ULL : 0ULL, t1, t0, hm);
-  memcpy(h, out, sizeof out);
+  uint64_t src[24], dst[8];
+  memcpy(src, h, 8 * sizeof(uint64_t));
+  ours_blake2b_block(dst, src, blk, t0, t1, last ? ~0ULL : 0ULL);
+  memcpy(h, dst, sizeof dst);
 }
 
 static void hacl_blake2b(uint64_t h[8], const uint8_t blk[128], uint64_t t0, uint64_t t1,
@@ -86,9 +85,26 @@ static void hacl_blake2b(uint64_t h[8], const uint8_t blk[128], uint64_t t0, uin
   memcpy(h, hash16, 8 * sizeof(uint64_t));
 }
 
+static void hacl_blake2b_simd256(uint64_t h[8], const uint8_t blk[128], uint64_t t0,
+                                 uint64_t t1, int last) {
+  _Alignas(32) uint64_t hash16[16];
+  _Alignas(32) uint64_t wv[16];
+  peer_hacl_blake2b_init_rows(hash16, h);
+  peer_hacl_blake2b_simd256(hash16, wv, blk, t0, t1, last);
+  memcpy(h, hash16, 8 * sizeof(uint64_t));
+}
+
+/* 4-lane states: word i of lane j at st[4i + j]. */
+static void x4_set(uint64_t *st, int words, int j, const uint64_t *w) {
+  for (int i = 0; i < words; i++) st[4 * i + j] = w[i];
+}
+static void x4_get(const uint64_t *st, int words, int j, uint64_t *w) {
+  for (int i = 0; i < words; i++) w[i] = st[4 * i + j];
+}
+
 static void ours_keccak(uint64_t s[25]) {
   uint64_t out[25];
-  ours_keccak_f1600(out, s);
+  catcrypt_keccak_f1600(out, s);
   memcpy(s, out, sizeof out);
 }
 
@@ -123,6 +139,55 @@ static void hex_to_bytes(const char *hex, uint8_t *out, int n) {
   }
 }
 
+/* The 4-lane arms on one input: the input in all four lanes, the lanes checked
+ * equal, lane 0 returned. */
+static void hacl_sha512_x4_all(uint64_t h[8], const uint8_t blk[128]) {
+  _Alignas(32) uint64_t st[32];
+  uint64_t w[8];
+  for (int j = 0; j < 4; j++) x4_set(st, 8, j, h);
+  peer_hacl_sha512_x4(st, blk, blk, blk, blk);
+  x4_get(st, 8, 0, h);
+  for (int j = 1; j < 4; j++) {
+    x4_get(st, 8, j, w);
+    check_words("sha512 hacl_vec256_x4 lane j vs lane 0", w, h, 8);
+  }
+}
+
+static void hacl_keccak_x4_all(uint64_t s[25]) {
+  _Alignas(32) uint64_t st[100];
+  uint64_t w[25];
+  for (int j = 0; j < 4; j++) x4_set(st, 25, j, s);
+  peer_hacl_keccak_x4_absorb0(st);
+  x4_get(st, 25, 0, s);
+  for (int j = 1; j < 4; j++) {
+    x4_get(st, 25, j, w);
+    check_words("keccak hacl_simd256_x4 state j vs state 0", w, s, 25);
+  }
+}
+
+typedef void (*sha512_fn)(uint64_t h[8], const uint8_t blk[128]);
+typedef void (*blake2b_fn)(uint64_t h[8], const uint8_t blk[128], uint64_t t0, uint64_t t1,
+                           int last);
+typedef void (*keccak_fn)(uint64_t s[25]);
+
+static const struct { const char *arm; sha512_fn f; } SHA512_ARMS[] = {
+    {"ours", ours_sha512},
+    {"openssl", peer_openssl_sha512},
+    {"hacl", peer_hacl_sha512},
+    {"hacl_vec256_x4", hacl_sha512_x4_all}};
+static const struct { const char *arm; blake2b_fn f; } BLAKE2B_ARMS[] = {
+    {"ours", ours_blake2b},
+    {"hacl", hacl_blake2b},
+    {"hacl_simd256", hacl_blake2b_simd256}};
+static const struct { const char *arm; keccak_fn f; } KECCAK_ARMS[] = {
+    {"ours", ours_keccak},
+    {"xkcp", peer_xkcp_keccak_f1600},
+    {"xkcp_avx2", peer_xkcp_avx2_keccak_f1600},
+    {"xkcp_avx512", peer_xkcp_avx512_keccak_f1600},
+    {"hacl", peer_hacl_keccak_f1600},
+    {"hacl_simd256_x4", hacl_keccak_x4_all}};
+#define NARMS(a) ((int)(sizeof(a) / sizeof((a)[0])))
+
 /* FIPS 180-4 / FIPS 202 / RFC 7693 vectors for the message "abc". */
 static const char *SHA512_ABC =
     "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a"
@@ -133,10 +198,12 @@ static const char *BLAKE2B512_ABC =
 static const char *SHA3_256_ABC =
     "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532";
 
+/* Every arm, ours and each peer, computes each vector on its own. */
 static void vectors(void) {
   const uint8_t abc[3] = {'a', 'b', 'c'};
   uint8_t want[64], evp[64];
   unsigned evplen = 0;
+  char what[160];
 
   /* SHA-512("abc"): one compression from the IV over the padded block. */
   {
@@ -144,27 +211,38 @@ static void vectors(void) {
     memcpy(blk, abc, 3);
     blk[3] = 0x80;
     blk[127] = 24;
-    uint64_t h[8];
-    memcpy(h, SHA512_IV, sizeof h);
-    ours_sha512(h, blk);
-    for (int i = 0; i < 8; i++) store_be64(got + 8 * i, h[i]);
     hex_to_bytes(SHA512_ABC, want, 64);
     if (evp_digest("SHA512", abc, 3, evp, &evplen)) check_bytes("vector literal SHA-512(abc) = OpenSSL EVP", want, evp, 64);
-    check_bytes("ours sha512_compress: SHA-512(abc) (FIPS 180-4)", got, want, 64);
+    for (int a = 0; a < NARMS(SHA512_ARMS); a++) {
+      uint64_t h[8];
+      memcpy(h, SHA512_IV, sizeof h);
+      SHA512_ARMS[a].f(h, blk);
+      for (int i = 0; i < 8; i++) store_be64(got + 8 * i, h[i]);
+      snprintf(what, sizeof what, "%s sha512_compress: SHA-512(abc) (FIPS 180-4)", SHA512_ARMS[a].arm);
+      check_bytes(what, got, want, 64);
+    }
   }
 
   /* BLAKE2b-512("abc"): h = IV ^ P (digest 64, no key), t = 3, final flag. */
   {
     uint8_t blk[128] = {0}, got[64];
     memcpy(blk, abc, 3);
-    uint64_t h[8];
-    memcpy(h, SHA512_IV, sizeof h);
-    h[0] ^= 0x01010040ULL;
-    ours_blake2b(h, blk, 3, 0, 1);
-    for (int i = 0; i < 8; i++) store_le64(got + 8 * i, h[i]);
     hex_to_bytes(BLAKE2B512_ABC, want, 64);
     if (evp_digest("BLAKE2B-512", abc, 3, evp, &evplen)) check_bytes("vector literal BLAKE2b-512(abc) = OpenSSL EVP", want, evp, 64);
-    check_bytes("ours blake2b_compress: BLAKE2b-512(abc) (RFC 7693 App. A)", got, want, 64);
+    for (int a = 0; a < NARMS(BLAKE2B_ARMS); a++) {
+      uint64_t h[8];
+      memcpy(h, SHA512_IV, sizeof h);
+      h[0] ^= 0x01010040ULL;
+      BLAKE2B_ARMS[a].f(h, blk, 3, 0, 1);
+      for (int i = 0; i < 8; i++) store_le64(got + 8 * i, h[i]);
+      snprintf(what, sizeof what, "%s blake2b_compress: BLAKE2b-512(abc) (RFC 7693 App. A)", BLAKE2B_ARMS[a].arm);
+      check_bytes(what, got, want, 64);
+    }
+    /* The Rust peers expose whole digests only. */
+    rc_blake2b512(abc, 3, got);
+    check_bytes("rustcrypto blake2b512: BLAKE2b-512(abc) (RFC 7693 App. A)", got, want, 64);
+    lc_blake2b512(abc, 3, got);
+    check_bytes("libcrux blake2b512: BLAKE2b-512(abc) (RFC 7693 App. A)", got, want, 64);
   }
 
   /* SHA3-256("abc"): one permutation of the absorbed padded block (rate 136). */
@@ -173,23 +251,63 @@ static void vectors(void) {
     memcpy(blk, abc, 3);
     blk[3] ^= 0x06;
     blk[135] ^= 0x80;
-    uint64_t s[25];
-    for (int i = 0; i < 25; i++) s[i] = load_le64(blk + 8 * i);
-    ours_keccak(s);
-    for (int i = 0; i < 4; i++) store_le64(got + 8 * i, s[i]);
     hex_to_bytes(SHA3_256_ABC, want, 32);
     if (evp_digest("SHA3-256", abc, 3, evp, &evplen)) check_bytes("vector literal SHA3-256(abc) = OpenSSL EVP", want, evp, 32);
-    check_bytes("ours keccak_f1600: SHA3-256(abc) (FIPS 202)", got, want, 32);
+    for (int a = 0; a < NARMS(KECCAK_ARMS); a++) {
+      uint64_t s[25];
+      for (int i = 0; i < 25; i++) s[i] = load_le64(blk + 8 * i);
+      KECCAK_ARMS[a].f(s);
+      for (int i = 0; i < 4; i++) store_le64(got + 8 * i, s[i]);
+      snprintf(what, sizeof what, "%s keccak_f1600: SHA3-256(abc) (FIPS 202)", KECCAK_ARMS[a].arm);
+      check_bytes(what, got, want, 32);
+    }
   }
 
   /* Keccak-f[1600] of the zero state: lane 0 (Keccak team intermediate values). */
-  {
+  for (int a = 0; a < NARMS(KECCAK_ARMS); a++) {
     uint64_t s[25] = {0};
-    ours_keccak(s);
+    KECCAK_ARMS[a].f(s);
     uint64_t want0 = 0xF1258F7940E1DDE7ULL;
-    check_words("ours keccak_f1600: lane 0 of keccak_f(0)", s, &want0, 1);
-    if (s[0] == want0) printf("ok       ours keccak_f1600: lane 0 of keccak_f(0)\n");
+    snprintf(what, sizeof what, "%s keccak_f1600: lane 0 of keccak_f(0)", KECCAK_ARMS[a].arm);
+    check_words(what, s, &want0, 1);
+    if (s[0] == want0) printf("ok       %s\n", what);
   }
+}
+
+/* The System V callee-saved registers: each object called through abi_check_call,
+ * which sets %rbx, %rbp, %r12-%r15 to sentinels before the call and counts those
+ * that differ after it; the output must also equal that of a direct call. */
+static void abi_regs(void) {
+  uint8_t blk[128];
+  rnd_bytes(blk, 128);
+  uint64_t src[24], dst[8], ref[8];
+  for (int i = 0; i < 24; i++) src[i] = rnd64();
+  memcpy(src + 8, blk, 128);
+  catcrypt_sha512_compress(ref, src);
+  long d = abi_check_call((void *)catcrypt_sha512_compress, (uint64_t)(uintptr_t)dst,
+                          (uint64_t)(uintptr_t)src, 0, 0, 0);
+  printf("%s callee-saved registers kept: catcrypt_sha512_compress (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("sha512 through abi_check_call vs direct", dst, ref, 8);
+
+  catcrypt_blake2b_compress(ref, ~0ULL, 7, 128, src);
+  d = abi_check_call((void *)catcrypt_blake2b_compress, (uint64_t)(uintptr_t)dst, ~0ULL, 7,
+                     128, (uint64_t)(uintptr_t)src);
+  printf("%s callee-saved registers kept: catcrypt_blake2b_compress (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("blake2b through abi_check_call vs direct", dst, ref, 8);
+
+  uint64_t ks[25], ko[25], kr[25];
+  for (int i = 0; i < 25; i++) ks[i] = rnd64();
+  catcrypt_keccak_f1600(kr, ks);
+  d = abi_check_call((void *)catcrypt_keccak_f1600, (uint64_t)(uintptr_t)ko,
+                     (uint64_t)(uintptr_t)ks, 0, 0, 0);
+  printf("%s callee-saved registers kept: catcrypt_keccak_f1600 (%ld changed)\n",
+         d ? "MISMATCH" : "ok      ", d);
+  if (d) failures++;
+  check_words("keccak_f1600 through abi_check_call vs direct", ko, kr, 25);
 }
 
 static void random_batch(long nrand) {
@@ -210,18 +328,66 @@ static void random_batch(long nrand) {
 
     uint64_t t0 = rnd64(), t1 = rnd64();
     int last = (int)(rnd64() & 1);
-    memcpy(a, h0, sizeof a); memcpy(b, h0, sizeof b);
+    memcpy(a, h0, sizeof a); memcpy(b, h0, sizeof b); memcpy(c, h0, sizeof c);
     ours_blake2b(a, blk, t0, t1, last);
     hacl_blake2b(b, blk, t0, t1, last);
+    hacl_blake2b_simd256(c, blk, t0, t1, last);
     check_words("blake2b ours vs HACL*", a, b, 8);
+    check_words("blake2b ours vs HACL* Simd256", a, c, 8);
 
-    uint64_t s[25], x[25], y[25];
-    for (int i = 0; i < 25; i++) s[i] = x[i] = y[i] = rnd64();
+    /* Rust peers: whole BLAKE2b-512 digests of a random message of 0..383 bytes against
+     * OpenSSL's, which the abc vector above ties to RFC 7693. */
+    {
+      uint8_t msg[384], dr[64], dl[64], de[64];
+      unsigned int delen = 0;
+      size_t len = (size_t)(rnd64() % sizeof msg);
+      rnd_bytes(msg, sizeof msg);
+      rc_blake2b512(msg, len, dr);
+      lc_blake2b512(msg, len, dl);
+      if (evp_digest("BLAKE2B-512", msg, len, de, &delen)) {
+        check_bytes("blake2b512 RustCrypto vs OpenSSL", dr, de, 64);
+        check_bytes("blake2b512 libcrux vs OpenSSL", dl, de, 64);
+      } else {
+        check_bytes("blake2b512 RustCrypto vs libcrux", dr, dl, 64);
+      }
+    }
+
+    uint64_t s[25], x[25], y[25], v2[25], v5[25];
+    for (int i = 0; i < 25; i++) s[i] = x[i] = y[i] = v2[i] = v5[i] = rnd64();
     ours_keccak(s);
     peer_xkcp_keccak_f1600(x);
     peer_hacl_keccak_f1600(y);
+    peer_xkcp_avx2_keccak_f1600(v2);
+    peer_xkcp_avx512_keccak_f1600(v5);
     check_words("keccak_f1600 ours vs XKCP", s, x, 25);
     check_words("keccak_f1600 ours vs HACL*", s, y, 25);
+    check_words("keccak_f1600 ours vs XKCP AVX2", s, v2, 25);
+    check_words("keccak_f1600 ours vs XKCP AVX-512", s, v5, 25);
+
+    /* 4-lane arms: four independent random inputs, each lane against ours. */
+    {
+      uint8_t blks[4][128];
+      uint64_t hs[4][8], ks[4][25], w[25];
+      _Alignas(32) uint64_t st[32];
+      _Alignas(32) uint64_t ks4[100];
+      for (int j = 0; j < 4; j++) {
+        rnd_bytes(blks[j], 128);
+        for (int i = 0; i < 8; i++) hs[j][i] = rnd64();
+        for (int i = 0; i < 25; i++) ks[j][i] = rnd64();
+        x4_set(st, 8, j, hs[j]);
+        x4_set(ks4, 25, j, ks[j]);
+      }
+      peer_hacl_sha512_x4(st, blks[0], blks[1], blks[2], blks[3]);
+      peer_hacl_keccak_x4_absorb0(ks4);
+      for (int j = 0; j < 4; j++) {
+        ours_sha512(hs[j], blks[j]);
+        x4_get(st, 8, j, w);
+        check_words("sha512 ours vs HACL* Vec256 x4 (one lane)", hs[j], w, 8);
+        ours_keccak(ks[j]);
+        x4_get(ks4, 25, j, w);
+        check_words("keccak_f1600 ours vs HACL* Simd256 x4 (one state)", ks[j], w, 25);
+      }
+    }
     if (failures - n0 > 10) break;
   }
   if (failures == n0)
@@ -239,9 +405,12 @@ static int cmp_u64(const void *a, const void *b) {
   return x < y ? -1 : x > y;
 }
 
-#define TIME_ARM(kernel, arm, BODY)                                               \
+/* PER is the number of independent states one call processes (1, or 4 for the
+ * 4-lane rows); the figure is cycles per call / PER. */
+#define TIME_ARM_N(kernel, arm, PER, BODY)                                        \
   do {                                                                            \
     uint64_t *d_ = malloc(sizeof(uint64_t) * (size_t)cfg.samples);                \
+    double div_ = 2.0 * (double)cfg.inner * (double)(PER);                        \
     for (long w_ = 0; w_ < cfg.inner; w_++) { BODY; }                             \
     for (long s_ = 0; s_ < cfg.samples; s_++) {                                   \
       uint64_t t0_ = rdtsc_start();                                               \
@@ -251,22 +420,22 @@ static int cmp_u64(const void *a, const void *b) {
     }                                                                             \
     qsort(d_, (size_t)cfg.samples, sizeof *d_, cmp_u64);                          \
     printf("%s\t%s\t%.1f\t%.1f\t%s\t%d\n", kernel, arm,                           \
-           (double)d_[cfg.samples / 2] / (2.0 * (double)cfg.inner),               \
-           (double)d_[0] / (2.0 * (double)cfg.inner), label, run);                \
+           (double)d_[cfg.samples / 2] / div_, (double)d_[0] / div_, label, run); \
     free(d_);                                                                     \
   } while (0)
+#define TIME_ARM(kernel, arm, BODY) TIME_ARM_N(kernel, arm, 1, BODY)
 
 static void bench(Cfg cfg, const char *label, int run) {
   uint8_t blk[128];
   rnd_bytes(blk, 128);
   printf("# kernel\tarm\tmedian_cyc\tmin_cyc\tlabel\trun\n");
 
-  /* SHA-512 */
+  /* SHA-512: every arm takes the 128-byte block; ours loads the message words
+   * big-endian inside ours_sha512_block, on every call. */
   {
     uint64_t A[24], B[24];
-    for (int j = 0; j < 16; j++) A[8 + j] = B[8 + j] = load_be64(blk + 8 * j);
     memcpy(A, SHA512_IV, 64); memcpy(B, SHA512_IV, 64);
-    TIME_ARM("sha512_compress", "ours", { ours_sha512_compress(B, A); ours_sha512_compress(A, B); });
+    TIME_ARM("sha512_compress", "ours", { ours_sha512_block(B, A, blk); ours_sha512_block(A, B, blk); });
     void *ctx = peer_openssl_sha512_ctx();
     TIME_ARM("sha512_compress", "openssl", { peer_openssl_sha512_ctx_step(ctx, blk); peer_openssl_sha512_ctx_step(ctx, blk); });
     free(ctx);
@@ -275,36 +444,94 @@ static void bench(Cfg cfg, const char *label, int run) {
     TIME_ARM("sha512_compress", "hacl", { peer_hacl_sha512(st, blk); peer_hacl_sha512(st, blk); });
   }
 
-  /* BLAKE2b */
+  /* SHA-512, four lanes per call (HACL* Vec256): cycles per block per lane. */
+  {
+    uint8_t blks[4][128];
+    for (int j = 0; j < 4; j++) rnd_bytes(blks[j], 128);
+    _Alignas(32) uint64_t st[32];
+    for (int j = 0; j < 4; j++) x4_set(st, 8, j, SHA512_IV);
+    TIME_ARM_N("sha512_compress_x4", "hacl_vec256", 4,
+               { peer_hacl_sha512_x4(st, blks[0], blks[1], blks[2], blks[3]);
+                 peer_hacl_sha512_x4(st, blks[0], blks[1], blks[2], blks[3]); });
+  }
+
+  /* BLAKE2b: every arm takes the 128-byte block; ours copies it into the kernel's
+   * input array inside ours_blake2b_block, on every call. */
   {
     uint64_t A[24], B[24];
-    for (int j = 0; j < 16; j++) A[8 + j] = B[8 + j] = load_le64(blk + 8 * j);
     memcpy(A, SHA512_IV, 64); memcpy(B, SHA512_IV, 64);
-    TIME_ARM("blake2b_compress", "ours", { ours_blake2b_compress(B, 0, 0, 128, A); ours_blake2b_compress(A, 0, 0, 128, B); });
-    uint64_t hash16[16], wv[16];
+    TIME_ARM("blake2b_compress", "ours", { ours_blake2b_block(B, A, blk, 128, 0, 0); ours_blake2b_block(A, B, blk, 128, 0, 0); });
+    _Alignas(32) uint64_t hash16[16];
+    _Alignas(32) uint64_t wv[16];
     peer_hacl_blake2b_init_rows(hash16, SHA512_IV);
     TIME_ARM("blake2b_compress", "hacl", { peer_hacl_blake2b(hash16, wv, blk, 128, 0, 0); peer_hacl_blake2b(hash16, wv, blk, 128, 0, 0); });
+    peer_hacl_blake2b_init_rows(hash16, SHA512_IV);
+    TIME_ARM("blake2b_compress", "hacl_simd256", { peer_hacl_blake2b_simd256(hash16, wv, blk, 128, 0, 0); peer_hacl_blake2b_simd256(hash16, wv, blk, 128, 0, 0); });
+    /* Rust peers on their own state: RustCrypto runs one compression per call (counter +128,
+     * flag clear); libcrux's streaming update copies the block into its buffer and
+     * compresses the previous one, through one indirect call (rust_refs/lib.rs). */
+    void *rc = rc_blake2b_new();
+    TIME_ARM("blake2b_compress", "rustcrypto", { rc_blake2b_update_block(rc, blk); rc_blake2b_update_block(rc, blk); });
+    void *lc = lc_blake2b_new();
+    TIME_ARM("blake2b_compress", "libcrux", { lc_blake2b_update_block(lc, blk); lc_blake2b_update_block(lc, blk); });
   }
 
   /* Keccak-f[1600] */
   {
     uint64_t A[25], B[25];
     for (int i = 0; i < 25; i++) A[i] = rnd64();
-    TIME_ARM("keccak_f1600", "ours", { ours_keccak_f1600(B, A); ours_keccak_f1600(A, B); });
+    TIME_ARM("keccak_f1600", "ours", { catcrypt_keccak_f1600(B, A); catcrypt_keccak_f1600(A, B); });
     void *st = peer_xkcp_state();
     TIME_ARM("keccak_f1600", "xkcp", { peer_xkcp_state_step(st); peer_xkcp_state_step(st); });
+    free(st);
+    st = peer_xkcp_avx2_state();
+    TIME_ARM("keccak_f1600", "xkcp_avx2", { peer_xkcp_avx2_state_step(st); peer_xkcp_avx2_state_step(st); });
+    free(st);
+    st = peer_xkcp_avx512_state();
+    TIME_ARM("keccak_f1600", "xkcp_avx512", { peer_xkcp_avx512_state_step(st); peer_xkcp_avx512_state_step(st); });
     free(st);
     uint64_t s[25];
     for (int i = 0; i < 25; i++) s[i] = rnd64();
     TIME_ARM("keccak_f1600", "hacl", { peer_hacl_keccak_f1600(s); peer_hacl_keccak_f1600(s); });
   }
+
+  /* Keccak-f[1600], four states per call (HACL* Simd256, absorb of a zero block
+   * included): cycles per state. */
+  {
+    _Alignas(32) uint64_t s4[100];
+    for (int i = 0; i < 100; i++) s4[i] = rnd64();
+    TIME_ARM_N("keccak_f1600_x4", "hacl_simd256_absorb", 4,
+               { peer_hacl_keccak_x4_absorb0(s4); peer_hacl_keccak_x4_absorb0(s4); });
+  }
+}
+
+/* Compiler and flags, set by the Makefile. */
+#ifndef HARNESS_CC
+#define HARNESS_CC "unknown"
+#endif
+#ifndef HARNESS_CFLAGS
+#define HARNESS_CFLAGS "unknown"
+#endif
+#ifndef HARNESS_SIMDFLAGS
+#define HARNESS_SIMDFLAGS "unknown"
+#endif
+
+static void print_build_header(void) {
+  printf("# compiler: %s\n", HARNESS_CC);
+  printf("# C peers, adapters, block wrappers, harness: %s\n", HARNESS_CFLAGS);
+  printf("# HACL* Simd256/Vec256 peers: %s\n", HARNESS_SIMDFLAGS);
+  printf("# XKCP AVX2/AVX-512 peers: assembly (.s), assembled by the compiler above\n");
+  printf("# OpenSSL peer: system libcrypto, prebuilt (%s)\n", peer_openssl_version());
+  printf("# ours: gen/*.o as emitted, called directly (System V; the kernels save the callee-saved registers they write)\n");
 }
 
 /* Every TIME_ARM body makes two calls; TIME_ARM divides by 2 * inner. */
 int main(int argc, char **argv) {
   if (argc >= 2 && strcmp(argv[1], "conform") == 0) {
     long nrand = argc >= 3 ? atol(argv[2]) : 10000;
+    print_build_header();
     vectors();
+    abi_regs();
     random_batch(nrand);
     printf("%s: %d mismatch(es)\n", failures ? "FAIL" : "PASS", failures);
     return failures ? 1 : 0;
@@ -324,7 +551,9 @@ int main(int argc, char **argv) {
     if (cpu >= 0 && pin_to_cpu(cpu) != 0) fprintf(stderr, "warning: could not pin to cpu %d\n", cpu);
     /* --inner counts calls; the loop runs inner / 2 steps of two calls. */
     cfg.inner = cfg.inner > 1 ? cfg.inner / 2 : 1;
-    printf("# hash_linked_compare: TSC cycles per call (two chained calls per inner step)\n");
+    printf("# hash_linked_compare: TSC cycles per call (two chained calls per inner step);"
+           " *_x4 rows: cycles per call / 4 (per block per lane, per state)\n");
+    print_build_header();
     bench(cfg, label, run);
     return 0;
   }
