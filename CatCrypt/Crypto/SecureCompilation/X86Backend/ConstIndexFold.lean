@@ -42,7 +42,10 @@ also forgets every slot name, since a `MOVQ` to a slot gathers to such a store.
 `foldCore` threads the environment through the body, reading the gathered block of
 each instruction. Besides the indexed accesses, the fold rewrites a `MOV:64` copy of a
 known slot value into a general-purpose register as the immediate move of that value,
-which the dead-move elimination can then remove.
+which the dead-move elimination can then remove. A copy whose next instruction reads its
+destination as a carry-in (`carryCopyB`) stays a copy: `foldCore` rewrites it under the empty
+environment (`foldEnv`), so that a one-bit carry constant spilled to a slot keeps its width in
+the register it is reloaded into.
 
 The fold is decided per array. `runtimeBases` collects the base names of the
 register-indexed accesses the analysis cannot rewrite, and `constIndexFoldBody` leaves
@@ -501,18 +504,88 @@ def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
         | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
         | _ => []
 
+/-- The first instruction of `is` reads `d` as the carry-in of a carry-chain add `ADCX:64` or
+    of its carry-out binding `ADCXHI:64` on three register sources. -/
+def carryNextB (d : String) : Lcmd → Bool
+  | j :: _ =>
+      match j.li_i with
+      | .Lopn [.reg _] o [.reg _, .reg _, .reg c] =>
+          (o == "ADCX:64" || o == "ADCXHI:64") && c == d
+      | _ => false
+  | [] => false
+
+/-- A carry-in reload: a 64-bit copy `MOV:64 d, x` whose next instruction in `is` reads `d` as
+    a carry-in (`carryNextB`). The fold keeps it a copy, which gives `d` the value of `x` at the
+    width of that value, so that a one-bit carry constant spilled to `x` is a one-bit value in
+    `d`. -/
+def carryCopyB (i : LinstrR) (is : Lcmd) : Bool :=
+  match i with
+  | .Lopn [.reg d] "MOV:64" [.reg _] => carryNextB d is
+  | _ => false
+
+/-- The environment under which the fold rewrites the instruction `i` followed by `is`: the
+    empty environment at a carry-in reload (`carryCopyB`), `env` otherwise. -/
+def foldEnv (env : KEnv) (i : LinstrR) (is : Lcmd) : KEnv :=
+  if carryCopyB i is then [] else env
+
+/-- The environment of the fold at an instruction holds wherever `env` holds. -/
+theorem KEnv.Holds.foldEnv {s : JState 64} {env : KEnv} (h : KEnv.Holds s env) (i : LinstrR)
+    (is : Lcmd) : KEnv.Holds s (ConstIndexFold.foldEnv env i is) := by
+  unfold ConstIndexFold.foldEnv
+  split
+  · exact KEnv.Holds.nil s
+  · exact h
+
+/-- At the empty environment the fold changes no instruction. -/
+theorem foldInstr_empty (ex : List String) (i : LinstrR) : foldInstr ex [] i = i := by
+  have h : foldTarget? [] i = none := by
+    unfold foldTarget?
+    split <;> simp [KEnv.find]
+  simp [foldInstr, h]
+
+/-- From the empty environment the environment of the fold is empty. -/
+theorem foldEnv_nil (i : LinstrR) (is : Lcmd) : foldEnv [] i is = [] := by
+  simp [foldEnv]
+
+/-- Off a carry-in reload the environment of the fold is `env`. -/
+theorem foldEnv_of_not {env : KEnv} {i : LinstrR} {is : Lcmd} (h : carryCopyB i is = false) :
+    foldEnv env i is = env := by
+  simp [foldEnv, h]
+
+/-- **The fold keeps a carry-in reload.** -/
+theorem foldInstr_foldEnv_of_carryCopy (ex : List String) (env : KEnv) {i : LinstrR}
+    {is : Lcmd} (h : carryCopyB i is = true) : foldInstr ex (foldEnv env i is) i = i := by
+  simp [foldEnv, h, foldInstr_empty]
+
+/-- A return appended to the instructions after `i` is no carry-in. -/
+theorem foldEnv_append_ret (env : KEnv) (i : LinstrR) (is : Lcmd) (ii : Nat) :
+    foldEnv env i (is ++ [⟨ii, .Lret⟩]) = foldEnv env i is := by
+  have hn : ∀ d, carryNextB d (is ++ [⟨ii, .Lret⟩]) = carryNextB d is := by
+    intro d
+    cases is with
+    | nil => rfl
+    | cons j js => rfl
+  have hc : carryCopyB i (is ++ [⟨ii, .Lret⟩]) = carryCopyB i is := by
+    unfold carryCopyB
+    split <;> simp [hn]
+  simp [foldEnv, hc]
+
 /-- The fold over a body at frame parameters `p`, from environment `env`, leaving the
-    register-indexed accesses of the arrays `ex` unchanged. -/
+    register-indexed accesses of the arrays `ex` unchanged and each carry-in reload
+    (`carryCopyB`) a copy: instruction `i` followed by `is` is rewritten by `foldInstr` under
+    `foldEnv env i is`. -/
 def foldCore (p : Nat × Nat × Nat) (ex : List String) : KEnv → Lcmd → Lcmd
   | _, [] => []
   | env, i :: is =>
-      { i with li_i := foldInstr ex env i.li_i } :: foldCore p ex (nextEnv p env i) is
+      { i with li_i := foldInstr ex (foldEnv env i.li_i is) i.li_i }
+        :: foldCore p ex (nextEnv p env i) is
 
 /-- The tail-recursive image of `foldCore`, accumulating in reverse. -/
 def foldCoreTR (p : Nat × Nat × Nat) (ex : List String) (acc : Lcmd) : KEnv → Lcmd → Lcmd
   | _, [] => acc.reverse
   | env, i :: is =>
-      foldCoreTR p ex ({ i with li_i := foldInstr ex env i.li_i } :: acc) (nextEnv p env i) is
+      foldCoreTR p ex ({ i with li_i := foldInstr ex (foldEnv env i.li_i is) i.li_i } :: acc)
+        (nextEnv p env i) is
 
 theorem foldCoreTR_eq (p : Nat × Nat × Nat) (ex : List String) (acc : Lcmd) (env : KEnv)
     (body : Lcmd) : foldCoreTR p ex acc env body = acc.reverse ++ foldCore p ex env body := by
@@ -698,7 +771,8 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
   | cons i is ih =>
       intro env s ls hs h
       by_cases hr : isLret i = true
-      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = true := by
+      · have hr' : isLret { i with li_i := foldInstr ex (foldEnv env i.li_i is) i.li_i }
+            = true := by
           rw [isLret_foldInstr]; exact hr
         have h' : gatherList p is = some ls := by
           simpa [gatherList, List.filter_cons, hr] using h
@@ -706,7 +780,8 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
           simp only [nextEnv, hr, ite_true]; exact KEnv.Holds.nil s) h'
         refine ⟨ls', ?_, h2⟩
         simpa [gatherList, foldCore, List.filter_cons, hr'] using h1
-      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = false := by
+      · have hr' : isLret { i with li_i := foldInstr ex (foldEnv env i.li_i is) i.li_i }
+            = false := by
           rw [isLret_foldInstr]; simpa using hr
         have hr0 : isLret i = false := by simpa using hr
         simp only [gatherList, List.filter_cons, hr0, Bool.not_false, ite_true,
@@ -721,7 +796,8 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
                 simp only [hi, hrest, Option.bind_eq_bind, Option.bind_some,
                   Option.pure_def, Option.some.injEq] at h
                 subst h
-                obtain ⟨js', hj', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
+                obtain ⟨js', hj', hrun⟩ :=
+                  foldInstr_lower p (ex := ex) (env := foldEnv env i.li_i is) hi
                 have henv :
                     nextEnv p env i = (stepKs env js).killAll (narrowImmDsts i.li_i) := by
                   simp [nextEnv, hr0, hi]
@@ -733,7 +809,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
                   simp only [gatherList, foldCore, List.filter_cons, hr', Bool.not_false,
                     ite_true, List.mapM_cons, hj', h1, Option.bind_eq_bind,
                     Option.bind_some, Option.pure_def]
-                · simp only [List.flatten_cons, runBlock_append', hrun s hs, h2]
+                · simp only [List.flatten_cons, runBlock_append', hrun s (hs.foldEnv _ _), h2]
 
 theorem foldCore_lcmdDirect (p : Nat × Nat × Nat) :
     ∀ (body : Lcmd) (env : KEnv), covers p env body = true →
@@ -745,8 +821,16 @@ theorem foldCore_lcmdDirect (p : Nat × Nat × Nat) :
       intro env h
       simp only [covers, Bool.and_eq_true, Bool.or_eq_true] at h
       obtain ⟨hi, hrest⟩ := h
-      have hd : linstrRDirect (foldInstr [] env i.li_i) = true := by
-        rw [foldInstr_nil]
+      have hd : linstrRDirect (foldInstr [] (foldEnv env i.li_i is) i.li_i) = true := by
+        cases hk : carryCopyB i.li_i is
+        case true =>
+          rw [foldInstr_foldEnv_of_carryCopy _ _ hk]
+          unfold carryCopyB at hk
+          split at hk
+          · rename_i heq
+            simp [heq, linstrRDirect, AllocCTPreservation.isIndexed]
+          · cases hk
+        rw [foldEnv_of_not hk, foldInstr_nil]
         cases hf : foldTarget? env i.li_i with
         | none =>
             rcases hi with hi | hi

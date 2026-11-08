@@ -124,7 +124,7 @@ theorem foldCore_append_ret (p : Nat × Nat × Nat) (ex : List String) (ii : Nat
   intro env body
   induction body generalizing env with
   | nil => simp [foldCore, foldInstr, skipB, idxBases, foldTarget?]
-  | cons i is ih => simp [foldCore, ih]
+  | cons i is ih => simp [foldCore, ih, ConstIndexFold.foldEnv_append_ret]
 
 theorem runtimeBases_append_ret (p : Nat × Nat × Nat) (ii : Nat) :
     ∀ (acc : List String) (env : ConstIndexFold.KEnv) (body : Lcmd),

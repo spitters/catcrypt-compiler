@@ -126,14 +126,16 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime
       intro env s ls ls' hs h h'
       rw [foldCore, gatherList_cons] at h'
       rw [gatherList_cons] at h
+      have hse := hs.foldEnv i.li_i is
+      generalize foldEnv env i.li_i is = E at h' hse
       by_cases hr : isLret i = true
-      · have hr' : isLret { i with li_i := foldInstr ex env i.li_i } = true := by
+      · have hr' : isLret { i with li_i := foldInstr ex E i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
         rw [ite_eq_left hr] at h
         rw [ite_eq_left hr'] at h'
         exact ih (nextEnv p env i) s ls ls' (by
           simp only [nextEnv, hr, ite_true]; exact KEnv.Holds.nil s) h h'
-      · have hr' : ¬ isLret { i with li_i := foldInstr ex env i.li_i } = true := by
+      · have hr' : ¬ isLret { i with li_i := foldInstr ex E i.li_i } = true := by
           rw [isLret_foldInstr]; exact hr
         rw [ite_eq_right hr] at h
         rw [ite_eq_right hr'] at h'
@@ -147,7 +149,7 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime
                 simp only [hi, hrest, Option.bind_some, Option.map_some,
                   Option.some.injEq] at h
                 subst h
-                cases hi' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr ex env i.li_i) with
+                cases hi' : lowerPrinted p.1 p.2.1 p.2.2 (foldInstr ex E i.li_i) with
                 | none => simp [hi'] at h'
                 | some js' =>
                     cases hrest' : gatherList p (foldCore p ex (nextEnv p env i) is) with
@@ -156,14 +158,14 @@ theorem foldCore_leak (p : Nat × Nat × Nat) (ex : List String) (r : DoitRegime
                         simp only [hi', hrest', Option.bind_some, Option.map_some,
                           Option.some.injEq] at h'
                         subst h'
-                        obtain ⟨js'', hj'', hrun⟩ := foldInstr_lower p (ex := ex) (env := env) hi
+                        obtain ⟨js'', hj'', hrun⟩ := foldInstr_lower p (ex := ex) (env := E) hi
                         rw [hi'] at hj''
                         cases hj''
                         have henv : nextEnv p env i =
                             (stepKs env js).killAll (narrowImmDsts i.li_i) := by
                           simp [nextEnv, hr0, hi]
                         simp only [List.flatten_cons, blockLeakCT_append',
-                          foldInstr_lower_leak p hi hi' r s hs, hrun s hs]
+                          foldInstr_lower_leak p hi hi' r s hse, hrun s hse]
                         rw [ih (nextEnv p env i) (runBlock s js) rest rest'
                           (by rw [henv]; exact (hs.stepKs js).killAll _) hrest hrest']
 

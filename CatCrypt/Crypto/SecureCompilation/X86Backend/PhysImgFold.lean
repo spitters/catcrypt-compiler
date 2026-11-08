@@ -434,7 +434,7 @@ theorem foldCore_getElem? (p : Nat × Nat × Nat) (ex : List String) :
   | [], _, _, _, h => by simp [foldCore] at h
   | i :: is, env, 0, i', h => by
     simp only [foldCore, List.getElem?_cons_zero, Option.some.injEq] at h
-    exact ⟨i, env, rfl, h.symm, fun he _ => he⟩
+    exact ⟨i, foldEnv env i.li_i is, rfl, h.symm, fun he _ => by rw [he, foldEnv_nil]⟩
   | i :: is, env, k + 1, i', h => by
     simp only [foldCore, List.getElem?_cons_succ] at h
     obtain ⟨i₀, e, h1, h2, h3⟩ := foldCore_getElem? p ex is _ k i' h

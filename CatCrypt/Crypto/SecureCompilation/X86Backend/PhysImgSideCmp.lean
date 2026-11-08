@@ -2004,9 +2004,10 @@ theorem cmpRefines_foldCore (p : Nat × Nat × Nat) (ex : List String) :
     rw [foldCore]
     show CmpRefines ([_] ++ _) ([i] ++ is)
     refine CmpRefines.append ?_ (cmpRefines_foldCore p ex _ is)
-    rcases PhysImgFold.foldInstr_cases ex env i.li_i with hf | ⟨d, B, x, sc, off, hi, hf⟩ |
+    generalize ConstIndexFold.foldEnv env i.li_i is = E
+    rcases PhysImgFold.foldInstr_cases ex E i.li_i with hf | ⟨d, B, x, sc, off, hi, hf⟩ |
         ⟨d, B, x, sc, vn, off, hi, hf⟩ | ⟨d, x, n, hi, hf, -⟩
-    · have he : ({ i with li_i := ConstIndexFold.foldInstr ex env i.li_i } : Linstr) = i := by
+    · have he : ({ i with li_i := ConstIndexFold.foldInstr ex E i.li_i } : Linstr) = i := by
         rw [hf]
       rw [he]
       exact CmpRefines.refl _

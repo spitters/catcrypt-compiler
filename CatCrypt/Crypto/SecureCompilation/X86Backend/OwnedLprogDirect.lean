@@ -260,10 +260,11 @@ theorem foldCore_lcmdDirect_of (p : Nat × Nat × Nat) (ex : List String) :
       simp only [lcmdDirect, List.all_cons, Bool.and_eq_true] at hb
       simp only [foldCore, lcmdDirect, List.all_cons, Bool.and_eq_true]
       refine ⟨?_, ih _ hb.2⟩
+      generalize foldEnv env i.li_i rest = E
       unfold foldInstr
       split
       · exact hb.1
-      cases hf : foldTarget? env i.li_i with
+      cases hf : foldTarget? E i.li_i with
       | none => exact hb.1
       | some i' => exact foldTarget?_direct hf
 

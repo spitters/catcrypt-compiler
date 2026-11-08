@@ -302,6 +302,34 @@ theorem nextEnv_normI (p : Nat × Nat × Nat) (env : KEnv) {j : Linstr}
 
 /-! ## 4. The fold on the width reading -/
 
+/-- The carry-in test of the fold does not see the width reading. -/
+theorem carryNextB_map_normI (d : String) (rest : Lcmd) :
+    carryNextB d (rest.map normI) = carryNextB d rest := by
+  cases rest with
+  | nil => rfl
+  | cons j rest =>
+    have e : (normI j).li_i = normMulx j.li_i := rfl
+    simp only [List.map_cons, carryNextB, e]
+    rcases normMulx_cases j.li_i with h | ⟨ds, ss, h0, h⟩
+    · rw [h]
+    · rw [h, h0]
+      split <;> split <;> grind
+
+/-- The carry-in reloads of the fold do not see the width reading. -/
+theorem foldEnv_normI (env : KEnv) (j : Linstr) (rest : Lcmd) :
+    foldEnv env (normI j).li_i (rest.map normI) = foldEnv env j.li_i rest := by
+  have e : (normI j).li_i = normMulx j.li_i := rfl
+  have hc : carryCopyB (normI j).li_i (rest.map normI) = carryCopyB j.li_i rest := by
+    rw [e]
+    rcases normMulx_cases j.li_i with h | ⟨ds, ss, h0, h⟩
+    · rw [h]
+      unfold carryCopyB
+      split <;> simp [carryNextB_map_normI]
+    · rw [h, h0]
+      unfold carryCopyB
+      split <;> split <;> grind
+  simp only [foldEnv, hc]
+
 /-- **The fold core commutes with the width reading** of a shaped body. -/
 theorem foldCore_map_normI (p : Nat × Nat × Nat) (ex : List String) :
     ∀ (env : KEnv) (b : Lcmd), MulxShaped b = true →
@@ -314,7 +342,8 @@ theorem foldCore_map_normI (p : Nat × Nat × Nat) (ex : List String) :
     simp only [MulxShaped, List.all_cons, Bool.and_eq_true] at hs
     simp only [List.map_cons, foldCore, nextEnv_normI p env hs.1, ih _ hs.2]
     congr 1
-    exact congrArg (Linstr.mk j.li_ii) (foldInstr_normMulx ex env j.li_i)
+    rw [foldEnv_normI]
+    exact congrArg (Linstr.mk j.li_ii) (foldInstr_normMulx ex _ j.li_i)
 
 /-- The fold core keeps the `MULX` shape. -/
 theorem mulxShaped_foldCore (p : Nat × Nat × Nat) (ex : List String) :
@@ -326,7 +355,7 @@ theorem mulxShaped_foldCore (p : Nat × Nat × Nat) (ex : List String) :
     intro hs
     simp only [MulxShaped, List.all_cons, Bool.and_eq_true] at hs
     simp only [foldCore, MulxShaped, List.all_cons, Bool.and_eq_true]
-    exact ⟨mulxShapedI_foldInstr ex env hs.1, ih _ hs.2⟩
+    exact ⟨mulxShapedI_foldInstr ex _ hs.1, ih _ hs.2⟩
 
 /-- The fold core keeps the width class. -/
 theorem bodyIsU64_foldCore (p : Nat × Nat × Nat) (ex : List String) :
@@ -335,11 +364,12 @@ theorem bodyIsU64_foldCore (p : Nat × Nat × Nat) (ex : List String) :
   induction b generalizing env with
   | nil => rfl
   | cons j rest ih =>
-    have hj : u64T (foldInstr ex env j.li_i) = u64T j.li_i := by
+    have hj : u64T (foldInstr ex (foldEnv env j.li_i rest) j.li_i) = u64T j.li_i := by
+      generalize foldEnv env j.li_i rest = E
       unfold foldInstr
       split
       · rfl
-      · cases ht : foldTarget? env j.li_i with
+      · cases ht : foldTarget? E j.li_i with
         | none => rfl
         | some j' => exact u64T_foldTarget? ht
     have ih' := ih (nextEnv p env j)
