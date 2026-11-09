@@ -432,6 +432,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
 CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
