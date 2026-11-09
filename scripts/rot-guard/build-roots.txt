@@ -437,12 +437,12 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuelBr
 CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
-CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
 CatCrypt.Crypto.SecureCompilation.Haxc.TraitLinkAccept
 CatCrypt.Crypto.SecureCompilation.Haxc.WorkedKernelCorollaries
 CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront
