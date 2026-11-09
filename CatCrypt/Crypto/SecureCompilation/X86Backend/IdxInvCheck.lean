@@ -36,7 +36,9 @@ block, along its symbolic run `symRun` from the block entry:
 * the entry facts give the facts of block `0`.
 
 Entailment (`entails`) is syntactic: an upper bound on a sum is read off one fact after
-normalising additions and subtractions of immediates (`linOf`), with the lower bounds of the
+normalising additions and subtractions of immediates, at one of the linear forms of the sum
+(`linForms`, which keep or subtract each subtraction of an immediate that the lower bound of its
+source allows, and contain `linOf`), with the lower bounds of the
 remaining summands, or from the upper bounds of its terms (`hiLe`: the facts containing the
 term, a conjunction with an immediate mask, an element bound of the array a load reads,
 and an excluded bound); a lower bound is read off a fact on the same term. An element bound
@@ -56,6 +58,11 @@ bounds, which hold at every entry state satisfying `AbiLayout.Regions`.
 ## Main definitions
 
 * `IdxFact`, `SFact`, `entails`, `linOf`, `edgeFacts`: facts and their entailment.
+* `linForms`, `sumForms`, `splitForms`, `affForms`: the forms the tests try, each form kept
+  or decomposed at every step whose condition the facts allow; `linOf`, `sumLin`, `splitAdd`
+  and `affOf` are among them, so a test accepts whatever it accepts at those forms
+  (`leLin_of_sumLin`, `mulLe_of_sumLin`, `leMix_of_splitAdds`, `affLe_of_affOf`,
+  `termHi_le_linOf`), and the forms under a list of facts are forms under every larger list.
 * `blockInvOk`, `idxInvCheckB`: the check.
 * `idxAnnot`: the annotation by restriction to a fixed point.
 * `boundFacts`: the facts of a layout's register bounds.
@@ -406,6 +413,127 @@ theorem sumLin_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
       simp only [sumLin, tsum_append, e1, Nat.cast_add]
       omega
 
+/-- **The linear forms of a term**: the linear form `linOf`, and the forms in which a
+    subtraction of an immediate that the lower bound of its source allows is kept as an atom.
+    Each form bounds the value of the term from above (`linForms_sound`), and `linOf` is one
+    of them (`linOf_mem_linForms`). The choice at a subtraction depends on the facts only
+    through its lower bound, so a form under a list of facts is a form under every list that
+    contains it. -/
+def linForms (F : List SFact) : STerm → List (List STerm × Int)
+  | .immW w n => if w = 64 then [([], ((n % 2 ^ 64 : Nat) : Int))] else [([.immW w n], 0)]
+  | .bin m x (.immW w k) =>
+      if w = 64 ∧ m = "ADD" then (linForms F x).map fun p => (p.1, p.2 + (k : Int))
+      else if w = 64 ∧ m = "SUB" then
+        (if k ≤ lbOf F x then (linForms F x).map fun p => (p.1, p.2 - (k : Int)) else []) ++
+          [([STerm.bin m x (.immW w k)], 0)]
+      else if m = "AND" then linForms F x
+      else [([STerm.bin m x (.immW w k)], 0)]
+  | .bin m x y => if m = "AND" ∨ (m = "OR" ∧ x = y) then linForms F x else [([.bin m x y], 0)]
+  | t => [([t], 0)]
+
+theorem linOf_mem_linForms (F : List SFact) (t : STerm) : linOf F t ∈ linForms F t := by
+  fun_induction linOf F t <;> simp_all [linForms] <;> split_ifs <;> simp_all
+
+theorem linForms_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    ∀ p ∈ linForms F t,
+      (wval (t.ev V A C O) : Int) ≤ (tsum V A C O p.1 : Int) + p.2 := by
+  fun_induction linOf F t with
+  | case1 n =>
+      intro p hp
+      simp only [linForms, ite_true, List.mem_singleton] at hp
+      subst hp
+      simp [tsum, wval, STerm.ev, castW]
+  | case2 w n hw =>
+      intro p hp
+      simp only [linForms, hw, ite_false, List.mem_singleton] at hp
+      subst hp
+      simp [tsum]
+  | case3 m x w k h ih =>
+      obtain ⟨rfl, rfl⟩ := h
+      intro p hp
+      simp only [linForms, and_self, ite_true, List.mem_map] at hp
+      obtain ⟨q, hq, rfl⟩ := hp
+      have := ih q hq
+      have := wval_add_le V A C O x k
+      dsimp only
+      omega
+  | case4 m x w k _ h ih =>
+      obtain ⟨rfl, rfl, hk⟩ := h
+      intro p hp
+      simp only [linForms, show ("SUB" = "ADD") = False by decide, and_false, ite_false,
+        and_self, ite_true, hk, List.mem_append, List.mem_map, List.mem_singleton] at hp
+      rcases hp with ⟨q, hq, rfl⟩ | rfl
+      · have := ih q hq
+        have := wval_sub_le V A C O x k (le_trans hk (lbOf_le F x hF))
+        dsimp only
+        omega
+      · simp [tsum]
+  | case5 x w k _ _ ih =>
+      intro p hp
+      simp only [linForms, show ("AND" = "ADD") = False by decide,
+        show ("AND" = "SUB") = False by decide, and_false, ite_false, ite_true] at hp
+      have := ih p hp
+      have := wval_andOr_le V A C O (x := x) (y := .immW w k) (Or.inl rfl)
+      omega
+  | case6 m x w k h1 h2 h3 =>
+      intro p hp
+      have hp' : p = ([STerm.bin m x (.immW w k)], 0) := by
+        simp only [linForms] at hp
+        split_ifs at hp <;> simp_all
+      subst hp'
+      simp [tsum]
+  | case7 m x y _ h ih =>
+      intro p hp
+      simp only [linForms, h, ite_true] at hp
+      have := ih p hp
+      have := wval_andOr_le V A C O h
+      omega
+  | case8 m x y _ h =>
+      intro p hp
+      have hp' : p = ([STerm.bin m x y], 0) := by
+        simp only [linForms] at hp
+        split_ifs at hp
+        simp_all
+      subst hp'
+      simp [tsum]
+  | case9 t _ _ =>
+      intro p hp
+      have hp' : p = ([t], 0) := by
+        cases t <;> simp_all [linForms]
+      subst hp'
+      simp [tsum]
+
+/-- The linear forms of a sum of terms: a form of each term, summed. -/
+def sumForms (F : List SFact) : List STerm → List (List STerm × Int)
+  | [] => [([], 0)]
+  | t :: ts =>
+      (linForms F t).flatMap fun p => (sumForms F ts).map fun q => (p.1 ++ q.1, p.2 + q.2)
+
+theorem sumLin_mem_sumForms (F : List SFact) :
+    ∀ ts : List STerm, sumLin F ts ∈ sumForms F ts
+  | [] => by simp [sumLin, sumForms]
+  | t :: ts => List.mem_flatMap.mpr
+      ⟨linOf F t, linOf_mem_linForms F t, List.mem_map.mpr ⟨_, sumLin_mem_sumForms F ts, rfl⟩⟩
+
+theorem sumForms_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ (ts : List STerm), ∀ p ∈ sumForms F ts,
+      (tsum V A C O ts : Int) ≤ (tsum V A C O p.1 : Int) + p.2
+  | [], p, hp => by
+      simp only [sumForms, List.mem_singleton] at hp
+      subst hp
+      simp [tsum]
+  | t :: ts, p, hp => by
+      obtain ⟨p1, hp1, hm⟩ := List.mem_flatMap.mp hp
+      obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hm
+      have h1 := linForms_sound hF t p1 hp1
+      have h2 := sumForms_sound hF ts q hq
+      have e1 : tsum V A C O (t :: ts) = wval (t.ev V A C O) + tsum V A C O ts := by
+        simp [tsum]
+      simp only [tsum_append, e1, Nat.cast_add]
+      omega
+
 /-- The list `ts` with one occurrence of each term of `as` removed, when each occurs. -/
 def eraseAll (ts : List STerm) : List STerm → Option (List STerm)
   | [] => some ts
@@ -439,17 +567,25 @@ def leBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Boo
   | .ne _ _ => false
   | .ale _ _ => false
 
-/-- The sum of `ts` is at most `b'` by its linear form: the form is a constant within the
-    bound, or one fact bounds a sum containing its atoms. -/
+/-- The sum of `ts` is at most `b'` by one of its linear forms `sumForms`: the form is a
+    constant within the bound, or one fact bounds a sum containing its atoms. -/
 def leLin (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
-  (decide ((sumLin F ts).1 = []) && decide ((sumLin F ts).2 ≤ b'))
-    || F.any (leBy F (sumLin F ts).1 (sumLin F ts).2 b')
+  (sumForms F ts).any fun p =>
+    (decide (p.1 = []) && decide (p.2 ≤ b')) || F.any (leBy F p.1 p.2 b')
+
+/-- **`leLin` accepts what its test accepts at the linear form `sumLin`.** -/
+theorem leLin_of_sumLin {F : List SFact} {ts : List STerm} {b' : Nat}
+    (h : ((decide ((sumLin F ts).1 = []) && decide ((sumLin F ts).2 ≤ b'))
+      || F.any (leBy F (sumLin F ts).1 (sumLin F ts).2 b')) = true) :
+    leLin F ts b' = true :=
+  List.any_eq_true.mpr ⟨_, sumLin_mem_sumForms F ts, h⟩
 
 theorem leLin_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
     (h : leLin F ts b' = true) : tsum V A C O ts ≤ b' := by
-  have hs := sumLin_sound hF ts
-  simp only [leLin, Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
+  obtain ⟨p, hp, h⟩ := List.any_eq_true.mp h
+  have hs := sumForms_sound hF ts p hp
+  simp only [Bool.or_eq_true, Bool.and_eq_true, decide_eq_true_eq,
     List.any_eq_true] at h
   rcases h with ⟨he, hk⟩ | ⟨f, hf, hl⟩
   · have h0 : tsum V A C O [] = 0 := rfl
@@ -567,20 +703,28 @@ theorem mulLe_arith {c x : Nat} {K : Int} {b' : Nat} (hK : K ≤ b')
     reads as `c` times `x`, plus a constant `K ≤ b'`, and `x` is at most `(b' - K) / c` by
     `leLin`. -/
 def mulLe (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
-  match (sumLin F ts).1 with
-  | [a] =>
-      match mulParts F a with
-      | some (c, x) =>
-          decide ((sumLin F ts).2 ≤ b') &&
-            leLin F [x] (((b' : Int) - (sumLin F ts).2).toNat / c)
-      | none => false
-  | _ => false
+  (sumForms F ts).any fun p =>
+    match p.1 with
+    | [a] =>
+        match mulParts F a with
+        | some (c, x) => decide (p.2 ≤ b') && leLin F [x] (((b' : Int) - p.2).toNat / c)
+        | none => false
+    | _ => false
+
+/-- **`mulLe` accepts what its test accepts at the linear form `sumLin`.** -/
+theorem mulLe_of_sumLin {F : List SFact} {ts : List STerm} {b' : Nat} {a x : STerm} {c : Nat}
+    (ha : (sumLin F ts).1 = [a]) (hp : mulParts F a = some (c, x))
+    (hk : (sumLin F ts).2 ≤ b')
+    (hl : leLin F [x] (((b' : Int) - (sumLin F ts).2).toNat / c) = true) :
+    mulLe F ts b' = true := by
+  refine List.any_eq_true.mpr ⟨_, sumLin_mem_sumForms F ts, ?_⟩
+  simp only [ha, hp, hk, hl, decide_true, Bool.and_self]
 
 theorem mulLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
     (h : mulLe F ts b' = true) : tsum V A C O ts ≤ b' := by
-  have hs := sumLin_sound hF ts
-  unfold mulLe at h
+  obtain ⟨p, hpm, h⟩ := List.any_eq_true.mp h
+  have hs := sumForms_sound hF ts p hpm
   split at h
   · rename_i a ha
     split at h
@@ -599,10 +743,10 @@ theorem mulLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
     · cases h
   · cases h
 
-/-- The upper bound the first fact of `F` on the single term `t` states. -/
+/-- The least upper bound the single-term facts of `F` on the term `t` state. -/
 def ubOf : List SFact → STerm → Option Nat
   | [], _ => none
-  | .le [t'] b :: F, t => if t' = t then some b else ubOf F t
+  | .le [t'] b :: F, t => if t' = t then some ((ubOf F t).elim b (min b)) else ubOf F t
   | _ :: F, t => ubOf F t
 
 theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool} :
@@ -615,8 +759,14 @@ theorem ubOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O
       · rename_i he
         subst he
         cases h
-        have := hF (.le [t'] b) List.mem_cons_self
-        simpa [SFact.holds, tsum] using this
+        have hb : wval (t'.ev V A C O) ≤ b := by
+          simpa [SFact.holds, tsum] using hF (.le [t'] b) List.mem_cons_self
+        cases hu : ubOf F t' with
+        | none => exact hb
+        | some u =>
+            have := ubOf_sound F t' u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) hu
+            simp only [Option.elim]
+            omega
       · exact ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
   | .le [] _ :: F, t, u, hF, h =>
       ubOf_sound F t u (fun g hg => hF g (List.mem_cons_of_mem _ hg)) h
@@ -736,6 +886,81 @@ theorem splitAdds_sound {V : String → Σ w, BitVec w} {A : String → ArrCell}
       simp only [splitAdds, tsum_append, e1, Nat.cast_add]
       omega
 
+/-- **The split forms of an atom**: an atom `ADD x y` with `y` of width `64` as each sum of a
+    linear form of `x` and one of `y`, and every atom as itself. `splitAdd` is one of them. -/
+def splitForms (F : List SFact) : STerm → List (List STerm × Int)
+  | .bin m x y =>
+      (if m = "ADD" ∧ widOk F y = true then
+        (linForms F x).flatMap fun p => (linForms F y).map fun q => (p.1 ++ q.1, p.2 + q.2)
+      else []) ++ [([STerm.bin m x y], 0)]
+  | t => [([t], 0)]
+
+theorem splitAdd_mem_splitForms (F : List SFact) (t : STerm) :
+    splitAdd F t ∈ splitForms F t := by
+  cases t with
+  | bin m x y =>
+      simp only [splitAdd, splitForms]
+      split_ifs with h
+      · exact List.mem_append_left _ (List.mem_flatMap.mpr ⟨_, linOf_mem_linForms F x,
+          List.mem_map.mpr ⟨_, linOf_mem_linForms F y, rfl⟩⟩)
+      · simp
+  | _ => simp [splitAdd, splitForms]
+
+theorem splitForms_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
+    ∀ p ∈ splitForms F t,
+      (wval (t.ev V A C O) : Int) ≤ (tsum V A C O p.1 : Int) + p.2 := by
+  intro p hp
+  cases t with
+  | bin m x y =>
+      simp only [splitForms, List.mem_append, List.mem_singleton] at hp
+      rcases hp with hp | rfl
+      · split_ifs at hp with h
+        · obtain ⟨rfl, hw⟩ := h
+          obtain ⟨p1, hp1, hm⟩ := List.mem_flatMap.mp hp
+          obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hm
+          have h0 := wval_addR_le V A C O x y (widOk_sound hF hw)
+          have h1 := linForms_sound hF x p1 hp1
+          have h2 := linForms_sound hF y q hq
+          simp only [tsum_append, Nat.cast_add]
+          omega
+        · simp at hp
+      · simp [tsum]
+  | _ =>
+      simp only [splitForms, List.mem_singleton] at hp
+      subst hp
+      simp [tsum]
+
+/-- The split forms of a list of atoms: a split form of each, summed. -/
+def splitsForms (F : List SFact) : List STerm → List (List STerm × Int)
+  | [] => [([], 0)]
+  | t :: ts =>
+      (splitForms F t).flatMap fun p => (splitsForms F ts).map fun q => (p.1 ++ q.1, p.2 + q.2)
+
+theorem splitAdds_mem_splitsForms (F : List SFact) :
+    ∀ ts : List STerm, splitAdds F ts ∈ splitsForms F ts
+  | [] => by simp [splitAdds, splitsForms]
+  | t :: ts => List.mem_flatMap.mpr ⟨splitAdd F t, splitAdd_mem_splitForms F t,
+      List.mem_map.mpr ⟨_, splitAdds_mem_splitsForms F ts, rfl⟩⟩
+
+theorem splitsForms_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ (ts : List STerm), ∀ p ∈ splitsForms F ts,
+      (tsum V A C O ts : Int) ≤ (tsum V A C O p.1 : Int) + p.2
+  | [], p, hp => by
+      simp only [splitsForms, List.mem_singleton] at hp
+      subst hp
+      simp [tsum]
+  | t :: ts, p, hp => by
+      obtain ⟨p1, hp1, hm⟩ := List.mem_flatMap.mp hp
+      obtain ⟨q, hq, rfl⟩ := List.mem_map.mp hm
+      have h1 := splitForms_sound hF t p1 hp1
+      have h2 := splitsForms_sound hF ts q hq
+      have e1 : tsum V A C O (t :: ts) = wval (t.ev V A C O) + tsum V A C O ts := by
+        simp [tsum]
+      simp only [tsum_append, e1, Nat.cast_add]
+      omega
+
 /-- The fact `f` bounds the atoms `as` it contains, and single-term facts bound the atoms it
     does not contain: the sum of `as` plus `K` is at most `b'`. -/
 def leMixBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → Bool
@@ -752,18 +977,26 @@ def leMixBy (F : List SFact) (as : List STerm) (K : Int) (b' : Nat) : SFact → 
     single-term facts for the others (an index `off + i` with a bound on `off` and a loop
     invariant on `i`). -/
 def leMix (F : List SFact) (ts : List STerm) (b' : Nat) : Bool :=
-  F.any (leMixBy F (splitAdds F (sumLin F ts).1).1
-    ((sumLin F ts).2 + (splitAdds F (sumLin F ts).1).2) b')
+  (sumForms F ts).any fun p => (splitsForms F p.1).any fun q =>
+    F.any (leMixBy F q.1 (p.2 + q.2) b')
+
+/-- **`leMix` accepts what its test accepts at the forms `sumLin` and `splitAdds`.** -/
+theorem leMix_of_splitAdds {F : List SFact} {ts : List STerm} {b' : Nat}
+    (h : F.any (leMixBy F (splitAdds F (sumLin F ts).1).1
+      ((sumLin F ts).2 + (splitAdds F (sumLin F ts).1).2) b') = true) :
+    leMix F ts b' = true :=
+  List.any_eq_true.mpr ⟨_, sumLin_mem_sumForms F ts,
+    List.any_eq_true.mpr ⟨_, splitAdds_mem_splitsForms F _, h⟩⟩
 
 theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {ts : List STerm} {b' : Nat}
     (h : leMix F ts b' = true) : tsum V A C O ts ≤ b' := by
-  have hs0 := sumLin_sound hF ts
-  have hs1 := splitAdds_sound hF (sumLin F ts).1
-  have hs : (tsum V A C O ts : Int) ≤ (tsum V A C O (splitAdds F (sumLin F ts).1).1 : Int) +
-      ((sumLin F ts).2 + (splitAdds F (sumLin F ts).1).2) := by omega
-  simp only [leMix, List.any_eq_true] at h
-  obtain ⟨f, hf, hl⟩ := h
+  obtain ⟨p, hp, h⟩ := List.any_eq_true.mp h
+  obtain ⟨q, hq, h⟩ := List.any_eq_true.mp h
+  have hs0 := sumForms_sound hF ts p hp
+  have hs1 := splitsForms_sound hF p.1 q hq
+  have hs : (tsum V A C O ts : Int) ≤ (tsum V A C O q.1 : Int) + (p.2 + q.2) := by omega
+  obtain ⟨f, hf, hl⟩ := List.any_eq_true.mp h
   cases f with
   | ge _ _ => simp [leMixBy] at hl
   | w64 _ => simp [leMixBy] at hl
@@ -775,8 +1008,8 @@ theorem leMix_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
       · rename_i u hu
         simp only [decide_eq_true_eq] at hl
         have h0 : tsum V A C O ts0 ≤ b := hF _ hf
-        have h1 := peel_sum V A C O (splitAdds F (sumLin F ts).1).1 ts0
-        have h2 := lbSum_le hF (peel ts0 (splitAdds F (sumLin F ts).1).1).1
+        have h1 := peel_sum V A C O q.1 ts0
+        have h2 := lbSum_le hF (peel ts0 q.1).1
         have h3 := ubSum_sound hF _ u hu
         omega
       · cases hl
@@ -1103,16 +1336,191 @@ theorem affOf_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C 
       ring
   | _ => simp [affEv]
 
-/-- The index term `t` is at most `b'` by the upper bound `affHi` of its affine form. -/
+/-- The combination of the affine forms `fx`, `fy` of the operands of `m` that `affOf` makes
+    when the bounds `affHi`, `affLo` of the forms exclude a wrap-around at width `64`; a
+    product takes the bounds of its factors at least `0`. -/
+def affComb (F : List SFact) (m : String) (fx fy : List (STerm × Int) × Int) :
+    Option (List (STerm × Int) × Int) :=
+  if m = "ADD" ∧ affHi F fx.1 + fx.2 + (affHi F fy.1 + fy.2) < 2 ^ 64 then
+    some (affAdd fx.1 fy.1, fx.2 + fy.2)
+  else if m = "SUB" ∧ 0 ≤ affLo F (affAdd fx.1 (affScale (-1) fy.1)) + (fx.2 - fy.2) then
+    some (affAdd fx.1 (affScale (-1) fy.1), fx.2 - fy.2)
+  else if m = "MUL" ∧ max (affHi F fx.1 + fx.2) 0 * max (affHi F fy.1 + fy.2) 0 < 2 ^ 64 then
+    if fy.1 = [] then some (affScale fy.2 fx.1, fx.2 * fy.2)
+    else if fx.1 = [] then some (affScale fx.2 fy.1, fx.2 * fy.2)
+    else none
+  else none
+
+theorem affComb_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {m : String} {x y : STerm}
+    {fx fy r : List (STerm × Int) × Int} (hw : widOk F x = true ∧ widOk F y = true)
+    (ihx : (wval (x.ev V A C O) : Int) = affEv V A C O fx.1 + fx.2)
+    (ihy : (wval (y.ev V A C O) : Int) = affEv V A C O fy.1 + fy.2)
+    (h : affComb F m fx fy = some r) :
+    (wval ((STerm.bin m x y).ev V A C O) : Int) = affEv V A C O r.1 + r.2 := by
+  have bx := affHi_sound hF fx.1
+  have bY := affHi_sound hF fy.1
+  unfold affComb at h
+  split_ifs at h with h1 h2 h3 h4 h5
+  · cases h
+    obtain ⟨rfl, hlt⟩ := h1
+    rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
+    simp only [binW, show ("ADD" = "MULXHI") = False by decide, ite_false, applyOpnN,
+      Option.getD_some, BitVec.toNat_add]
+    change (((wval (x.ev V A C O) + wval (y.ev V A C O)) % 2 ^ 64 : Nat) : Int) = _
+    rw [Nat.mod_eq_of_lt (by omega), affEv_add]
+    push_cast
+    omega
+  · cases h
+    obtain ⟨rfl, hle⟩ := h2
+    have bl := affLo_sound hF (affAdd fx.1 (affScale (-1) fy.1))
+    rw [affEv_add, affEv_scale] at bl
+    rw [wval_bin64 V A C O _ x y (widOk_sound hF hw.1) (widOk_sound hF hw.2)]
+    simp only [binW, show ("SUB" = "MULXHI") = False by decide, ite_false, applyOpnN,
+      Option.getD_some]
+    have hyx : wval (y.ev V A C O) ≤ wval (x.ev V A C O) := by omega
+    rw [BitVec.toNat_sub_of_le (by rw [BitVec.le_def]; exact hyx)]
+    change ((wval (x.ev V A C O) - wval (y.ev V A C O) : Nat) : Int) = _
+    rw [affEv_add, affEv_scale]
+    omega
+  all_goals
+    obtain ⟨rfl, hlt⟩ := h3
+    have hx0 : (0 : Int) ≤ affHi F fx.1 + fx.2 := by omega
+    have hy0 : (0 : Int) ≤ affHi F fy.1 + fy.2 := by omega
+    rw [max_eq_left hx0, max_eq_left hy0] at hlt
+    rw [affEv_mulW hF hw hlt ihx ihy]
+  · cases h
+    rw [affEv_scale, ihx, ihy, h4]
+    simp only [affEv]
+    ring
+  · cases h
+    rw [affEv_scale, ihx, ihy, h5]
+    simp only [affEv]
+    ring
+
+/-- **The affine forms of a term**: the affine form `affOf`, and the forms in which a sum,
+    difference or product that `affOf` combines is kept as an atom. Each form is the value of
+    the term (`affForms_sound`), and `affOf` is one of them (`affOf_mem_affForms`). -/
+def affForms (F : List SFact) : STerm → List (List (STerm × Int) × Int)
+  | .immW w n => if w = 64 then [([], ((n % 2 ^ 64 : Nat) : Int))] else [([(.immW w n, 1)], 0)]
+  | .bin m x y =>
+      if widOk F x ∧ widOk F y then
+        ((affForms F x).flatMap fun fx => (affForms F y).filterMap fun fy => affComb F m fx fy)
+          ++ [([(STerm.bin m x y, 1)], 0)]
+      else [([(STerm.bin m x y, 1)], 0)]
+  | t => [([(t, 1)], 0)]
+
+/-- A product below a bound stays below it when each factor is raised to at least `0`. -/
+theorem max_zero_mul_lt {a b c : Int} (h : a * b < c) (hc : 0 < c) : max a 0 * max b 0 < c := by
+  rcases le_or_gt 0 a with ha | ha <;> rcases le_or_gt 0 b with hb | hb
+  · rwa [max_eq_left ha, max_eq_left hb]
+  · rw [max_eq_right hb.le, mul_zero]; exact hc
+  · rw [max_eq_right ha.le, zero_mul]; exact hc
+  · rw [max_eq_right ha.le, zero_mul]; exact hc
+
+theorem affOf_mem_affForms (F : List SFact) (t : STerm) : affOf F t ∈ affForms F t := by
+  have hat : ∀ m x y, ([(STerm.bin m x y, 1)], (0 : Int)) ∈ affForms F (STerm.bin m x y) := by
+    intro m x y
+    simp only [affForms]
+    split_ifs <;> simp
+  have hc : ∀ {m : String} {x y : STerm} {fx fy r : List (STerm × Int) × Int},
+      widOk F x = true ∧ widOk F y = true → fx ∈ affForms F x → fy ∈ affForms F y →
+        affComb F m fx fy = some r → r ∈ affForms F (.bin m x y) := by
+    intro m x y fx fy r hw hx hy h
+    simp only [affForms, hw, and_self, ite_true]
+    exact List.mem_append_left _
+      (List.mem_flatMap.mpr ⟨fx, hx, List.mem_filterMap.mpr ⟨fy, hy, h⟩⟩)
+  have hne : ∀ {a b : String} {q : Prop}, a ≠ b → ¬(a = b ∧ q) := fun h hq => h hq.1
+  fun_induction affOf F t with
+  | case1 n => simp [affForms]
+  | case3 m x y hw h ihx ihy =>
+      obtain ⟨rfl, h⟩ := h
+      exact hc hw ihx ihy (by unfold affComb; rw [ite_eq_left ⟨rfl, h⟩])
+  | case4 m x y hw _ h ihx ihy =>
+      obtain ⟨rfl, h⟩ := h
+      exact hc hw ihx ihy (by
+        unfold affComb
+        rw [ite_eq_right (hne (by decide)), ite_eq_left ⟨rfl, h⟩])
+  | case5 m x y hw _ _ h hy ihx ihy =>
+      obtain ⟨rfl, h⟩ := h
+      exact hc hw ihx ihy (by
+        unfold affComb
+        rw [ite_eq_right (hne (by decide)), ite_eq_right (hne (by decide)),
+          ite_eq_left ⟨rfl, max_zero_mul_lt h (by norm_num)⟩, ite_eq_left hy])
+  | case6 m x y hw _ _ h hny hx ihx ihy =>
+      obtain ⟨rfl, h⟩ := h
+      exact hc hw ihx ihy (by
+        unfold affComb
+        rw [ite_eq_right (hne (by decide)), ite_eq_right (hne (by decide)),
+          ite_eq_left ⟨rfl, max_zero_mul_lt h (by norm_num)⟩, ite_eq_right hny,
+          ite_eq_left hx])
+  | _ => first | exact hat _ _ _ | simp_all [affForms]
+
+theorem affForms_atom_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} {t : STerm} (h : affForms F t = [([(t, 1)], 0)]) :
+    ∀ p ∈ affForms F t, (wval (t.ev V A C O) : Int) = affEv V A C O p.1 + p.2 := by
+  intro p hp
+  rw [h, List.mem_singleton] at hp
+  subst hp
+  simp [affEv]
+
+theorem affForms_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
+    {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) :
+    ∀ (t : STerm), ∀ p ∈ affForms F t, (wval (t.ev V A C O) : Int) = affEv V A C O p.1 + p.2
+  | .immW w n, p, hp => by
+      by_cases hw : w = 64
+      · subst hw
+        simp only [affForms, ite_true, List.mem_singleton] at hp
+        subst hp
+        simp [affEv, wval, STerm.ev, castW]
+      · simp only [affForms, hw, ite_false, List.mem_singleton] at hp
+        subst hp
+        simp [affEv]
+  | .bin m x y, p, hp => by
+      simp only [affForms] at hp
+      split_ifs at hp with hw
+      · rcases List.mem_append.mp hp with hp | hp
+        · obtain ⟨fx, hfx, hm⟩ := List.mem_flatMap.mp hp
+          obtain ⟨fy, hfy, hc⟩ := List.mem_filterMap.mp hm
+          exact affComb_sound hF hw (affForms_sound hF x fx hfx) (affForms_sound hF y fy hfy) hc
+        · simp only [List.mem_singleton] at hp
+          subst hp
+          simp [affEv]
+      · simp only [List.mem_singleton] at hp
+        subst hp
+        simp [affEv]
+  | .reg _, p, hp => affForms_atom_sound rfl p hp
+  | .immAt _ _, p, hp => affForms_atom_sound rfl p hp
+  | .un _ _, p, hp => affForms_atom_sound rfl p hp
+  | .shImm _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .aget _ _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .cin _, p, hp => affForms_atom_sound rfl p hp
+  | .aluF _ _ _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .carryW _ _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .carryF _ _ _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .mulx _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .cout _ _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .sel _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .setcc _ _ _, p, hp => affForms_atom_sound rfl p hp
+  | .ref _, p, hp => affForms_atom_sound rfl p hp
+
+/-- The index term `t` is at most `b'` by the upper bound `affHi` of one of its affine forms
+    `affForms`. -/
 def affLe (F : List SFact) (t : STerm) (b' : Nat) : Bool :=
-  decide (affHi F (affOf F t).1 + (affOf F t).2 ≤ b')
+  (affForms F t).any fun p => decide (affHi F p.1 + p.2 ≤ b')
+
+/-- **`affLe` accepts what its test accepts at the affine form `affOf`.** -/
+theorem affLe_of_affOf {F : List SFact} {t : STerm} {b' : Nat}
+    (h : affHi F (affOf F t).1 + (affOf F t).2 ≤ b') : affLe F t b' = true :=
+  List.any_eq_true.mpr ⟨_, affOf_mem_affForms F t, decide_eq_true h⟩
 
 theorem affLe_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) {t : STerm} {b' : Nat}
     (h : affLe F t b' = true) : wval (t.ev V A C O) ≤ b' := by
-  simp only [affLe, decide_eq_true_eq] at h
-  have h1 := affOf_sound hF t
-  have h2 := affHi_sound hF (affOf F t).1
+  obtain ⟨p, hp, h⟩ := List.any_eq_true.mp h
+  simp only [decide_eq_true_eq] at h
+  have h1 := affForms_sound hF t p hp
+  have h2 := affHi_sound hF p.1
   omega
 
 /-- The sum of the bounds `hiOf` of a list of terms bounds the sum of their values. -/
@@ -1126,19 +1534,45 @@ theorem tsum_le_hiOf {V : String → Σ w, BitVec w} {A : String → ArrCell} {C
       simp only [tsum, List.map_cons, List.sum_cons] at h2 ⊢
       omega
 
-/-- An upper bound on the value of the term `t`: the bound `hiOf` of `t`, and the bounds
-    `hiOf` of the atoms of its linear form `linOf` plus its constant. -/
+/-- An upper bound on the value of the term `t`: the least of the bound `hiOf` of `t` and, for
+    each linear form of `t` (`linForms`), the bounds `hiOf` of its atoms plus its constant. -/
 def termHi (F : List SFact) (t : STerm) : Nat :=
-  min (hiOf F F t) ((((linOf F t).1.map (hiOf F F)).sum : Int) + (linOf F t).2).toNat
+  ((linForms F t).map fun p => ((((p.1.map (hiOf F F)).sum : Int) + p.2).toNat)).foldr min
+    (hiOf F F t)
+
+theorem le_foldr_min {v a : Nat} : ∀ {L : List Nat}, v ≤ a → (∀ x ∈ L, v ≤ x) → v ≤ L.foldr min a
+  | [], ha, _ => ha
+  | x :: L, ha, hL => by
+      simp only [List.foldr_cons]
+      exact le_min (hL x List.mem_cons_self)
+        (le_foldr_min ha fun y hy => hL y (List.mem_cons_of_mem _ hy))
+
+theorem foldr_min_le_of_mem {a x : Nat} : ∀ {L : List Nat}, x ∈ L → L.foldr min a ≤ x
+  | y :: L, hx => by
+      simp only [List.foldr_cons]
+      rcases List.mem_cons.mp hx with rfl | hx
+      · exact min_le_left _ _
+      · exact (min_le_right _ _).trans (foldr_min_le_of_mem hx)
+
+theorem foldr_min_le {a : Nat} : ∀ {L : List Nat}, L.foldr min a ≤ a
+  | [] => le_rfl
+  | _ :: _ => (min_le_right _ _).trans foldr_min_le
 
 theorem termHi_sound {V : String → Σ w, BitVec w} {A : String → ArrCell} {C O : Bool}
     {F : List SFact} (hF : ∀ f ∈ F, f.holds V A C O) (t : STerm) :
     wval (t.ev V A C O) ≤ termHi F t := by
-  have h1 := hiOf_sound hF F t hF
-  have h2 := linOf_sound hF t
-  have h3 := tsum_le_hiOf hF (linOf F t).1
-  unfold termHi
+  refine le_foldr_min (hiOf_sound hF F t hF) fun x hx => ?_
+  obtain ⟨p, hp, rfl⟩ := List.mem_map.mp hx
+  have h2 := linForms_sound hF t p hp
+  have h3 := tsum_le_hiOf hF p.1
   omega
+
+/-- **`termHi` is at most the bound of `hiOf` and of the linear form `linOf`.** -/
+theorem termHi_le_linOf (F : List SFact) (t : STerm) :
+    termHi F t ≤ min (hiOf F F t)
+      ((((linOf F t).1.map (hiOf F F)).sum : Int) + (linOf F t).2).toNat :=
+  le_min foldr_min_le
+    (foldr_min_le_of_mem (List.mem_map.mpr ⟨_, linOf_mem_linForms F t, rfl⟩))
 
 /-- The upper bound `termHi` of `t`, less one when a fact of `F` excludes the bound. -/
 def hiNe (F : List SFact) (t : STerm) : Nat :=
