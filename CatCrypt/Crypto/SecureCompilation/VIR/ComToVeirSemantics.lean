@@ -11,6 +11,7 @@ public import Veir.Interpreter.Refinement.Basic
 import all Veir.Interpreter.Basic
 import all Veir.Data.LLVM.Int.Basic
 import all Veir.IR.Attribute
+import all Veir.Dialects.Arith.OpInfo
 
 /-!
 # Semantics of the `Com → Veir` lowering on the `arith` fragment of `jasminDialect`
@@ -97,7 +98,8 @@ theorem interpretOp'_regArith (bop : JasminBinOp) (hb : bop ≠ .andn) (w : Nat)
     | exact absurd rfl hb
     | (simp only [Veir.interpretOp', JasminOp.toMlirOpCode, JasminBinOp.toArithOpCode,
         Arith.interpretOp', ne_eq, not_true_eq_false, dite_false, LLVM.Int.cast_self,
-        Interp.pure_eq, Interp.bind_ok, veirBinInt] <;> rfl)
+        Interp.pure_eq, Interp.bind_ok, veirBinInt]
+       try rfl)
 
 /-- `Veir.interpretOp'` on the op-code and properties of `regConst w n`, with the
 result type the lowering emits, returns the `w`-bit constant `BitVec.ofNat w n`. -/
@@ -401,7 +403,7 @@ def veirRunSteps (args : List RuntimeValue) (resTy : TypeAttr) :
     Interp (List (Array RuntimeValue) × MemoryState)
   | [], done, mem => .ok (done, mem)
   | s :: rest, done, mem => do
-      let some ops := s.operands.mapM (VeirSrc.resolveVal args done) | .fail
+      let some ops := s.operands.mapM (VeirSrc.resolveVal args done) | Interp.fail none
       let (vals, mem', _) ← Veir.interpretOp' s.op s.props
         (s.results.map (·.getD resTy)).toArray ops.toArray #[] mem
       veirRunSteps args resTy rest (done ++ [vals]) mem'
@@ -416,11 +418,11 @@ def veirRunBinding (o : JasminOp) (t : JasminTy) (args : List RuntimeValue)
   match JasminOp.bridgeExpansion? false o with
   | some x => do
       let (done, mem') ← veirRunSteps args (JasminTy.toVeirTy t) x.steps [] mem
-      let some r := VeirSrc.resolveVal args done x.value | .fail
+      let some r := VeirSrc.resolveVal args done x.value | Interp.fail none
       pure (r, mem')
   | none => do
       let (vals, mem', _) ← veirRunOp o t args mem
-      let some r := vals[(JasminOp.resultSlotOfOp o).2]? | .fail
+      let some r := vals[(JasminOp.resultSlotOfOp o).2]? | Interp.fail none
       pure (r, mem')
 
 /-- The op-by-op VeIR interpretation of a `Com`: each binding runs the operations
@@ -472,6 +474,14 @@ theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
     (x y : LLVM.Int w) (mem : MemoryState) :
     veirRunBinding (.regArith bop w) (.reg w) [.int w x, .int w y] mem =
       .ok (.int w (veirShiftSel bop x y), mem) := by
+  have hof : ∀ t : IntegerType, Attribute.of IntegerType t = Attribute.integerType t :=
+    fun _ => rfl
+  have hbw : ∀ n : Nat, (IntegerType.signless n).bitwidth = n := fun _ => rfl
+  have hcs : ∀ (n : Nat) (x : LLVM.Int (IntegerType.signless n).bitwidth)
+      (h : (IntegerType.signless n).bitwidth = n), x.cast h = x :=
+    fun _ x h => LLVM.Int.cast_self x h
+  have hcs' : ∀ (n : Nat) (x : LLVM.Int n) (h : n = (IntegerType.signless n).bitwidth),
+      x.cast h = x := fun _ x h => LLVM.Int.cast_self x h
   cases bop <;> simp only [JasminBinOp.IsShift] at hb
   all_goals
     simp only [veirRunBinding, JasminOp.bridgeExpansion?, Bool.false_eq_true, ↓reduceIte,
@@ -480,14 +490,16 @@ theorem veirRunBinding_shift (bop : JasminBinOp) (hb : bop.IsShift) (w : Nat)
       JasminBinOp.toArithOpCode, veirRunSteps, List.mapM_nil, Option.pure_def, interpretOp',
       Arith.interpretOp', JasminTy.toVeirTy, List.map_cons, Option.getD_none, List.map_nil,
       List.size_toArray, List.length_cons, List.length_nil, Nat.zero_add, zero_lt_one,
-      getElem?_pos, List.getElem_toArray, List.getElem_cons_zero, Attribute.asType_val,
+      getElem?_pos, List.getElem_toArray, List.getElem_cons_zero, TypeAttr.of_val, hof, hbw,
+      hcs, hcs',
       BitVec.ofInt_natCast, Interp.pure_eq, Interp.bind_ok, List.nil_append, List.mapM_cons,
       VeirSrc.resolveVal, Nat.reduceAdd, Nat.lt_add_one, List.getElem_cons_succ,
       Option.bind_some, Option.bind_eq_bind, ne_eq, Interp.liftOption_none, dite_not,
       List.cons_append, Nat.zero_lt_succ, ↓reduceDIte, LLVM.Int.cast_self,
       BitVec.ofInt_ofNat, Nat.reduceLT, veirShiftSel, BitVec.ofNat_eq_ofNat, veirBinInt]
-    rw [show BitVec.ofNat w (shiftMask w (2 ^ w - 1) % 2 ^ w) =
-        BitVec.ofNat w (shiftMask w (2 ^ w - 1)) from BitVec.eq_of_toNat_eq (by simp)]
+    rw [show BitVec.ofNat (IntegerType.signless w).bitwidth (shiftMask w (2 ^ w - 1) % 2 ^ w) =
+        BitVec.ofNat (IntegerType.signless w).bitwidth (shiftMask w (2 ^ w - 1)) from
+          BitVec.eq_of_toNat_eq (by simp [hbw])]
     rfl
 
 /-- An op that is not a shift has no expansion in the table `JasminOp.expandVeir?` of
