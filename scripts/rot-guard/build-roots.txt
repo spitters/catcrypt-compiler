@@ -432,7 +432,6 @@ CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
 CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
@@ -443,6 +442,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuelBr
 CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
+CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
 CatCrypt.Crypto.SecureCompilation.Haxc.TraitLinkAccept
 CatCrypt.Crypto.SecureCompilation.Haxc.WorkedKernelCorollaries
 CatCrypt.Crypto.SecureCompilation.HetArrayStoreFront
