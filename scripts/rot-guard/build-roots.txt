@@ -151,7 +151,6 @@ CatCrypt.Crypto.Optimizer.Rewrite.FieldHornerPass
 CatCrypt.Crypto.Optimizer.Rewrite.FieldSqrtGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.FieldStrengthReducePass
 CatCrypt.Crypto.Optimizer.Rewrite.FrobeniusGeneric
-CatCrypt.Crypto.Optimizer.Rewrite.GvnMulti
 CatCrypt.Crypto.Optimizer.Rewrite.LagrangeInterpGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.LegendreSymbolGeneric
 CatCrypt.Crypto.Optimizer.Rewrite.LinearCombGeneric
@@ -206,7 +205,6 @@ CatCrypt.Crypto.SecureCompilation.ARMBackend.SailArm64Refinement
 CatCrypt.Crypto.SecureCompilation.AUCurvesImport.LeafSpecToLeafSem
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
-CatCrypt.Crypto.SecureCompilation.Algebraic.EcJacobianLimbs
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
@@ -387,7 +385,6 @@ CatCrypt.Crypto.SecureCompilation.Dialects.Sha256RoundWidth32Front
 CatCrypt.Crypto.SecureCompilation.Dialects.StraightLineLeafCallPassGates
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectCT
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectFnCall
-CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectLoop
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectMultiOutPingPong
 CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledFor
 CatCrypt.Crypto.SecureCompilation.Dialects.VconstFrontValidate
@@ -430,9 +427,12 @@ CatCrypt.Crypto.SecureCompilation.Haxc.FieldMulCarryFlagsTest
 CatCrypt.Crypto.SecureCompilation.Haxc.FrontTysPos
 CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
 CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
+CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
+CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.NttFipsWord
+CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
+CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
