@@ -432,7 +432,8 @@ theorem hax64WExit_fieldArgs {f : String} {m : _root_.Hax.FieldTag.FieldMethod} 
     rintro s hs rfl
     rw [hs] at hF
     cases hF
-  rw [CatCrypt.Crypto.Hax.hax64WExit_of_ne (hne _ rfl) (hne _ rfl) (hne _ rfl) (hne _ rfl) hwide]
+  rw [CatCrypt.Crypto.Hax.hax64WExit_of_ne (hne _ rfl) (hne _ rfl) (hne _ rfl) (hne _ rfl) hwide
+    (hne _ rfl)]
   unfold CatCrypt.Crypto.Hax.hax64Exit
   rcases hb : _root_.Hax.hax64Builtins f (fieldArgs m a b) with _ | v
   · rfl
@@ -935,8 +936,11 @@ theorem hax64WExit_of_linkNameOk {f : String} (h : linkNameOk f = true) (vals : 
     CatCrypt.Crypto.Hax.hax64WExit f vals = none := by
   simp only [linkNameOk, Bool.and_eq_true, Bool.not_eq_true', Bool.or_eq_false_iff,
     beq_eq_false_iff_ne, ne_eq] at h
-  obtain ⟨⟨⟨⟨⟨⟨h0, h1⟩, h2⟩, h3⟩, h4⟩, -⟩, -⟩ := h
-  exact CatCrypt.Crypto.Hax.hax64WExit_none h0 h1 h2 h3 h4 vals
+  obtain ⟨⟨⟨⟨⟨⟨h0, h1⟩, h2⟩, h3⟩, h4⟩, hsc⟩, -⟩ := h
+  have h5 : f ≠ "select" := by
+    rintro rfl
+    exact absurd hsc (by decide)
+  exact CatCrypt.Crypto.Hax.hax64WExit_none h0 h1 h2 h3 h4 h5 vals
 
 /-- The table of the linked functions over `hax64WExit` satisfies `RepeatCalls` when every
     linked name passes `linkNameOk`, which excludes `repeat`. -/

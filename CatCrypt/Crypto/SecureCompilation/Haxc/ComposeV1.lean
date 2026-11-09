@@ -259,8 +259,9 @@ theorem _root_.CatCrypt.Crypto.Hax.LinkedFn.calleeRes_out {l : CatCrypt.Crypto.H
     (`%rdi` becomes `RDI`); its result (`LinkedFn.calleeRes`); its clobbered registers, its
     frame and its bytes; its machine contract (precondition, footprint, postcondition and
     public relation); the machine registers of the public arguments of its layout
-    (`AbiLayout.argPub`); and the array positions of its layout, with the length in words
-    of each array argument (`insArrArgs` of the argument kinds). `none` when the layout of
+    (`AbiLayout.argPub`); the array positions of its layout, with the length in words of
+    each array argument (`insArrArgs` of the argument kinds); and the store policy of its
+    code. `none` when the layout of
     the function returns its result neither in a register nor in the array of one of its
     parameters. -/
 def _root_.CatCrypt.Crypto.Hax.LinkedFn.calleeData (l : CatCrypt.Crypto.Hax.LinkedFn) :
@@ -277,7 +278,15 @@ def _root_.CatCrypt.Crypto.Hax.LinkedFn.calleeData (l : CatCrypt.Crypto.Hax.Link
       post := l.post
       pub := l.pub
       pubRegs := (l.layout.args.filter l.layout.argPub).map (·.reg)
-      arrArgs := CatCrypt.Crypto.Hax.insArrArgs (l.layout.args.map (·.kind)) }
+      arrArgs := CatCrypt.Crypto.Hax.insArrArgs (l.layout.args.map (·.kind))
+      pol := l.pol }
+
+/-- The store policy of the data of a linked function is the store policy of the
+    function. -/
+theorem _root_.CatCrypt.Crypto.Hax.LinkedFn.calleeData_pol {l : CatCrypt.Crypto.Hax.LinkedFn}
+    {c : CalleeData} (h : l.calleeData = some c) : c.pol = l.pol := by
+  obtain ⟨res, -, rfl⟩ := Option.map_eq_some_iff.mp h
+  rfl
 
 /-- **The fields of the data of a linked function**: the symbol, the argument registers,
     the clobbered registers, the frame, the bytes, the machine contract, the public

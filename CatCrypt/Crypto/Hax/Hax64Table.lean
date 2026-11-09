@@ -13,8 +13,8 @@ public import HaxLean.Phase.InlineMapClosure
 # The `u64` tables `hax64Exit` and `hax64WExit`
 
 `hax64Exit` is `Hax.hax64Builtins` restricted to the array operations and the scalar calls
-on words; `hax64WExit` extends it by array literals, `repeat`, the array comparisons and the
-wide field heads. The structured translation `ImpToNF.impToNF` is sound for a table of
+on words; `hax64WExit` extends it by array literals, `repeat`, the array comparisons, the
+wide field heads and `select` on a Boolean and two values that are no control-flow values. The structured translation `ImpToNF.impToNF` is sound for a table of
 builtins under the call typing it translates with (`ImpToNF.TypedCalls`), and for `repeat`
 it needs the table to answer as `Hax.hax64Builtins` does (`ImpToNF.RepeatCalls`). This
 module defines both tables and proves both facts for `hax64WExit` at the call typing
@@ -23,8 +23,8 @@ module defines both tables and proves both facts for `hax64WExit` at the call ty
 ## Main definitions
 
 * `hax64ArrShape`, `hax64ScalarAdmit`, `hax64Exit` — the admitted `u64` table
-* `hax64LitAdmit`, `hax64RepAdmit`, `hax64EqArrAdmit`, `hax64WideHead`, `hax64WExit` — the
-  `u64` table with array constructors
+* `hax64LitAdmit`, `hax64RepAdmit`, `hax64EqArrAdmit`, `hax64WideHead`, `hax64SelAdmit`,
+  `hax64WExit` — the `u64` table with array constructors and `select`
 
 ## Main results
 
@@ -32,6 +32,8 @@ module defines both tables and proves both facts for `hax64WExit` at the call ty
   `hax64Exit`
 * `hax64WExit_of_ne`, `hax64WExit_wide`, `hax64WExit_sub`, `hax64WExit_none`,
   `arrayOps_hax64WExit` — the values of `hax64WExit`
+* `hax64WExit_select`, `hax64WExit_select_bool`, `hax64WExit_select_some` — `select` in
+  `hax64WExit`
 * `hax64WExit_typedCalls` — the call typing `hax64SigOf` is sound for `hax64WExit`
 * `repeatCalls_hax64WExit` — `hax64WExit` satisfies `RepeatCalls`
 -/
@@ -312,24 +314,79 @@ theorem hax64Builtins_wideHead_scalar {f : String} (hw : hax64WideHead f) {v : V
   cases he
   exact hv.elim
 
+/-- The calls `select` the table admits: a Boolean selector and two values that are no
+    control-flow values. -/
+def hax64SelAdmit (vals : List Value) : Bool :=
+  match vals with
+  | [.bool _, x, y] => !x.isControlFlow && !y.isControlFlow
+  | _ => false
+
 /-- **The `u64` table with array constructors.**  `hax64Exit`, `array_lit` on the argument
     lists of `hax64LitAdmit`, `repeat` of `Hax.hax64Builtins` on the argument lists of
     `hax64RepAdmit`, the array comparisons `eq#arr`, `ne#arr` of `Hax.hax64Builtins` on
-    the argument lists of `hax64EqArrAdmit`, and the wide field heads (`hax64WideHead`) of
-    `Hax.hax64Builtins`. -/
+    the argument lists of `hax64EqArrAdmit`, the wide field heads (`hax64WideHead`) of
+    `Hax.hax64Builtins`, and `select` of `Hax.hax64Builtins` on the argument lists of
+    `hax64SelAdmit`. -/
 def hax64WExit : Builtins := fun f vals =>
   if f = "array_lit" then (if hax64LitAdmit vals then some (.array vals) else none)
   else if f = "repeat" then (if hax64RepAdmit vals then hax64Builtins "repeat" vals else none)
   else if f = "eq#arr" ∨ f = "ne#arr" then
     (if hax64EqArrAdmit vals then hax64Builtins f vals else none)
   else if hax64WideHead f then hax64Builtins f vals
+  else if f = "select" then (if hax64SelAdmit vals then hax64Builtins "select" vals else none)
   else hax64Exit f vals
 
 theorem hax64WExit_of_ne {f : String} (h : f ≠ "array_lit") (h' : f ≠ "repeat")
     (he : f ≠ "eq#arr") (hn : f ≠ "ne#arr") (hw : ¬ hax64WideHead f := by decide)
-    (vals : List Value) :
+    (hs : f ≠ "select" := by decide) (vals : List Value) :
     hax64WExit f vals = hax64Exit f vals := by
-  simp only [hax64WExit, h, h', he, hn, hw, or_self, ite_false]
+  simp only [hax64WExit, h, h', he, hn, hw, hs, or_self, ite_false]
+
+/-- `select` is no name of `exitScalarRes`. -/
+theorem exitScalarRes_select : exitScalarRes "select" = false := by
+  simp [exitScalarRes, exitScalarCall, exitScalarCalls, exitTowerScalarCall,
+    exitTowerScalarNames]
+
+/-- A name of `exitScalarRes` is not `select`. -/
+theorem ne_select_of_exitScalarRes {f : String} (h : exitScalarRes f = true) :
+    f ≠ "select" := by
+  rintro rfl
+  rw [exitScalarRes_select] at h
+  cases h
+
+/-- **`select` in the table**: on the argument lists of `hax64SelAdmit`, `hax64WExit` answers
+    `select` as `Hax.hax64Builtins`, and refuses every other argument list. -/
+theorem hax64WExit_select (vals : List Value) :
+    hax64WExit "select" vals =
+      if hax64SelAdmit vals then hax64Builtins "select" vals else none := by
+  simp only [hax64WExit, show ("select" : String) ≠ "array_lit" by decide,
+    show ("select" : String) ≠ "repeat" by decide, show ("select" : String) ≠ "eq#arr" by decide,
+    show ("select" : String) ≠ "ne#arr" by decide,
+    show ¬ hax64WideHead "select" by decide, or_self, ite_false, ite_true]
+
+/-- On a Boolean and two values that are no control-flow values, `hax64WExit` answers `select`
+    by the first value at `true` and the second at `false`. -/
+theorem hax64WExit_select_bool (k : Bool) {x y : Value} (hx : x.isControlFlow = false)
+    (hy : y.isControlFlow = false) :
+    hax64WExit "select" [.bool k, x, y] = some (if k then x else y) := by
+  rw [hax64WExit_select, _root_.Hax.hax64Builtins_select_bool]
+  simp [hax64SelAdmit, hx, hy]
+
+/-- A value of `hax64WExit` at `select` is `if k then x else y` on a Boolean `k` and two
+    values `x`, `y` that are no control-flow values. -/
+theorem hax64WExit_select_some {vals : List Value} {r : Value}
+    (h : hax64WExit "select" vals = some r) :
+    ∃ k x y, vals = [.bool k, x, y] ∧ x.isControlFlow = false ∧ y.isControlFlow = false ∧
+      r = if k then x else y := by
+  rw [hax64WExit_select] at h
+  split_ifs at h with ha
+  unfold hax64SelAdmit at ha
+  split at ha
+  · rename_i k x y
+    simp only [Bool.and_eq_true, Bool.not_eq_true'] at ha
+    rw [_root_.Hax.hax64Builtins_select_bool] at h
+    exact ⟨k, x, y, rfl, ha.1, ha.2, (Option.some.inj h).symm⟩
+  · cases ha
 
 /-- At a wide field head `hax64WExit` is `Hax.hax64Builtins`. -/
 theorem hax64WExit_wide {f : String} (hw : hax64WideHead f) (vals : List Value) :
@@ -407,7 +464,11 @@ theorem hax64WExit_sub {f : String} {vals : List Value} {r : Value}
       · rw [not_or] at he
         by_cases hw : hax64WideHead f
         · rwa [hax64WExit_wide hw] at h
-        rw [hax64WExit_of_ne hf hr he.1 he.2 hw] at h
+        by_cases hs : f = "select"
+        · subst hs
+          obtain ⟨k, x, y, rfl, -, -, rfl⟩ := hax64WExit_select_some h
+          exact _root_.Hax.hax64Builtins_select_bool k x y
+        rw [hax64WExit_of_ne hf hr he.1 he.2 hw hs] at h
         exact hax64Exit_sub h
 
 theorem exitScalarRes_eqArr : exitScalarRes "eq#arr" = true := by
@@ -421,7 +482,8 @@ theorem exitScalarRes_neArr : exitScalarRes "ne#arr" = true := by
     | simp [exitScalarRes, exitScalarCall]
 
 theorem hax64WExit_none {f : String} (hf : exitScalarRes f = false) (h1 : f ≠ "index")
-    (h2 : f ≠ "array_update") (h3 : f ≠ "array_lit") (h4 : f ≠ "repeat") (vals : List Value) :
+    (h2 : f ≠ "array_update") (h3 : f ≠ "array_lit") (h4 : f ≠ "repeat") (hs : f ≠ "select")
+    (vals : List Value) :
     hax64WExit f vals = none := by
   have h5 : f ≠ "eq#arr" := by rintro rfl; rw [exitScalarRes_eqArr] at hf; cases hf
   have h6 : f ≠ "ne#arr" := by rintro rfl; rw [exitScalarRes_neArr] at hf; cases hf
@@ -431,7 +493,7 @@ theorem hax64WExit_none {f : String} (hf : exitScalarRes f = false) (h1 : f ≠ 
     simp only [exitScalarRes, exitScalarCall, Bool.or_eq_false_iff] at hf
     have hh := hf.1.2
     simp [String.contains_char_eq, hm] at hh
-  rw [hax64WExit_of_ne h3 h4 h5 h6 hw]
+  rw [hax64WExit_of_ne h3 h4 h5 h6 hw hs]
   exact hax64Exit_none hf h1 h2 vals
 
 theorem arrayOps_hax64WExit : ArrayOps hax64WExit where
@@ -465,6 +527,9 @@ theorem hax64WExit_typedCalls : ImpToNF.TypedCalls hax64WExit ImpToNF.hax64SigOf
       · cases hv
         exact ImpToNF.hax64BuiltinsR_of rfl fun hf => absurd hf (by decide)
       · cases hv
+    by_cases hs : f = "select"
+    · subst hs
+      exact ImpToNF.hax64BuiltinsR_of (hax64WExit_sub hv) fun hf => absurd hf (by decide)
     have hn : f ≠ "array_lit" ∧ f ≠ "repeat" ∧ f ≠ "eq#arr" ∧ f ≠ "ne#arr" := by
       rcases ImpToNF.hax64SigOf_name hr with hm | rfl | rfl | rfl | rfl | rfl | ht
       · exact ImpToNF.hax64NFScalar_ne_arr hm
@@ -475,7 +540,7 @@ theorem hax64WExit_typedCalls : ImpToNF.TypedCalls hax64WExit ImpToNF.hax64SigOf
       · decide
       · obtain ⟨mp, hmp⟩ := Option.isSome_iff_exists.mp ht
         refine ⟨?_, ?_, ?_, ?_⟩ <;> (rintro rfl; cases hmp)
-    rw [hax64WExit_of_ne hn.1 hn.2.1 hn.2.2.1 hn.2.2.2 hw] at hv
+    rw [hax64WExit_of_ne hn.1 hn.2.1 hn.2.2.1 hn.2.2.2 hw hs] at hv
     obtain ⟨hb, -, hadm⟩ := hax64Exit_some hv
     refine ImpToNF.hax64BuiltinsR_of hb fun hf => ?_
     subst hf

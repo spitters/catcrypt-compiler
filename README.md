@@ -3,7 +3,9 @@
 A compiler for cryptographic code, written in the Lean 4 proof assistant together
 with its correctness proofs. It accepts a program as extracted Rust or as a Lean
 specification, lowers it through typed dialects that each carry a Lean denotation,
-and emits x86-64, AArch64 and RISC-V code inside Lean. The design draws on
+and emits x86-64 machine code inside Lean. Instruction selection to x86-64, AArch64 and
+RV64 is proved for straight-line register code over virtual registers, without register
+allocation. The design draws on
 [AUCurves](https://github.com/AU-COBRA/AUCurves), bedrock2, Rupicola and
 [Jasmin](https://github.com/jasmin-lang/jasmin) ([PROVENANCE.md](PROVENANCE.md)).
 

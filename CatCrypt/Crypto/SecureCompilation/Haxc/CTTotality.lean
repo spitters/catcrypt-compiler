@@ -138,7 +138,7 @@ theorem hax64WExit_word {f : String} (h1 : f ≠ "array_lit") (h2 : f ≠ "repea
     (hb : b < 2 ^ 64) (hr : r < 2 ^ 64)
     (hbi : _root_.Hax.hax64Builtins f [.int a, .int b] = some (.int r)) :
     hax64WExit f [.int a, .int b] = some (.int r) := by
-  rw [hax64WExit_of_ne h1 h2 h3 h4 hw]
+  rw [hax64WExit_of_ne h1 h2 h3 h4 hw (CatCrypt.Crypto.Hax.ne_select_of_exitScalarRes hres)]
   refine hax64Exit_of_scalarAdmit hbi rfl ?_
   unfold hax64ScalarAdmit hax64ArgsShape
   cases hop : CatCrypt.Crypto.Hax.hax64ScalarOp f <;>

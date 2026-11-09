@@ -40,6 +40,9 @@ public relation `σ.PubAgree`.
 * `ofRegion_calleeSpec`, `ofRegion_pre_of`, `ofRegion_pub`: the specification of the code of
   `LinkedFn.ofRegion` at the interface of its fields, its precondition from the entry
   conditions and a denoting valuation, and its public relation from the public registers.
+* `ofRegion_keepCheckAt`: the code check `calleeCodeB` accepts the data of
+  `LinkedFn.ofRegion` whose code passes the keep check with separated out windows
+  (`Callee.keepCheckSWB`) at the frame and the store policy of the record.
 * `regionPost_sem`: the contract `post_sem` of `LinkedFn.ofRegion` for a meaning whose values
   are values of source runs, from the leg of a front that gives the program, without `call`
   and over a context of registers and stack arrays (`abiValOf_unique`, `denoteAt_fuel_mono`).
@@ -207,15 +210,7 @@ def _root_.CatCrypt.Crypto.Hax.LinkedFn.ofRegion (name : String)
      `AbiLayout.Regions` separates the pointer regions from the whole layout frame. -/
   frame := max (F + P.red) (-σ.frameLo).toNat
   bytes := bytes
-
-/-- The `F` bytes below an address are among the `G` bytes below it, for every `G ≥ F`. -/
-theorem inFrame_of_le {e x : BitVec 64} {F G : Nat} (hFG : F ≤ G) (h : InFrame e F x) :
-    InFrame e G x := by
-  by_cases hG : G ≤ 2 ^ 64
-  · exact X86Backend.CalleeStackRoom.inFrame_mono hFG hG h
-  · unfold InFrame
-    have := (x - (e + BitVec.ofInt 64 (-(G : Int)))).isLt
-    omega
+  pol := P
 
 section OfRegion
 
@@ -276,6 +271,26 @@ theorem ofRegion_frameLo :
       hsem h0 K).frame : Int) ≤ σ.frameLo := by
   change -((max (F + K.red) (-σ.frameLo).toNat : Nat) : Int) ≤ σ.frameLo
   omega
+
+/-- **Completeness of the code check at a region-compiled linked function.** The data `c` of
+    `LinkedFn.ofRegion` at the clobbered registers `clob`, the frame size `F` and the store
+    policy `K`, whose bytes decode to a block `q` that passes `keepCheckSWB` at `clob`, `F` and
+    `K`, passes the code check of `calleeCodeB`: `Callee.keepCheckAtB` at the clobber set, the
+    frame and the store policy of `c`. -/
+theorem ofRegion_keepCheckAt {c : CalleeData}
+    (hc : (CatCrypt.Crypto.Hax.LinkedFn.ofRegion name params res sem sem_res σ p clob F bytes
+      hsem h0 K).calleeData = some c) {q : List RInstr} (hq : decodeLprog bytes = some q)
+    (hk : keepCheckSWB q (fun x => clob.contains x) F K = true) :
+    decodeLprog c.bytes = some q ∧ keepCheckAtB q c.sig.clob c.frame c.pol = true := by
+  obtain ⟨-, -, -, hcl, hfr, hby, -⟩ := CatCrypt.Crypto.Hax.LinkedFn.calleeData_eq hc
+  refine ⟨hby ▸ hq, ?_⟩
+  have hsig : c.sig.clob = fun x => clob.contains x := by
+    funext x
+    show c.clob.contains x = clob.contains x
+    rw [hcl]
+    rfl
+  rw [hsig, hfr, CatCrypt.Crypto.Hax.LinkedFn.calleeData_pol hc]
+  exact keepCheckAtB_of_keepCheckSWB hk (le_max_left _ _)
 
 end OfRegion
 
