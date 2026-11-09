@@ -86,6 +86,11 @@ change of representation, by parametricity.
 
 - [lean4lean](https://github.com/spitters/lean4lean) is a Lean kernel with verified limb arithmetic
   for natural numbers.
+- [Verified native evaluation](https://github.com/spitters/catcrypt-verified-eval) proves a closed
+  decidable proposition from one run of this compiler's x86 machine model (`runBlockA`) on bytes
+  that a verified compiler for a fragment of Lean emits and the decoder of `roundtrip_block6`
+  reads back; its tactic `verified_decide` replaces `native_decide` where the code generator is
+  to be left out of the trusted base.
 - [Lean with verified mpn](https://github.com/spitters/lean4/tree/catcrypt-mpn-4.35.0) is Lean
   v4.35.0 whose non-GMP runtime runs bignum addition, subtraction, comparison, multiplication,
   bitwise operations and shifts on kernels emitted by this compiler.
