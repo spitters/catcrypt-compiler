@@ -431,13 +431,13 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoStorage
-CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
