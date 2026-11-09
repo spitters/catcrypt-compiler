@@ -305,17 +305,21 @@ correctness of the bytes of one field operation under a layout with an output bu
 The instances are in `Haxc/LeanFrontFields.lean`, the product, square, sum and difference at
 the base primes, each `compileA` on the typed literal under `FieldRoute.fieldAbi` (output
 buffer at `%rdi`, `y` at `%rsi`, `x` at `%rdx`; the square reads `x` at `%rsi`). The wide
-template of the modulus is Solinas at secp256k1 and canonical Montgomery at the others
-(`FieldWideInline.wideTemplateOf`). An accepted function has `<f>_compiles` (`native_decide`)
+template of the modulus is Solinas at the moduli `2^k - c` (secp256k1, Curve25519, P-521,
+Poly1305) and canonical Montgomery at the others (`FieldWideInline.wideTemplateOf`). An accepted function has `<f>_compiles` (`native_decide`)
 and `<f>_bytes` (the decoded bytes halt with the canonical limbs of the value); the rows
 `field/<prime>_<op>` of `catcrypt-emit` write its object. The instances and their byte
 theorems:
 
-- secp256k1 (Solinas, 4 limbs): `secp256k1Mul_bytes`, `secp256k1Sqr_bytes`,
-  `secp256k1Add_bytes`, `secp256k1Sub_bytes`;
-- P-256 and BN254 (4 limbs) and P-384 (6 limbs), canonical Montgomery: `p256Add_bytes`,
-  `p256Sub_bytes`, `bn254Add_bytes`, `bn254Sub_bytes`, `p384Add_bytes`, `p384Sub_bytes`;
-- BLS12-381 (6 limbs): `bls12381Sub_bytes`.
+- Solinas: secp256k1 and Curve25519 (4 limbs), P-521 (9 limbs), Poly1305 (3 limbs), each
+  `<prime>Mul_bytes`, `<prime>Sqr_bytes`, `<prime>Add_bytes`, `<prime>Sub_bytes`;
+- canonical Montgomery: P-256 and BN254 (4 limbs), P-384 and BLS12-381 (6 limbs), each
+  `<prime>Mul_bytes`, `<prime>Sqr_bytes`, `<prime>Add_bytes`, `<prime>Sub_bytes`.
+
+The products by the limbs of `R^2 mod p` in the Montgomery template are widening products
+whose low and high halves the `MULX` fusion pairs, so the e-graph rule set `jasminRules`
+rewrites no 64-bit multiply (`Aegraph.asMersenne_of_le`): its rule for a multiply by `2^a - 1`
+acts below width 64.
 
 [HEADLINES.md](HEADLINES.md) lists the headline theorems, and
 [NAVIGATION.md](NAVIGATION.md) the directories that hold them.

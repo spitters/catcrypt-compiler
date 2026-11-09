@@ -16,7 +16,8 @@ public meta import CatCrypt.Crypto.SecureCompilation.Haxc.ComposeV1
 # Curve-field arithmetic through the Lean front
 
 The product, the square, the sum and the difference of the prime fields of P-256, secp256k1,
-P-384, BN254 and BLS12-381, each a Lean function over `ZMod p`, read by `reifyField%` and
+P-384, BN254, BLS12-381, Curve25519 (`2 ^ 255 - 19`), P-521 (`2 ^ 521 - 1`) and Poly1305
+(`2 ^ 130 - 5`), each a Lean function over `ZMod p`, read by `reifyField%` and
 compiled by `compileA`. The operations are written once, generic in the modulus (`fieldMul`,
 `fieldSqr`, `fieldAdd`, `fieldSub`), and each function of a prime applies one of them at that
 prime; `reifyField% f unfolding op` reads it as one call of the tagged head `m#p<p>` of the
@@ -28,21 +29,23 @@ The layout is `FieldRoute.fieldAbi`: the output buffer at `%rdi`, the operands `
 and `x` at `%rdx` (the operand `x` at `%rsi` for the square), each of `fieldLimbs p` words, and
 the result the words at the entry `%rdi`. The chain of `compileA` lowers the tagged call by the
 wide template of its modulus (`FieldWideInline.wideTemplateOf`): the Solinas template at
-secp256k1, the canonical Montgomery template at the other primes. Operands and result are
+the moduli `2 ^ k - c` (secp256k1, Curve25519, P-521, Poly1305), the canonical Montgomery
+template at the other primes. Operands and result are
 canonical representatives, little-endian limbs (`FieldTag.limbsOf`).
 
 For each function that `compileA` accepts, `<f>_compiles` states the acceptance (by
 `native_decide`) and `<f>_bytes` that the decoded bytes halt with the limbs of the value of the
 function on the limbs of its operands (`leanFront_correct_field2`, `leanFront_correct_field1`,
-with the literal ascended by `fnCorres_fieldOp2`, `fnCorres_fieldOp1`). The other functions
-have their literal and no theorem: the product and the square at P-256, which `compileA`
-refuses at the printed-body class `printedAddrWB` (a high-half multiply `MULXHI:64` with a
-frame-slot source), and the product and the square at P-384 and BLS12-381.
+with the literal ascended by `fnCorres_fieldOp2`, `fnCorres_fieldOp1`). `compileA` accepts
+every function of the module. The products by the limbs of `R ^ 2 mod p` in the Montgomery
+template are widening products whose low and high halves the `MULX` fusion pairs; the e-graph
+rule set `jasminRules` keeps every 64-bit multiply for that reason (`Aegraph.asMersenne_of_le`).
 
 ## Main definitions
 
 * `fieldMul`, `fieldSqr`, `fieldAdd`, `fieldSub` — the operations, generic in the modulus.
-* `p256`, `secp256k1`, `p384`, `bn254`, `bls12381` — the moduli.
+* `p256`, `secp256k1`, `p384`, `bn254`, `bls12381`, `curve25519`, `p521`, `poly1305` — the
+  moduli.
 * `<prime><Op>`, `<prime><Op>Imp`, `<prime><Op>TE` — the function of an operation at a prime,
   its literal and its typed literal.
 * `ctx2`, `ctx1` — the types of the operands.
@@ -107,6 +110,19 @@ abbrev bn254 : ℕ :=
 abbrev bls12381 : ℕ :=
   0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab
 
+/-- The Curve25519 base prime `2 ^ 255 - 19`. -/
+abbrev curve25519 : ℕ :=
+  0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffed
+
+set_option linter.style.longLine false in
+/-- The P-521 base prime `2 ^ 521 - 1`. -/
+abbrev p521 : ℕ :=
+  0x1ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+
+/-- The Poly1305 prime `2 ^ 130 - 5`. -/
+abbrev poly1305 : ℕ :=
+  0x3fffffffffffffffffffffffffffffffb
+
 /-! ## The types of the operands -/
 
 /-- The operands `x` and `y`, arrays of `n` words. -/
@@ -130,6 +146,39 @@ def p256MulImp : ImpExpr := reifyField% p256Mul unfolding fieldMul
 /-- The typed literal of `p256Mul`. -/
 def p256MulTE : TExpr := (p256MulImp.toTExpr (ctx2 4)).getD unitTE
 
+theorem p256MulTE_spec : p256MulImp.toTExpr (ctx2 4) = some p256MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p256Mul` under `fieldAbi 2 4`. -/
+theorem p256Mul_compiles :
+    (compileA p256MulTE (fieldAbi 2 4) "p256_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p256Mul`.** From every entry state satisfying the regions of `fieldAbi 2 4`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `p256Mul x y` in the 4
+    words at the entry `%rdi`. -/
+theorem p256Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p256MulTE (fieldAbi 2 4) "p256_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 4).Regions sa) (x y : ZMod p256)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 4 = limbsOf 4 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (p256Mul x y).val := by
+  have he : p256MulTE.erase = p256MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p256MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p256 = 4 := by decide
+  have h := leanFront_correct_field2 (p := p256) (by norm_num) p256MulTE (fieldAbi 2 4)
+    "p256_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p256Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" p256Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
 /-- The square at the P-256 base prime. -/
 def p256Sqr (x : ZMod p256) : ZMod p256 := fieldSqr x
 
@@ -138,6 +187,38 @@ def p256SqrImp : ImpExpr := reifyField% p256Sqr unfolding fieldSqr
 
 /-- The typed literal of `p256Sqr`. -/
 def p256SqrTE : TExpr := (p256SqrImp.toTExpr (ctx1 4)).getD unitTE
+
+theorem p256SqrTE_spec : p256SqrImp.toTExpr (ctx1 4) = some p256SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p256Sqr` under `fieldAbi 1 4`. -/
+theorem p256Sqr_compiles :
+    (compileA p256SqrTE (fieldAbi 1 4) "p256_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p256Sqr`.** From every entry state satisfying the regions of `fieldAbi 1 4`
+    whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA` emits
+    decode to a program that halts with the limbs of `p256Sqr x` in the 4 words at the entry
+    `%rdi`. -/
+theorem p256Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p256SqrTE (fieldAbi 1 4) "p256_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 4).Regions sa) (x : ZMod p256)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (p256Sqr x).val := by
+  have he : p256SqrTE.erase = p256SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p256SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p256 = 4 := by decide
+  have h := leanFront_correct_field1 (p := p256) (by norm_num) p256SqrTE (fieldAbi 1 4)
+    "p256_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p256Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
 
 /-- The sum at the P-256 base prime. -/
 def p256Add (x y : ZMod p256) : ZMod p256 := fieldAdd x y
@@ -403,6 +484,39 @@ def p384MulImp : ImpExpr := reifyField% p384Mul unfolding fieldMul
 /-- The typed literal of `p384Mul`. -/
 def p384MulTE : TExpr := (p384MulImp.toTExpr (ctx2 6)).getD unitTE
 
+theorem p384MulTE_spec : p384MulImp.toTExpr (ctx2 6) = some p384MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p384Mul` under `fieldAbi 2 6`. -/
+theorem p384Mul_compiles :
+    (compileA p384MulTE (fieldAbi 2 6) "p384_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p384Mul`.** From every entry state satisfying the regions of `fieldAbi 2 6`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `p384Mul x y` in the 6
+    words at the entry `%rdi`. -/
+theorem p384Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p384MulTE (fieldAbi 2 6) "p384_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 6).Regions sa) (x y : ZMod p384)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 6 = limbsOf 6 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 6 = limbsOf 6 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 6 = limbsOf 6 (p384Mul x y).val := by
+  have he : p384MulTE.erase = p384MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p384MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p384 = 6 := by decide
+  have h := leanFront_correct_field2 (p := p384) (by norm_num) p384MulTE (fieldAbi 2 6)
+    "p384_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p384Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" p384Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
 /-- The square at the P-384 base prime. -/
 def p384Sqr (x : ZMod p384) : ZMod p384 := fieldSqr x
 
@@ -411,6 +525,38 @@ def p384SqrImp : ImpExpr := reifyField% p384Sqr unfolding fieldSqr
 
 /-- The typed literal of `p384Sqr`. -/
 def p384SqrTE : TExpr := (p384SqrImp.toTExpr (ctx1 6)).getD unitTE
+
+theorem p384SqrTE_spec : p384SqrImp.toTExpr (ctx1 6) = some p384SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p384Sqr` under `fieldAbi 1 6`. -/
+theorem p384Sqr_compiles :
+    (compileA p384SqrTE (fieldAbi 1 6) "p384_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p384Sqr`.** From every entry state satisfying the regions of `fieldAbi 1 6`
+    whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA` emits
+    decode to a program that halts with the limbs of `p384Sqr x` in the 6 words at the entry
+    `%rdi`. -/
+theorem p384Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p384SqrTE (fieldAbi 1 6) "p384_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 6).Regions sa) (x : ZMod p384)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 6 = limbsOf 6 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 6 = limbsOf 6 (p384Sqr x).val := by
+  have he : p384SqrTE.erase = p384SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p384SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p384 = 6 := by decide
+  have h := leanFront_correct_field1 (p := p384) (by norm_num) p384SqrTE (fieldAbi 1 6)
+    "p384_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p384Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
 
 /-- The sum at the P-384 base prime. -/
 def p384Add (x y : ZMod p384) : ZMod p384 := fieldAdd x y
@@ -676,6 +822,39 @@ def bls12381MulImp : ImpExpr := reifyField% bls12381Mul unfolding fieldMul
 /-- The typed literal of `bls12381Mul`. -/
 def bls12381MulTE : TExpr := (bls12381MulImp.toTExpr (ctx2 6)).getD unitTE
 
+theorem bls12381MulTE_spec : bls12381MulImp.toTExpr (ctx2 6) = some bls12381MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `bls12381Mul` under `fieldAbi 2 6`. -/
+theorem bls12381Mul_compiles :
+    (compileA bls12381MulTE (fieldAbi 2 6) "bls12381_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `bls12381Mul`.** From every entry state satisfying the regions of `fieldAbi 2 6`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `bls12381Mul x y` in the 6
+    words at the entry `%rdi`. -/
+theorem bls12381Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA bls12381MulTE (fieldAbi 2 6) "bls12381_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 6).Regions sa) (x y : ZMod bls12381)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 6 = limbsOf 6 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 6 = limbsOf 6 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 6 = limbsOf 6 (bls12381Mul x y).val := by
+  have he : bls12381MulTE.erase = bls12381MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr bls12381MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs bls12381 = 6 := by decide
+  have h := leanFront_correct_field2 (p := bls12381) (by norm_num) bls12381MulTE (fieldAbi 2 6)
+    "bls12381_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) bls12381Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" bls12381Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
 /-- The square at the BLS12-381 base prime. -/
 def bls12381Sqr (x : ZMod bls12381) : ZMod bls12381 := fieldSqr x
 
@@ -684,6 +863,38 @@ def bls12381SqrImp : ImpExpr := reifyField% bls12381Sqr unfolding fieldSqr
 
 /-- The typed literal of `bls12381Sqr`. -/
 def bls12381SqrTE : TExpr := (bls12381SqrImp.toTExpr (ctx1 6)).getD unitTE
+
+theorem bls12381SqrTE_spec : bls12381SqrImp.toTExpr (ctx1 6) = some bls12381SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `bls12381Sqr` under `fieldAbi 1 6`. -/
+theorem bls12381Sqr_compiles :
+    (compileA bls12381SqrTE (fieldAbi 1 6) "bls12381_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `bls12381Sqr`.** From every entry state satisfying the regions of `fieldAbi 1 6`
+    whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA` emits
+    decode to a program that halts with the limbs of `bls12381Sqr x` in the 6 words at the entry
+    `%rdi`. -/
+theorem bls12381Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA bls12381SqrTE (fieldAbi 1 6) "bls12381_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 6).Regions sa) (x : ZMod bls12381)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 6 = limbsOf 6 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 6 = limbsOf 6 (bls12381Sqr x).val := by
+  have he : bls12381SqrTE.erase = bls12381SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr bls12381SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs bls12381 = 6 := by decide
+  have h := leanFront_correct_field1 (p := bls12381) (by norm_num) bls12381SqrTE (fieldAbi 1 6)
+    "bls12381_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) bls12381Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
 
 /-- The sum at the BLS12-381 base prime. -/
 def bls12381Add (x y : ZMod bls12381) : ZMod bls12381 := fieldAdd x y
@@ -764,6 +975,511 @@ theorem bls12381Sub_bytes {P : Lprog} {bytes : List (BitVec 8)}
     (by
       rw [he]
       exact fnCorres_fieldOp2 _ "t" bls12381Sub
+        (fun a b => hax64WExit_zmod_sub_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-! ## The Curve25519 base prime -/
+
+/-- The product at the Curve25519 base prime. -/
+def curve25519Mul (x y : ZMod curve25519) : ZMod curve25519 := fieldMul x y
+
+/-- The literal of `curve25519Mul`. -/
+def curve25519MulImp : ImpExpr := reifyField% curve25519Mul unfolding fieldMul
+
+/-- The typed literal of `curve25519Mul`. -/
+def curve25519MulTE : TExpr := (curve25519MulImp.toTExpr (ctx2 4)).getD unitTE
+
+theorem curve25519MulTE_spec : curve25519MulImp.toTExpr (ctx2 4) = some curve25519MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `curve25519Mul` under `fieldAbi 2 4`. -/
+theorem curve25519Mul_compiles :
+    (compileA curve25519MulTE (fieldAbi 2 4) "curve25519_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `curve25519Mul`.** From every entry state satisfying the regions of
+    `fieldAbi 2 4` whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the
+    bytes that `compileA` emits decode to a program that halts with the limbs of `curve25519Mul x y`
+    in the 4 words at the entry `%rdi`. -/
+theorem curve25519Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA curve25519MulTE (fieldAbi 2 4) "curve25519_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 4).Regions sa) (x y : ZMod curve25519)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 4 = limbsOf 4 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (curve25519Mul x y).val := by
+  have he : curve25519MulTE.erase = curve25519MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr curve25519MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs curve25519 = 4 := by decide
+  have h := leanFront_correct_field2 (p := curve25519) (by norm_num) curve25519MulTE (fieldAbi 2 4)
+    "curve25519_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) curve25519Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" curve25519Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The square at the Curve25519 base prime. -/
+def curve25519Sqr (x : ZMod curve25519) : ZMod curve25519 := fieldSqr x
+
+/-- The literal of `curve25519Sqr`. -/
+def curve25519SqrImp : ImpExpr := reifyField% curve25519Sqr unfolding fieldSqr
+
+/-- The typed literal of `curve25519Sqr`. -/
+def curve25519SqrTE : TExpr := (curve25519SqrImp.toTExpr (ctx1 4)).getD unitTE
+
+theorem curve25519SqrTE_spec : curve25519SqrImp.toTExpr (ctx1 4) = some curve25519SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `curve25519Sqr` under `fieldAbi 1 4`. -/
+theorem curve25519Sqr_compiles :
+    (compileA curve25519SqrTE (fieldAbi 1 4) "curve25519_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `curve25519Sqr`.** From every entry state satisfying the regions of
+    `fieldAbi 1 4` whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA`
+    emits decode to a program that halts with the limbs of `curve25519Sqr x` in the 4 words at the
+    entry `%rdi`. -/
+theorem curve25519Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA curve25519SqrTE (fieldAbi 1 4) "curve25519_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 4).Regions sa) (x : ZMod curve25519)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (curve25519Sqr x).val := by
+  have he : curve25519SqrTE.erase = curve25519SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr curve25519SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs curve25519 = 4 := by decide
+  have h := leanFront_correct_field1 (p := curve25519) (by norm_num) curve25519SqrTE (fieldAbi 1 4)
+    "curve25519_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) curve25519Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
+
+/-- The sum at the Curve25519 base prime. -/
+def curve25519Add (x y : ZMod curve25519) : ZMod curve25519 := fieldAdd x y
+
+/-- The literal of `curve25519Add`. -/
+def curve25519AddImp : ImpExpr := reifyField% curve25519Add unfolding fieldAdd
+
+/-- The typed literal of `curve25519Add`. -/
+def curve25519AddTE : TExpr := (curve25519AddImp.toTExpr (ctx2 4)).getD unitTE
+
+theorem curve25519AddTE_spec : curve25519AddImp.toTExpr (ctx2 4) = some curve25519AddTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `curve25519Add` under `fieldAbi 2 4`. -/
+theorem curve25519Add_compiles :
+    (compileA curve25519AddTE (fieldAbi 2 4) "curve25519_add").isSome = true := by
+  native_decide
+
+/-- **The bytes of `curve25519Add`.** From every entry state satisfying the regions of
+    `fieldAbi 2 4` whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the
+    bytes that `compileA` emits decode to a program that halts with the limbs of `curve25519Add x y`
+    in the 4 words at the entry `%rdi`. -/
+theorem curve25519Add_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA curve25519AddTE (fieldAbi 2 4) "curve25519_add" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 4).Regions sa) (x y : ZMod curve25519)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 4 = limbsOf 4 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (curve25519Add x y).val := by
+  have he : curve25519AddTE.erase = curve25519AddImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr curve25519AddTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs curve25519 = 4 := by decide
+  have h := leanFront_correct_field2 (p := curve25519) (by norm_num) curve25519AddTE (fieldAbi 2 4)
+    "curve25519_add" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) curve25519Add
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" curve25519Add
+        (fun a b => hax64WExit_zmod_add_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The difference at the Curve25519 base prime. -/
+def curve25519Sub (x y : ZMod curve25519) : ZMod curve25519 := fieldSub x y
+
+/-- The literal of `curve25519Sub`. -/
+def curve25519SubImp : ImpExpr := reifyField% curve25519Sub unfolding fieldSub
+
+/-- The typed literal of `curve25519Sub`. -/
+def curve25519SubTE : TExpr := (curve25519SubImp.toTExpr (ctx2 4)).getD unitTE
+
+theorem curve25519SubTE_spec : curve25519SubImp.toTExpr (ctx2 4) = some curve25519SubTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `curve25519Sub` under `fieldAbi 2 4`. -/
+theorem curve25519Sub_compiles :
+    (compileA curve25519SubTE (fieldAbi 2 4) "curve25519_sub").isSome = true := by
+  native_decide
+
+/-- **The bytes of `curve25519Sub`.** From every entry state satisfying the regions of
+    `fieldAbi 2 4` whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the
+    bytes that `compileA` emits decode to a program that halts with the limbs of `curve25519Sub x y`
+    in the 4 words at the entry `%rdi`. -/
+theorem curve25519Sub_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA curve25519SubTE (fieldAbi 2 4) "curve25519_sub" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 4).Regions sa) (x y : ZMod curve25519)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 4 = limbsOf 4 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 4 = limbsOf 4 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 4 = limbsOf 4 (curve25519Sub x y).val := by
+  have he : curve25519SubTE.erase = curve25519SubImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr curve25519SubTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs curve25519 = 4 := by decide
+  have h := leanFront_correct_field2 (p := curve25519) (by norm_num) curve25519SubTE (fieldAbi 2 4)
+    "curve25519_sub" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) curve25519Sub
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" curve25519Sub
+        (fun a b => hax64WExit_zmod_sub_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-! ## The P-521 base prime -/
+
+/-- The product at the P-521 base prime. -/
+def p521Mul (x y : ZMod p521) : ZMod p521 := fieldMul x y
+
+/-- The literal of `p521Mul`. -/
+def p521MulImp : ImpExpr := reifyField% p521Mul unfolding fieldMul
+
+/-- The typed literal of `p521Mul`. -/
+def p521MulTE : TExpr := (p521MulImp.toTExpr (ctx2 9)).getD unitTE
+
+theorem p521MulTE_spec : p521MulImp.toTExpr (ctx2 9) = some p521MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p521Mul` under `fieldAbi 2 9`. -/
+theorem p521Mul_compiles :
+    (compileA p521MulTE (fieldAbi 2 9) "p521_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p521Mul`.** From every entry state satisfying the regions of `fieldAbi 2 9`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `p521Mul x y` in the 9 words
+    at the entry `%rdi`. -/
+theorem p521Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p521MulTE (fieldAbi 2 9) "p521_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 9).Regions sa) (x y : ZMod p521)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 9 = limbsOf 9 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 9 = limbsOf 9 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 9 = limbsOf 9 (p521Mul x y).val := by
+  have he : p521MulTE.erase = p521MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p521MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p521 = 9 := by decide
+  have h := leanFront_correct_field2 (p := p521) (by norm_num) p521MulTE (fieldAbi 2 9)
+    "p521_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p521Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" p521Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The square at the P-521 base prime. -/
+def p521Sqr (x : ZMod p521) : ZMod p521 := fieldSqr x
+
+/-- The literal of `p521Sqr`. -/
+def p521SqrImp : ImpExpr := reifyField% p521Sqr unfolding fieldSqr
+
+/-- The typed literal of `p521Sqr`. -/
+def p521SqrTE : TExpr := (p521SqrImp.toTExpr (ctx1 9)).getD unitTE
+
+theorem p521SqrTE_spec : p521SqrImp.toTExpr (ctx1 9) = some p521SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p521Sqr` under `fieldAbi 1 9`. -/
+theorem p521Sqr_compiles :
+    (compileA p521SqrTE (fieldAbi 1 9) "p521_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p521Sqr`.** From every entry state satisfying the regions of `fieldAbi 1 9`
+    whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA` emits decode to
+    a program that halts with the limbs of `p521Sqr x` in the 9 words at the entry `%rdi`. -/
+theorem p521Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p521SqrTE (fieldAbi 1 9) "p521_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 9).Regions sa) (x : ZMod p521)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 9 = limbsOf 9 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 9 = limbsOf 9 (p521Sqr x).val := by
+  have he : p521SqrTE.erase = p521SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p521SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p521 = 9 := by decide
+  have h := leanFront_correct_field1 (p := p521) (by norm_num) p521SqrTE (fieldAbi 1 9)
+    "p521_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p521Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
+
+/-- The sum at the P-521 base prime. -/
+def p521Add (x y : ZMod p521) : ZMod p521 := fieldAdd x y
+
+/-- The literal of `p521Add`. -/
+def p521AddImp : ImpExpr := reifyField% p521Add unfolding fieldAdd
+
+/-- The typed literal of `p521Add`. -/
+def p521AddTE : TExpr := (p521AddImp.toTExpr (ctx2 9)).getD unitTE
+
+theorem p521AddTE_spec : p521AddImp.toTExpr (ctx2 9) = some p521AddTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p521Add` under `fieldAbi 2 9`. -/
+theorem p521Add_compiles :
+    (compileA p521AddTE (fieldAbi 2 9) "p521_add").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p521Add`.** From every entry state satisfying the regions of `fieldAbi 2 9`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `p521Add x y` in the 9 words
+    at the entry `%rdi`. -/
+theorem p521Add_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p521AddTE (fieldAbi 2 9) "p521_add" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 9).Regions sa) (x y : ZMod p521)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 9 = limbsOf 9 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 9 = limbsOf 9 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 9 = limbsOf 9 (p521Add x y).val := by
+  have he : p521AddTE.erase = p521AddImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p521AddTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p521 = 9 := by decide
+  have h := leanFront_correct_field2 (p := p521) (by norm_num) p521AddTE (fieldAbi 2 9)
+    "p521_add" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p521Add
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" p521Add
+        (fun a b => hax64WExit_zmod_add_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The difference at the P-521 base prime. -/
+def p521Sub (x y : ZMod p521) : ZMod p521 := fieldSub x y
+
+/-- The literal of `p521Sub`. -/
+def p521SubImp : ImpExpr := reifyField% p521Sub unfolding fieldSub
+
+/-- The typed literal of `p521Sub`. -/
+def p521SubTE : TExpr := (p521SubImp.toTExpr (ctx2 9)).getD unitTE
+
+theorem p521SubTE_spec : p521SubImp.toTExpr (ctx2 9) = some p521SubTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `p521Sub` under `fieldAbi 2 9`. -/
+theorem p521Sub_compiles :
+    (compileA p521SubTE (fieldAbi 2 9) "p521_sub").isSome = true := by
+  native_decide
+
+/-- **The bytes of `p521Sub`.** From every entry state satisfying the regions of `fieldAbi 2 9`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `p521Sub x y` in the 9 words
+    at the entry `%rdi`. -/
+theorem p521Sub_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA p521SubTE (fieldAbi 2 9) "p521_sub" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 9).Regions sa) (x y : ZMod p521)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 9 = limbsOf 9 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 9 = limbsOf 9 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 9 = limbsOf 9 (p521Sub x y).val := by
+  have he : p521SubTE.erase = p521SubImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr p521SubTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs p521 = 9 := by decide
+  have h := leanFront_correct_field2 (p := p521) (by norm_num) p521SubTE (fieldAbi 2 9)
+    "p521_sub" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) p521Sub
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" p521Sub
+        (fun a b => hax64WExit_zmod_sub_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-! ## The Poly1305 prime -/
+
+/-- The product at the Poly1305 prime. -/
+def poly1305Mul (x y : ZMod poly1305) : ZMod poly1305 := fieldMul x y
+
+/-- The literal of `poly1305Mul`. -/
+def poly1305MulImp : ImpExpr := reifyField% poly1305Mul unfolding fieldMul
+
+/-- The typed literal of `poly1305Mul`. -/
+def poly1305MulTE : TExpr := (poly1305MulImp.toTExpr (ctx2 3)).getD unitTE
+
+theorem poly1305MulTE_spec : poly1305MulImp.toTExpr (ctx2 3) = some poly1305MulTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `poly1305Mul` under `fieldAbi 2 3`. -/
+theorem poly1305Mul_compiles :
+    (compileA poly1305MulTE (fieldAbi 2 3) "poly1305_mul").isSome = true := by
+  native_decide
+
+/-- **The bytes of `poly1305Mul`.** From every entry state satisfying the regions of `fieldAbi 2 3`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `poly1305Mul x y` in the 3
+    words at the entry `%rdi`. -/
+theorem poly1305Mul_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA poly1305MulTE (fieldAbi 2 3) "poly1305_mul" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 3).Regions sa) (x y : ZMod poly1305)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 3 = limbsOf 3 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 3 = limbsOf 3 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 3 = limbsOf 3 (poly1305Mul x y).val := by
+  have he : poly1305MulTE.erase = poly1305MulImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr poly1305MulTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs poly1305 = 3 := by decide
+  have h := leanFront_correct_field2 (p := poly1305) (by norm_num) poly1305MulTE (fieldAbi 2 3)
+    "poly1305_mul" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) poly1305Mul
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" poly1305Mul
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The square at the Poly1305 prime. -/
+def poly1305Sqr (x : ZMod poly1305) : ZMod poly1305 := fieldSqr x
+
+/-- The literal of `poly1305Sqr`. -/
+def poly1305SqrImp : ImpExpr := reifyField% poly1305Sqr unfolding fieldSqr
+
+/-- The typed literal of `poly1305Sqr`. -/
+def poly1305SqrTE : TExpr := (poly1305SqrImp.toTExpr (ctx1 3)).getD unitTE
+
+theorem poly1305SqrTE_spec : poly1305SqrImp.toTExpr (ctx1 3) = some poly1305SqrTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `poly1305Sqr` under `fieldAbi 1 3`. -/
+theorem poly1305Sqr_compiles :
+    (compileA poly1305SqrTE (fieldAbi 1 3) "poly1305_sqr").isSome = true := by
+  native_decide
+
+/-- **The bytes of `poly1305Sqr`.** From every entry state satisfying the regions of `fieldAbi 1 3`
+    whose operand region at `%rsi` holds the limbs of `x`, the bytes that `compileA` emits decode to
+    a program that halts with the limbs of `poly1305Sqr x` in the 3 words at the entry `%rdi`. -/
+theorem poly1305Sqr_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA poly1305SqrTE (fieldAbi 1 3) "poly1305_sqr" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 1 3).Regions sa) (x : ZMod poly1305)
+    (hx : wordsAt sa.mem (sa.regs "%rsi") 3 = limbsOf 3 x.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 3 = limbsOf 3 (poly1305Sqr x).val := by
+  have he : poly1305SqrTE.erase = poly1305SqrImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr poly1305SqrTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs poly1305 = 3 := by decide
+  have h := leanFront_correct_field1 (p := poly1305) (by norm_num) poly1305SqrTE (fieldAbi 1 3)
+    "poly1305_sqr" P bytes hc (by rw [he]; rfl) "%rsi" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) poly1305Sqr
+    (by
+      rw [he]
+      exact fnCorres_fieldOp1 _ "t" (· * ·)
+        (fun a b => hax64WExit_zmod_mul_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x (by rw [hl]; exact hx)
+  rw [hl] at h
+  exact h
+
+/-- The sum at the Poly1305 prime. -/
+def poly1305Add (x y : ZMod poly1305) : ZMod poly1305 := fieldAdd x y
+
+/-- The literal of `poly1305Add`. -/
+def poly1305AddImp : ImpExpr := reifyField% poly1305Add unfolding fieldAdd
+
+/-- The typed literal of `poly1305Add`. -/
+def poly1305AddTE : TExpr := (poly1305AddImp.toTExpr (ctx2 3)).getD unitTE
+
+theorem poly1305AddTE_spec : poly1305AddImp.toTExpr (ctx2 3) = some poly1305AddTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `poly1305Add` under `fieldAbi 2 3`. -/
+theorem poly1305Add_compiles :
+    (compileA poly1305AddTE (fieldAbi 2 3) "poly1305_add").isSome = true := by
+  native_decide
+
+/-- **The bytes of `poly1305Add`.** From every entry state satisfying the regions of `fieldAbi 2 3`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `poly1305Add x y` in the 3
+    words at the entry `%rdi`. -/
+theorem poly1305Add_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA poly1305AddTE (fieldAbi 2 3) "poly1305_add" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 3).Regions sa) (x y : ZMod poly1305)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 3 = limbsOf 3 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 3 = limbsOf 3 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 3 = limbsOf 3 (poly1305Add x y).val := by
+  have he : poly1305AddTE.erase = poly1305AddImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr poly1305AddTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs poly1305 = 3 := by decide
+  have h := leanFront_correct_field2 (p := poly1305) (by norm_num) poly1305AddTE (fieldAbi 2 3)
+    "poly1305_add" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) poly1305Add
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" poly1305Add
+        (fun a b => hax64WExit_zmod_add_wide (by decide +kernel) (by norm_num) a b))
+    (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
+  rw [hl] at h
+  exact h
+
+/-- The difference at the Poly1305 prime. -/
+def poly1305Sub (x y : ZMod poly1305) : ZMod poly1305 := fieldSub x y
+
+/-- The literal of `poly1305Sub`. -/
+def poly1305SubImp : ImpExpr := reifyField% poly1305Sub unfolding fieldSub
+
+/-- The typed literal of `poly1305Sub`. -/
+def poly1305SubTE : TExpr := (poly1305SubImp.toTExpr (ctx2 3)).getD unitTE
+
+theorem poly1305SubTE_spec : poly1305SubImp.toTExpr (ctx2 3) = some poly1305SubTE := rfl
+
+set_option linter.style.native false in
+/-- `compileA` accepts the typed literal of `poly1305Sub` under `fieldAbi 2 3`. -/
+theorem poly1305Sub_compiles :
+    (compileA poly1305SubTE (fieldAbi 2 3) "poly1305_sub").isSome = true := by
+  native_decide
+
+/-- **The bytes of `poly1305Sub`.** From every entry state satisfying the regions of `fieldAbi 2 3`
+    whose operand regions at `%rdx` and `%rsi` hold the limbs of `x` and `y`, the bytes that
+    `compileA` emits decode to a program that halts with the limbs of `poly1305Sub x y` in the 3
+    words at the entry `%rdi`. -/
+theorem poly1305Sub_bytes {P : Lprog} {bytes : List (BitVec 8)}
+    (hc : compileA poly1305SubTE (fieldAbi 2 3) "poly1305_sub" = some (P, bytes)) (sa : AState)
+    (hsep : (fieldAbi 2 3).Regions sa) (x y : ZMod poly1305)
+    (hx : wordsAt sa.mem (sa.regs "%rdx") 3 = limbsOf 3 x.val)
+    (hy : wordsAt sa.mem (sa.regs "%rsi") 3 = limbsOf 3 y.val) :
+    ∃ prog sa', decodeLprog bytes = some prog ∧ Halts aMachine prog 0 sa sa'
+      ∧ wordsAt sa'.mem (sa.regs "%rdi") 3 = limbsOf 3 (poly1305Sub x y).val := by
+  have he : poly1305SubTE.erase = poly1305SubImp :=
+    _root_.Hax.ImpExpr.erase_toTExpr poly1305SubTE_spec
+  have hl : _root_.Hax.FieldTag.fieldLimbs poly1305 = 3 := by decide
+  have h := leanFront_correct_field2 (p := poly1305) (by norm_num) poly1305SubTE (fieldAbi 2 3)
+    "poly1305_sub" P bytes hc (by rw [he]; rfl) "%rsi" "%rdx" (by rw [hl]; rfl) rfl
+    (by rw [hl]; rfl) poly1305Sub
+    (by
+      rw [he]
+      exact fnCorres_fieldOp2 _ "t" poly1305Sub
         (fun a b => hax64WExit_zmod_sub_wide (by decide +kernel) (by norm_num) a b))
     (by decide) sa hsep x y (by rw [hl]; exact hx) (by rw [hl]; exact hy)
   rw [hl] at h

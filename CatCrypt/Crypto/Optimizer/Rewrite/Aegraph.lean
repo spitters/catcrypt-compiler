@@ -25,9 +25,10 @@ copy (`copyRule jasminCastCopy`). The rule `cmpOneRule` reads a one-bit equality
 The Mersenne rule `mersenneRule` reads a multiply `x * c` whose operand `c` is bound to
 `2 ^ a - 1` with `2 ≤ a < w`, and gives `(x <<< k) - x` when the definition table binds a
 variable `k` to the constant `a`: two register operations, of cost two together, against the multiply
-of cost four (`mersenneAlt_cost`), which extraction takes. When the program also computes
-the high word of that product (`mulhi` on the same operands), the rewrite leaves the high
-multiply without the low multiply that the `MULX` fusion pairs with it.
+of cost four (`mersenneAlt_cost`), which extraction takes. The rule acts below width `64`
+only: a 64-bit multiply is the low half of the widening product of the x86 lowering
+(`JasminOpInfo.pairLowOp`), which the `MULX` fusion pairs with the high multiply `mulhi` on
+the same operands, and a rewritten low half would leave that high multiply unpaired.
 
 ## The rule set
 
@@ -594,27 +595,38 @@ theorem cmpOneAlts_sound {D : Defs} {Δ : Ctxt jasminDialect} {s : JasminTy}
 
 /-! ## 5. Multiplication by a constant `2 ^ a - 1`
 
-A multiply `x * c` whose operand `c` holds `2 ^ a - 1` with `2 ≤ a < w` is
-`(x <<< k) - x` when the definition table binds a variable `k` to the constant `a`
-(`mersenneAlt`): two register operations of cost one each against the multiply of cost four,
-so extraction takes the alternative (`mersenneAlt_cost`). The rule reads only constants the
-program already binds; it introduces no binding of the count. -/
+A multiply `x * c` at a width `w < 64` whose operand `c` holds `2 ^ a - 1` with
+`2 ≤ a < w` is `(x <<< k) - x` when the definition table binds a variable `k` to the constant
+`a` (`mersenneAlt`): two register operations of cost one each against the multiply of cost
+four, so extraction takes the alternative (`mersenneAlt_cost`). The rule reads only constants
+the program already binds; it introduces no binding of the count. A multiply of width `64` is
+kept: it is the low half of a widening product whose high half `mulhi` the x86 lowering fuses
+with it into one `MULX`, and a P-256 product by the limb `3` of `R ^ 2 mod p` rewritten to
+`(x <<< 2) - x` left its high half unfused. -/
 
 section Mersenne
 
 variable {Δ : Ctxt jasminDialect} {w : Nat}
 
-/-- The exponent `a` with `2 ≤ a < w` and `2 ^ a - 1 = n`, when there is one. -/
+/-- The exponent `a` with `2 ≤ a < w` and `2 ^ a - 1 = n`, when there is one and the width
+    `w` is below `64`, the width of the widening products of the x86 lowering. -/
 def asMersenne (w n : Nat) : Option Nat :=
-  (List.range w).find? (fun a => 2 ≤ a && 2 ^ a - 1 == n)
+  if w < 64 then (List.range w).find? (fun a => 2 ≤ a && 2 ^ a - 1 == n) else none
 
 theorem asMersenne_spec {w n a : Nat} (h : asMersenne w n = some a) :
     2 ≤ a ∧ a < w ∧ 2 ^ a - 1 = n := by
   unfold asMersenne at h
+  split at h
+  case isFalse => cases h
   have hm := List.mem_of_find?_eq_some h
   have hp := List.find?_some h
   simp only [Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at hp
   exact ⟨hp.1, List.mem_range.mp hm, hp.2⟩
+
+/-- **No exponent at width `64` or more**: the rule keeps every multiply of the widening
+    products of the x86 lowering. -/
+theorem asMersenne_of_le {w : Nat} (n : Nat) (h : 64 ≤ w) : asMersenne w n = none := by
+  simp [asMersenne, Nat.not_lt.mpr h]
 
 /-- A variable of the context `Δ` that the definition table binds to the register constant
     `regConst w n`, when the table has one. -/
