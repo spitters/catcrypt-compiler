@@ -877,7 +877,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.PastaMontMulKernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PhysExportCTBridge
 CatCrypt.Crypto.SecureCompilation.X86Backend.Poly1305Kernel
 CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedAddrWEncodable
-CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredLower
+CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredFuse
 CatCrypt.Crypto.SecureCompilation.X86Backend.RegAllocSpillLowerSeq
 CatCrypt.Crypto.SecureCompilation.X86Backend.RescheduleScratch
 CatCrypt.Crypto.SecureCompilation.X86Backend.RunBlockLsemAgreeMontMulBlock
