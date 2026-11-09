@@ -55,6 +55,11 @@ if [ -n "$staged_catcrypt" ]; then
   fi
 fi
 
+# A removed theorem, lemma, def, abbrev, structure, inductive, class or named instance
+# is declared elsewhere in the workspace after the commit, or has a row in
+# scripts/deletion-ledger.tsv naming a successor declaration or a decision file.
+bash scripts/deletion-gate.sh staged || exit 1
+
 # A new or deleted Lean file changes the import graph, so the build-root manifest
 # can go stale in the same commit. This is the only tree-wide check here; it is
 # a few seconds of grep and no build.
