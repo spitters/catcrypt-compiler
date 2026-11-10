@@ -1273,6 +1273,7 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDialectStep,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFront,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFrontRefusal,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldInlineOps,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances,
