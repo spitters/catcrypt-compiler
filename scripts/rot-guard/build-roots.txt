@@ -419,7 +419,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
 CatCrypt.Crypto.SecureCompilation.Haxc.DeriveAbiBounds
 CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
-CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomExport
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomCoalesce
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldLoopCT
