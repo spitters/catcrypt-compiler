@@ -431,7 +431,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt
+CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
