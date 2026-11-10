@@ -1235,6 +1235,7 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CTRegionsCallOut,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CTTotality,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CallsAll,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.CensusCore,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.ChainTotal,
