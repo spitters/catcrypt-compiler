@@ -370,22 +370,25 @@ structure FieldDomStages : Prop where
   refusal {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB e σ = true) :
     (HaxModule.single e).refusal? σ = none
   /-- Stage `F2`: on a module `refusal?` accepts, the translation and the chain `extChain`
-      return a program. Proved by row R2 from `HaxModule.refusal?_eq_none_imp_extChain_isSome`. -/
+      return a program. Proved as `fieldDom_chainNF` (`Haxc/FieldDomFront.lean`) from
+      `HaxModule.refusal?_eq_none_imp_extChain_isSome`. -/
   chainNF {m : HaxModule} {σ : AbiLayout} (hr : m.refusal? σ = none) :
     ∃ x, haxEntry.chainNF m σ = some x
   /-- Stage `F3`: the output of the chain on a module `refusal?` accepts passes
-      `regionExportableB`. Proved by row R2 from `HaxModule.refusal?_eq_none_imp_export_isSome`. -/
+      `regionExportableB`. Proved as `fieldDom_exportable` (`Haxc/FieldDomFront.lean`) from
+      `HaxModule.refusal?_eq_none_imp_export_isSome`. -/
   exportable {m : HaxModule} {σ : AbiLayout} {t : JasminTy}
     {q : NFProg jasminDialect (nfCtx σ) [t]} (hr : m.refusal? σ = none)
     (hq : haxEntry.chainNF m σ = some ⟨t, q⟩) : regionExportableB q = true
   /-- Stage `F4` is `NarrowWords.narrowPrep_of_exportable`. Stage `F5`: the legalised program
-      passes `regionExportableB`. Proved by row R2 from `regionExportableB_legalizeRegion` and
-      `regionExportableRorB_eq`. -/
+      passes `regionExportableB`. Proved as `fieldDom_legalize` (`Haxc/FieldDomFront.lean`) from
+      `regionExportableB_legalizeRegion` and `regionExportableRorB_eq`. -/
   legalize {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} (hq : regionExportableB q = true) :
     regionExportableB (legalizeRegion q) = true
   /-- Stage `F6`: the export returns code on a program that passes `regionExportableB`. Proved
-      by row R2 from `exportR_isSome_of_regionExportableB`. -/
+      as `fieldDom_exportRSome` (`Haxc/FieldDomFront.lean`) from
+      `exportR_isSome_of_regionExportableB`. -/
   exportRSome {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {q : NFProg jasminDialect Γ ts} (hq : regionExportableB q = true) (nArgs : Nat)
     (fn : String) (d n : Nat) : ∃ r0, exportR nArgs fn q d n = some r0
@@ -395,12 +398,14 @@ structure FieldDomStages : Prop where
     {q : NFProg jasminDialect (nfCtx σ) [t]} (h : fieldDomB e σ = true)
     (hq : haxEntry.chainNF (HaxModule.single e) σ = some ⟨t, q⟩) : q.callFree = true
   /-- Stage `F8`: the allocation `regionLprogC` returns a program when the export does. Proved
-      by row R2 from `regionLprog_isSome_iff_exportR`. -/
+      as `fieldDom_regionLprogCSome` (`Haxc/FieldDomFront.lean`), as in
+      `regionLprog_isSome_iff_exportR`. -/
   regionLprogCSome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {r0 : Exported} (ex : List String)
     (hr0 : exportR Γ.length a.fname q Γ.length 0 = some r0) :
     ∃ P cert, regionLprogC a q none ex = some (P, cert)
-  /-- Stage `F9`: the printed program of an allocation has a first body. Proved by row R2. -/
+  /-- Stage `F9`: the printed program of an allocation has a first body. Proved as `fieldDom_firstBodySome`
+      (`Haxc/FieldDomFront.lean`). -/
   firstBodySome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {ex : List String} {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a q none ex = some (P, cert)) :
