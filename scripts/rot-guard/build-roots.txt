@@ -635,7 +635,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.LaneMapYmmW
 CatCrypt.Crypto.SecureCompilation.VIR.LaneWiseEmit
 CatCrypt.Crypto.SecureCompilation.VIR.LanesRepFamily
 CatCrypt.Crypto.SecureCompilation.VIR.LatticeLoopHoist
-CatCrypt.Crypto.SecureCompilation.VIR.LcmdRustM
+CatCrypt.Crypto.SecureCompilation.VIR.LcmdRustMKernels
 CatCrypt.Crypto.SecureCompilation.VIR.LeafAxiomConsolidation
 CatCrypt.Crypto.SecureCompilation.VIR.LinMapSLP
 CatCrypt.Crypto.SecureCompilation.VIR.LoopInvariantHoist
