@@ -1,0 +1,6 @@
+# Generated umbrella and collection modules: a header, import lines and a trailer.
+# `catcrypt-umbrella` names an opt-in local merge driver that merges the import lines three ways
+# as sets and writes them in the form of the umbrella generator. Where the driver is not
+# registered (on GitHub, in another clone) git uses its ordinary text merge.
+/CatCrypt/Crypto/SecureCompilation/VIR/LsemPortAll.lean merge=catcrypt-umbrella
+/HaxAscent/RustSemantics.lean merge=catcrypt-umbrella

@@ -94,9 +94,13 @@ jobs:
         run: bash scripts/lint-lean-prose.sh --docs
 
       - name: Added Lean files carry clean prose and a Main results section
+        # The base is the first parent of the checked-out commit. On a pull request that
+        # commit is the test merge, whose first parent is the base branch tip it was made
+        # from; `pull_request.base.sha` can be an older tip, and the diff would then count
+        # later base-branch commits as part of the pull request. On a push it is the
+        # previous commit.
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$base" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || true)"; fi
+          base="$(git rev-parse HEAD^1 2>/dev/null || true)"
           if [ -z "$base" ]; then echo "no base commit; nothing added to check"; exit 0; fi
           added="$(git diff --name-only --diff-filter=A "$base" HEAD -- '*.lean' || true)"
           if [ -z "$added" ]; then echo "no added Lean files"; exit 0; fi
@@ -109,10 +113,10 @@ jobs:
       - name: No new proof-cost anti-pattern in changed modules (build-cost static lint)
         # Static half only (no toolchain): a new native_decide in a reflection/emit
         # front module, or a new maxRecDepth/maxHeartbeats budget on a proof, in a
-        # module changed since the branch base.
+        # module changed since the branch base (the first parent of the checked-out
+        # commit, as in the step above).
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          if [ -z "$base" ]; then base="$(git rev-parse HEAD~1 2>/dev/null || true)"; fi
+          base="$(git rev-parse HEAD^1 2>/dev/null || true)"
           if [ -z "$base" ]; then echo "no base commit; nothing changed to check"; exit 0; fi
           changed="$(git diff --name-only --diff-filter=ACM "$base" HEAD -- 'CatCrypt/**/*.lean' || true)"
           if [ -z "$changed" ]; then echo "no changed CatCrypt modules"; exit 0; fi
@@ -178,7 +182,15 @@ jobs:
         run: lake update
 
       - name: Fetch prebuilt mathlib cache
-        run: lake exe cache get
+        # A failed download fails the build step outright, so the fetch is tried three
+        # times, 30 s and 60 s apart.
+        run: |
+          for i in 1 2 3; do
+            if lake exe cache get; then exit 0; fi
+            echo "::warning::lake exe cache get failed (attempt $i of 3)"
+            if [ "$i" -lt 3 ]; then sleep $((30 * i)); fi
+          done
+          exit 1
 
       # The package and its non-mathlib deps rebuild from source; on a 16 GB
       # runner a cold full build can exceed the VM. The cache ratchets progress
