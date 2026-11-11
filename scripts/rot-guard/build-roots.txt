@@ -414,6 +414,7 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
+CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
@@ -431,8 +432,9 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeBack
-CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeNarrow
+CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeGoodCall
+CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeStatements
+CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionAllocMapFinal
