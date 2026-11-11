@@ -3617,6 +3617,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Deep.HybridDemo,
     Lake.Glob.one `CatCrypt.Deep.ReflectOracleDemo,
     Lake.Glob.one `CatCrypt.Hax.ClassBuiltinsTest,
+    Lake.Glob.one `CatCrypt.Hax.ReifyFieldArrayTest,
     Lake.Glob.one `CatCrypt.Hax.ReifyImpDecodeEndToEnd,
     Lake.Glob.one `CatCrypt.Hax.ReifyImpEndToEnd,
     Lake.Glob.one `CatCrypt.Tactics.BvToNatE2ETest,

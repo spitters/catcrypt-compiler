@@ -27,7 +27,10 @@ rewrites of that body:
   `Sub.sub`, `Mul.mul`) or of `-` (as `Neg.neg`) at a type `ZMod n`, with `n` evaluated to a
   literal at least `2`, is read as the call of the tagged head `FieldTag.fieldHead m n` of
   the method `m`, the head `<method>#p<modulus>` of the builtin table `Hax.hax64Builtins`;
-* a numeral `k : ZMod n` is read as the integer literal `.lit (.int (k % n))`.
+* a numeral `k : ZMod n` is read as the integer literal `.lit (.int (k % n))`;
+* an application `Hax.index a i` or `Hax.array_update a i v` at an element type `ZMod n` with
+  `n < 2^64` is read as the call `index` or `array_update` (`arrOp?`), the names of the hax
+  runtime table `runtimeBuiltins`, whose leaves are `Hax.index` and `Hax.array_update`.
 
 A counted fold `Hax.foldRange lo hi init step` (or `Hax.foldRangeRev`) with one accumulator,
 on the `let` spine of the body or of a loop body or in tail position, is read as
@@ -45,7 +48,8 @@ their `_wide` forms state that the table answers a tagged head on encoded elemen
 encoding of the field operation.
 
 `ImpExpr.toTExpr Γ e` lifts a literal to a typed expression whose erasure is `e`
-(`erase_toTExpr`), typing a narrow field call as one `u64` word.
+(`erase_toTExpr`), typing a narrow field call as one `u64` word, `index` on an array of type
+`.array t n` as `t` and `array_update` as the type of its array (`callTy`).
 
 ## Main definitions
 
@@ -65,6 +69,10 @@ encoding of the field operation.
   `hax64Builtins_zmod_neg` — the table answers the tagged heads on encoded elements
 * `hax64Builtins_zmod_add_wide`, `hax64Builtins_zmod_sub_wide`, `hax64Builtins_zmod_mul_wide`,
   `hax64Builtins_zmod_neg_wide` — the same at a modulus `p ≥ 2^64`, on limb arrays
+* `runtimeBuiltins_zmod_add`, `_sub`, `_mul`, `_neg` — the same in the runtime table
+  `runtimeBuiltins`
+* `runtimeBuiltins_index_zmod` — the runtime table answers `index` on an encoded array of
+  elements at a modulus below `2^64` by the encoding of `Hax.index`, at every index
 * `hax64Builtins_mul_babyBear` and its siblings — the same at the BabyBear heads, in the
   form the ascent generator indexes
 * `erase_toTExpr` — the erasure of the lift is the literal
@@ -229,6 +237,57 @@ def replaceOps (ops : List (Expr × _root_.Hax.FieldTag.FieldMethod × Nat × St
       return .done (← mkNumeral (mkConst ``Int) r)
     return .continue)
 
+/-- An application `Hax.index a i` (`false`) or `Hax.array_update a i v` (`true`) at an element
+    type `ZMod n` with `n` a literal in `[2, 2^64)`: whether it is an update, the element type
+    and the operands. -/
+def arrOp? (e : Expr) : MetaM (Option (Bool × Expr × Array Expr)) := do
+  if e.isAppOfArity ``Hax.index 4 then
+    let ty := e.getArg! 0
+    if let some n ← zmodModulus? ty then
+      if n < 2 ^ 64 then return some (false, ty, #[e.getArg! 2, e.getArg! 3])
+  if e.isAppOfArity ``Hax.array_update 4 then
+    let ty := e.getArg! 0
+    if let some n ← zmodModulus? ty then
+      if n < 2 ^ 64 then return some (true, ty, #[e.getArg! 1, e.getArg! 2, e.getArg! 3])
+  return none
+
+/-- The array operations of `e`, without repetition: whether an update, and the element
+    type. -/
+def collectArrOps (e : Expr) : MetaM (Array (Bool × Expr)) := do
+  let r ← IO.mkRef (#[] : Array (Bool × Expr))
+  discard <| Meta.transform e (pre := fun t => do
+    if let some (u, ty, _) ← arrOp? t then
+      unless (← r.get).any (fun (u', ty') => u' == u && ty' == ty) do
+        r.modify (·.push (u, ty))
+    return .continue)
+  r.get
+
+/-- The call name of an array operation: `array_update` for an update, `index` for a read. -/
+def arrHead (u : Bool) : String := if u then "array_update" else "index"
+
+/-- Run `k` with one local operation per entry of `ops`, of type `Array ty → Int → ty` for a
+    read and `Array ty → Int → ty → Array ty` for an update; `k` receives the free variables,
+    each with its kind and element type. -/
+partial def withArrOps {α : Type} (ops : List (Bool × Expr))
+    (k : List (Expr × Bool × Expr) → MetaM α) : MetaM α :=
+  match ops with
+  | [] => k []
+  | (u, ty) :: rest => do
+    let aty ← mkAppM ``Array #[ty]
+    let int := Lean.mkConst ``Int
+    let fty ← if u then do mkArrow aty (← mkArrow int (← mkArrow ty aty))
+      else do mkArrow aty (← mkArrow int ty)
+    withLocalDeclD (Name.mkSimple (arrHead u)) fty fun x =>
+      withArrOps rest fun xs => k ((x, u, ty) :: xs)
+
+/-- The body `e` with every array operation `arrOp?` replaced by its local operation. -/
+def replaceArrOps (ops : List (Expr × Bool × Expr)) (e : Expr) : MetaM Expr :=
+  Meta.transform e (pre := fun t => do
+    if let some (u, ty, args) ← arrOp? t then
+      if let some (x, _) := ops.find? (fun (_, u', ty') => u' == u && ty' == ty) then
+        return .visit (mkAppN x args)
+    return .continue)
+
 /-- A counted fold `Hax.foldRange lo hi init step` (`false`) or
     `Hax.foldRangeRev lo hi init step` (`true`): its direction, bounds, initial value and
     step. -/
@@ -340,21 +399,27 @@ def reifyFieldConst (c : Name) (n : Nat) (us : Array Name) : MetaM Expr := do
       else
         ctx := { ctx with vars := ctx.vars.insert x.fvarId! s }
     let body := reduceProjs (← unfoldListed us body)
-    let fops ← collectOps body
-    withOps fops.toList fun ops => do
-      let body ← replaceOps ops body
-      let mut ctx := ctx
-      for (x, _, _, h) in ops do
-        ctx := { ctx with ops := ctx.ops.insert x.fvarId! h }
-      (reifyL ctx body).run' (used ++ ops.map (·.2.2.2))
+    let aops ← collectArrOps body
+    withArrOps aops.toList fun aps => do
+      let body ← replaceArrOps aps body
+      let fops ← collectOps body
+      withOps fops.toList fun ops => do
+        let body ← replaceOps ops body
+        let mut ctx := ctx
+        for (x, u, _) in aps do
+          ctx := { ctx with ops := ctx.ops.insert x.fvarId! (arrHead u) }
+        for (x, _, _, h) in ops do
+          ctx := { ctx with ops := ctx.ops.insert x.fvarId! h }
+        (reifyL ctx body).run' (used ++ ops.map (·.2.2.2))
 
 /-- `reifyField% n f unfolding c₁ … cₖ` is the `ImpExpr` literal of the body of `f` over its
     last `n` explicit parameters, as `reifyImp%`, with the constants `cᵢ` unfolded, the
     projections of tuples and of `let`s reduced and unused `let`s dropped (`reduceProjs`), the
     operations `+`, `-`, `*` and negation at `ZMod p` read as the calls of the tagged heads
-    `FieldTag.fieldHead m p`, a numeral `k : ZMod p` read as the literal `k % p`, and a
-    counted fold `Hax.foldRange` read as a loop (`reifyFold`). Without `n`, every explicit
-    binder is a parameter. -/
+    `FieldTag.fieldHead m p`, a numeral `k : ZMod p` read as the literal `k % p`,
+    `Hax.index` and `Hax.array_update` on `Array (ZMod p)` at `p < 2^64` read as the calls
+    `index` and `array_update`, and a counted fold `Hax.foldRange` read as a loop
+    (`reifyFold`). Without `n`, every explicit binder is a parameter. -/
 syntax (name := reifyFieldStx) "reifyField% " (num)? ident (" unfolding " ident+)? : term
 
 @[term_elab reifyFieldStx]
@@ -543,6 +608,47 @@ theorem hax64Builtins_zmod_neg_wide (ht : fieldTag? f = some (.neg, p)) (hp : 2 
 
 end Leaves
 
+/-! ## The runtime table at the tagged heads and at the array operations -/
+
+section RuntimeLeaves
+
+variable {p : ℕ} [NeZero p] {f : String} (base : Builtins)
+
+/-- The runtime table answers the tagged head of `add` by the encoding of the sum. -/
+theorem runtimeBuiltins_zmod_add (ht : fieldTag? f = some (.add, p)) (hp : p < 2 ^ 64)
+    (x y : ZMod p) : runtimeBuiltins base f [enc x, enc y] = some (enc (x + y)) := by
+  rw [runtimeBuiltins_eq_hax64Builtins_of_fieldTag? base ht, hax64Builtins_zmod_add ht hp]
+
+/-- The runtime table answers the tagged head of `mul` by the encoding of the product. -/
+theorem runtimeBuiltins_zmod_mul (ht : fieldTag? f = some (.mul, p)) (hp : p < 2 ^ 64)
+    (x y : ZMod p) : runtimeBuiltins base f [enc x, enc y] = some (enc (x * y)) := by
+  rw [runtimeBuiltins_eq_hax64Builtins_of_fieldTag? base ht, hax64Builtins_zmod_mul ht hp]
+
+/-- The runtime table answers the tagged head of `sub` by the encoding of the difference. -/
+theorem runtimeBuiltins_zmod_sub (ht : fieldTag? f = some (.sub, p)) (hp : p < 2 ^ 64)
+    (x y : ZMod p) : runtimeBuiltins base f [enc x, enc y] = some (enc (x - y)) := by
+  rw [runtimeBuiltins_eq_hax64Builtins_of_fieldTag? base ht, hax64Builtins_zmod_sub ht hp]
+
+/-- The runtime table answers the tagged head of `neg` by the encoding of the negation. -/
+theorem runtimeBuiltins_zmod_neg (ht : fieldTag? f = some (.neg, p)) (hp : p < 2 ^ 64)
+    (x : ZMod p) : runtimeBuiltins base f [enc x] = some (enc (-x)) := by
+  rw [runtimeBuiltins_eq_hax64Builtins_of_fieldTag? base ht, hax64Builtins_zmod_neg ht hp]
+
+omit [NeZero p] in
+/-- At a modulus below `2^64` the runtime table answers `index` on an encoded array of field
+    elements by the encoding of `Hax.index`, at every index: on the empty array both are the
+    integer `0`, the encoding of the default element. -/
+theorem runtimeBuiltins_index_zmod (hp : p < 2 ^ 64) (a : Array (ZMod p)) (i : Int) :
+    runtimeBuiltins base "index" [enc a, .int i] = some (enc (_root_.Hax.index a i)) := by
+  rcases Nat.eq_zero_or_pos a.size with h | h
+  · obtain rfl : a = #[] := Array.eq_empty_of_size_eq_zero h
+    rw [runtimeBuiltins_of_lookup rfl, enc_zmod hp]
+    unfold indexLeaf
+    simp [indexVals, _root_.Hax.index, show (default : ZMod p) = 0 from rfl]
+  · exact RuntimeOps.index_pos a h i
+
+end RuntimeLeaves
+
 end CatCrypt.Hax.ReifyField
 
 /-! ## The lift to typed expressions -/
@@ -556,6 +662,15 @@ def fieldCallTy (f : String) : ImpType :=
   match FieldTag.fieldTag? f with
   | some (_, p) => if p < 2 ^ 64 then .uint .w64 else .array (.uint .w64) (FieldTag.fieldLimbs p)
   | none => .unknown
+
+/-- The type of a call of the head `f` on arguments of the types `ts`: `index` on an array of
+    type `.array t n` has the element type `t`, `array_update` on an array has the type of the
+    array, and every other head has the type `fieldCallTy f`. -/
+def callTy (f : String) (ts : List ImpType) : ImpType :=
+  match f, ts with
+  | "index", [.array t _, _] => t
+  | "array_update", [.array t n, _, _] => .array t n
+  | _, _ => fieldCallTy f
 
 /-- The type of a literal: an integer literal is one `u64` word. -/
 def litTy : ImpLit → ImpType
@@ -592,7 +707,7 @@ def ImpExpr.toTExpr (Γ : List (String × ImpType)) : ImpExpr → Option TExpr
       some ⟨.lam ps b', .unknown⟩
   | .app f args => do
       let as ← ImpExpr.toTExprList Γ args
-      some ⟨.app f as, fieldCallTy f⟩
+      some ⟨.app f as, callTy f (as.map TExpr.ty)⟩
   | .tuple es => do
       let as ← ImpExpr.toTExprList Γ es
       some ⟨.tuple as, .tuple (as.map TExpr.ty)⟩
