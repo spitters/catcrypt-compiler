@@ -42,8 +42,9 @@ also forgets every slot name, since a `MOVQ` to a slot gathers to such a store.
 `foldCore` threads the environment through the body, reading the gathered block of
 each instruction. Besides the indexed accesses, the fold rewrites a `MOV:64` copy of a
 known slot value into a general-purpose register as the immediate move of that value,
-which the dead-move elimination can then remove. A copy whose next instruction reads its
-destination as a carry-in (`carryCopyB`) stays a copy: `foldCore` rewrites it under the empty
+which the dead-move elimination can then remove. A copy whose destination is read as a
+carry-in by the first later instruction that names it (`carryCopyB`) stays a copy: `foldCore`
+rewrites it under the empty
 environment (`foldEnv`), so that a one-bit carry constant spilled to a slot keeps its width in
 the register it is reloaded into.
 
@@ -504,20 +505,59 @@ def nextEnv (p : Nat × Nat × Nat) (env : KEnv) (i : Linstr) : KEnv :=
         | .Lopn d _ _ => env.killAll (d.flatMap dstOpNames)
         | _ => []
 
-/-- The first instruction of `is` reads `d` as the carry-in of a carry-chain add `ADCX:64` or
-    of its carry-out binding `ADCXHI:64` on three register sources. -/
+/-- The register names an operand mentions: a plain register, the base of an array
+    element, and the base and index of a SIB element. -/
+def opNames : LOperand → List String
+  | .reg r => [r]
+  | .arr b _ => [b]
+  | .arrIdx b x _ => [b, x]
+  | .imm _ => []
+
+/-- The carry-in reading of `d` by one instruction: `none` for an `Lopn` none of whose
+    operands names `d`; for an `Lopn` that names `d`, whether it reads `d` at width one, as the
+    carry-in of a carry-chain add `ADCX:64` or of its carry-out binding `ADCXHI:64` on three
+    register sources; `some false` for every other instruction. -/
+def carryStep (d : String) : LinstrR → Option Bool
+  | .Lopn ds o ss =>
+      if (ds ++ ss).any (fun op => (opNames op).contains d) then
+        some (match ds, ss with
+          | [.reg _], [.reg _, .reg _, .reg c] => (o == "ADCX:64" || o == "ADCXHI:64") && c == d
+          | _, _ => false)
+      else none
+  | _ => some false
+
+/-- The carry-in reading of an `Lopn` whose mnemonic is neither `ADCX:64` nor `ADCXHI:64` does
+    not depend on its mnemonic. -/
+theorem carryStep_lopn_of_not_adcx (d : String) (ds ss : List LOperand) {o o' : String}
+    (ho : (o == "ADCX:64" || o == "ADCXHI:64") = false)
+    (ho' : (o' == "ADCX:64" || o' == "ADCXHI:64") = false) :
+    carryStep d (.Lopn ds o ss) = carryStep d (.Lopn ds o' ss) := by
+  simp only [carryStep]
+  split
+  · split <;> grind
+  · rfl
+
+/-- The first instruction of `is` that names `d` reads `d` as a carry-in (`carryStep`); the
+    instructions before it are `Lopn`s that do not name `d`. -/
 def carryNextB (d : String) : Lcmd → Bool
-  | j :: _ =>
-      match j.li_i with
-      | .Lopn [.reg _] o [.reg _, .reg _, .reg c] =>
-          (o == "ADCX:64" || o == "ADCXHI:64") && c == d
-      | _ => false
+  | j :: js =>
+      match carryStep d j.li_i with
+      | some b => b
+      | none => carryNextB d js
   | [] => false
 
-/-- A carry-in reload: a 64-bit copy `MOV:64 d, x` whose next instruction in `is` reads `d` as
-    a carry-in (`carryNextB`). The fold keeps it a copy, which gives `d` the value of `x` at the
-    width of that value, so that a one-bit carry constant spilled to `x` is a one-bit value in
-    `d`. -/
+/-- `carryNextB` is unchanged by a map that keeps the carry-in reading of each instruction. -/
+theorem carryNextB_map (d : String) (f : Linstr → Linstr)
+    (hf : ∀ j, carryStep d (f j).li_i = carryStep d j.li_i) (is : Lcmd) :
+    carryNextB d (is.map f) = carryNextB d is := by
+  induction is with
+  | nil => rfl
+  | cons j js ih => simp only [List.map_cons, carryNextB, hf, ih]
+
+/-- A carry-in reload: a 64-bit copy `MOV:64 d, x` such that the first instruction of `is`
+    naming `d` reads `d` as a carry-in (`carryNextB`). The fold keeps it a copy, which gives `d`
+    the value of `x` at the width of that value, so that a one-bit carry constant spilled to `x`
+    is a one-bit value in `d`. -/
 def carryCopyB (i : LinstrR) (is : Lcmd) : Bool :=
   match i with
   | .Lopn [.reg d] "MOV:64" [.reg _] => carryNextB d is
@@ -562,9 +602,9 @@ theorem foldEnv_append_ret (env : KEnv) (i : LinstrR) (is : Lcmd) (ii : Nat) :
     foldEnv env i (is ++ [⟨ii, .Lret⟩]) = foldEnv env i is := by
   have hn : ∀ d, carryNextB d (is ++ [⟨ii, .Lret⟩]) = carryNextB d is := by
     intro d
-    cases is with
+    induction is with
     | nil => rfl
-    | cons j js => rfl
+    | cons j js ih => simp only [List.cons_append, carryNextB, ih]
   have hc : carryCopyB i (is ++ [⟨ii, .Lret⟩]) = carryCopyB i is := by
     unfold carryCopyB
     split <;> simp [hn]

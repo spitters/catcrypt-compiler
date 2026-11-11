@@ -136,7 +136,7 @@ def FoldOK (j : Linstr) : Prop :=
 
 /-- The names of an operation. -/
 theorem mem_instrNames_lopn {ds ss : List LOperand} {o n : String} :
-    n ∈ instrNames (.Lopn ds o ss) ↔ (∃ a ∈ ds, n ∈ opNames a) ∨ ∃ a ∈ ss, n ∈ opNames a := by
+    n ∈ instrNames (.Lopn ds o ss) ↔ (∃ a ∈ ds, n ∈ JasminLsemExportRewrites.opNames a) ∨ ∃ a ∈ ss, n ∈ JasminLsemExportRewrites.opNames a := by
   simp only [instrNames, List.mem_flatMap, List.mem_append]
   constructor
   · rintro ⟨a, ha | ha, hn⟩
@@ -185,7 +185,7 @@ theorem stackReadFreeB_of_namesOK {b : Lcmd} (h : ∀ j ∈ b, NamesOK j) :
           · simp only [Option.some.injEq, Prod.mk.injEq] at hs
             obtain ⟨-, rfl⟩ := hs
             rw [he]
-            simp [instrNames, opNames]
+            simp [instrNames, JasminLsemExportRewrites.opNames]
         · cases hs
       · cases hs
     simp [(h j hj s hn).2]
@@ -223,7 +223,7 @@ theorem stepLoad_env_good (h : LoadEnv) (i : Linstr) (hh : ∀ p ∈ h, GoodName
       ⟨hmem, _⟩ | rfl
     · exact hh p (mem_killReg (mem_killSlot hmem).1).1
     · obtain ⟨he, -⟩ := asWideReload_eq hr
-      exact hi d (by rw [he]; simp [instrNames, opNames])
+      exact hi d (by rw [he]; simp [instrNames, JasminLsemExportRewrites.opNames])
 
 /-- The instruction of the load CSE at a good instruction under good holders is good before
     the fold, when the instruction is. -/
@@ -236,10 +236,10 @@ theorem stepLoad_foldOK (h : LoadEnv) (i : Linstr) (hh : ∀ p ∈ h, GoodName p
     have hr : GoodName r := hh (s, r)
       (CatCrypt.Crypto.SecureCompilation.VIR.LprogStoreToLoad.mem_of_find hf)
     refine foldOK_of_reg (fun n hn => ?_) (fun ds o ss he' a ha' => ?_)
-    · simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+    · simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
         List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
       rcases hn with rfl | rfl
-      · exact hi.1 n (by rw [hw]; simp [instrNames, opNames])
+      · exact hi.1 n (by rw [hw]; simp [instrNames, JasminLsemExportRewrites.opNames])
       · exact hr
     · simp only [LinstrR.Lopn.injEq] at he'
       obtain ⟨-, -, rfl⟩ := he'
@@ -295,10 +295,10 @@ theorem foldOK_rwClosed : RwClosed FoldOK := by
       · cases hga : g a with
         | reg s =>
           rw [hga] at hf hn
-          simp only [opNames, List.mem_singleton] at hn
+          simp only [JasminLsemExportRewrites.opNames, List.mem_singleton] at hn
           subst hn
           exact goodName_of_physGP hf
-        | imm _ => rw [hga] at hn; simp [opNames] at hn
+        | imm _ => rw [hga] at hn; simp [JasminLsemExportRewrites.opNames] at hn
         | arr _ _ => rw [hga] at hf; cases hf
         | arrIdx _ _ _ => rw [hga] at hf; cases hf
   all_goals
@@ -356,11 +356,11 @@ theorem foldOK_constIndexFoldBody {b : Lcmd} (h : ∀ j ∈ b, FoldOK j) :
       refine ⟨fun n hn => hi.1 n ?_, fun _ _ _ _ he' => by simp at he',
         fun _ _ _ _ _ he' => by simp at he', fun d' B' off' he' => ?_,
         fun _ _ _ _ he' => by simp at he'⟩
-      · simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+      · simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
           List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
         subst hn
         rw [he]
-        simp [instrNames, opNames]
+        simp [instrNames, JasminLsemExportRewrites.opNames]
       · simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.arr.injEq] at he'
         rw [← he'.2.2.1.1, hB]
     · rw [hf]
@@ -368,10 +368,10 @@ theorem foldOK_constIndexFoldBody {b : Lcmd} (h : ∀ j ∈ b, FoldOK j) :
       refine ⟨fun n hn => hi.1 n ?_, fun _ _ _ _ he' => by simp at he',
         fun _ _ _ _ _ he' => by simp at he', fun _ _ _ he' => by simp at he',
         fun d' B' off' vn' he' => ?_⟩
-      · simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+      · simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
           List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
         rw [he]
-        simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+        simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
           List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false]
         tauto
       · simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.arr.injEq] at he'
@@ -380,11 +380,11 @@ theorem foldOK_constIndexFoldBody {b : Lcmd} (h : ∀ j ∈ b, FoldOK j) :
       refine ⟨fun n' hn => hi.1 n' ?_, fun _ _ _ _ he' => by simp at he',
         fun _ _ _ _ _ he' => by simp at he', fun _ _ _ he' => by simp at he',
         fun _ _ _ _ he' => by simp at he'⟩
-      simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+      simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
         List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
       subst hn
       rw [he]
-      simp [instrNames, opNames]
+      simp [instrNames, JasminLsemExportRewrites.opNames]
   · exact h j hj
 
 /-- **The fold, the dead-move elimination and the spelling give good instructions** on a
@@ -405,21 +405,21 @@ theorem namesOK_foldIndexedBody {b : Lcmd} (h : ∀ j ∈ b, FoldOK j) :
     intro n hn
     dsimp only at hn
     rw [hs] at hn
-    simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+    simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
       List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl
-    · exact hi'.1 n (by rw [he]; simp [instrNames, opNames])
+    · exact hi'.1 n (by rw [he]; simp [instrNames, JasminLsemExportRewrites.opNames])
     · exact goodName_memName_R14 off
   · have hB : B = "R14" := hi'.2.2.2.2 _ _ _ _ he
     subst hB
     intro n hn
     dsimp only at hn
     rw [hs] at hn
-    simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+    simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
       List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false] at hn
     rcases hn with rfl | rfl
     · exact goodName_memName_R14 off
-    · exact hi'.1 n (by rw [he]; simp [instrNames, opNames])
+    · exact hi'.1 n (by rw [he]; simp [instrNames, JasminLsemExportRewrites.opNames])
 
 end Fold
 
@@ -434,8 +434,8 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocLeak (Piece.toLc
 
 /-- The names of a fragment instruction: its destination and the names of its sources. -/
 theorem mem_instrNames_toL {i : FI} {n : String} :
-    n ∈ instrNames i.toL.li_i ↔ n = i.d ∨ ∃ a ∈ i.srcs, n ∈ opNames a := by
-  simp [FI.toL, FI.toR, instrNames, opNames, List.mem_flatMap]
+    n ∈ instrNames i.toL.li_i ↔ n = i.d ∨ ∃ a ∈ i.srcs, n ∈ JasminLsemExportRewrites.opNames a := by
+  simp [FI.toL, FI.toR, instrNames, JasminLsemExportRewrites.opNames, List.mem_flatMap]
 
 /-- A map of locations whose values are good. -/
 def CurGood (m : Cur) : Prop := ∀ k v : String, (m[k]? : Option String) = some v → GoodName v
@@ -462,15 +462,15 @@ theorem look_cases {m : Cur} (hm : CurGood m) (n : String) : look m n = n ∨ Go
 
 /-- The names of a renamed operand are names of the operand or good names. -/
 theorem opNames_renOp {m : Cur} (hm : CurGood m) {abi : IsaAbi} (a : LOperand) :
-    ∀ n ∈ opNames (renOp m a abi), n ∈ opNames a ∨ GoodName n := by
+    ∀ n ∈ JasminLsemExportRewrites.opNames (renOp m a abi), n ∈ JasminLsemExportRewrites.opNames a ∨ GoodName n := by
   intro n hn
   cases a with
   | reg x =>
     by_cases hl : isLoc x abi = true
-    · simp only [renOp, hl, ite_true, opNames, List.mem_singleton] at hn
+    · simp only [renOp, hl, ite_true, JasminLsemExportRewrites.opNames, List.mem_singleton] at hn
       subst hn
       rcases look_cases hm x with h | h
-      · exact Or.inl (by rw [h]; simp [opNames])
+      · exact Or.inl (by rw [h]; simp [JasminLsemExportRewrites.opNames])
       · exact Or.inr h
     · simp only [renOp, hl, Bool.false_eq_true, ite_false] at hn
       exact Or.inl hn
@@ -614,7 +614,7 @@ theorem names_of_subset {ds ss ds' ss' : List LOperand} {o o' : String} {X : Lis
   rcases List.mem_append.mp (h ha) with h1 | h1
   · exact Or.inl (List.mem_flatMap.mpr ⟨a, h1, hn⟩)
   · obtain ⟨x, hx, rfl⟩ := List.mem_map.mp h1
-    simp only [opNames, List.mem_singleton] at hn
+    simp only [JasminLsemExportRewrites.opNames, List.mem_singleton] at hn
     subst hn
     exact Or.inr hx
 
@@ -811,7 +811,7 @@ theorem envGood_scratchStep {env : ScratchEnv} (h : EnvGood env) {i : Linstr} (h
           split
           · refine envGood_bind he' (goodName_scratchResolve h (hi sn ?_))
             rw [he]
-            simp [instrNames, opNames]
+            simp [instrNames, JasminLsemExportRewrites.opNames]
           · exact envGood_kill he' _
         · exact envGood_kill he' _
       · exact he'
@@ -834,12 +834,12 @@ theorem foldOK_emit {ii : Nat} {ds : List LOperand} {o y : String}
   refine foldOK_of_reg (fun n hn => ?_) (fun ds' o' ss he a ha => ?_)
   · rcases mem_instrNames_lopn.mp hn with ⟨a, ha, hn⟩ | ⟨a, ha, hn⟩
     · obtain ⟨x, rfl, hx⟩ := hds a ha
-      simp only [opNames, List.mem_singleton] at hn
+      simp only [JasminLsemExportRewrites.opNames, List.mem_singleton] at hn
       subst hn
       exact hx
     · simp only [List.mem_singleton] at ha
       subst ha
-      simp only [opNames, List.mem_singleton] at hn
+      simp only [JasminLsemExportRewrites.opNames, List.mem_singleton] at hn
       subst hn
       exact hy
   · simp only [LinstrR.Lopn.injEq] at he
@@ -908,7 +908,7 @@ theorem foldOK_fuseMulHiAux : ∀ (b : Lcmd) (env : ScratchEnv) (pend : List (St
         intro n hn
         refine hi.1 n ?_
         rw [heq]
-        simp only [instrNames, opNames, List.cons_append, List.nil_append, List.flatMap_cons,
+        simp only [instrNames, JasminLsemExportRewrites.opNames, List.cons_append, List.nil_append, List.flatMap_cons,
           List.flatMap_nil, List.append_nil, List.mem_cons, List.not_mem_nil, or_false]
         tauto
       have hd := hn d (Or.inl rfl)

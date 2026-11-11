@@ -305,15 +305,13 @@ theorem nextEnv_normI (p : Nat × Nat × Nat) (env : KEnv) {j : Linstr}
 /-- The carry-in test of the fold does not see the width reading. -/
 theorem carryNextB_map_normI (d : String) (rest : Lcmd) :
     carryNextB d (rest.map normI) = carryNextB d rest := by
-  cases rest with
-  | nil => rfl
-  | cons j rest =>
-    have e : (normI j).li_i = normMulx j.li_i := rfl
-    simp only [List.map_cons, carryNextB, e]
-    rcases normMulx_cases j.li_i with h | ⟨ds, ss, h0, h⟩
-    · rw [h]
-    · rw [h, h0]
-      split <;> split <;> grind
+  refine carryNextB_map d normI (fun j => ?_) rest
+  have e : (normI j).li_i = normMulx j.li_i := rfl
+  rw [e]
+  rcases normMulx_cases j.li_i with h | ⟨ds, ss, h0, h⟩
+  · rw [h]
+  · rw [h, h0]
+    exact carryStep_lopn_of_not_adcx d ds ss (by decide) (by decide)
 
 /-- The carry-in reloads of the fold do not see the width reading. -/
 theorem foldEnv_normI (env : KEnv) (j : Linstr) (rest : Lcmd) :
