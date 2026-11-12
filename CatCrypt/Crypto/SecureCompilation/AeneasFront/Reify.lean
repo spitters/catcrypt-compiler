@@ -1771,6 +1771,30 @@ meta def indexedStep (F σ itE : Expr) (ib : Expr → Expr → MetaM Expr) :
       return (← mkLambdaFVars #[acc, i] g, ← mkLambdaFVars #[acc, i, r] (← mkEqTrans hib pg))
   return (K, f, hF, hnone, hsome)
 
+/-- The namespace of the structure instances of `AeneasFront/Structs.lean`, which a module
+    applying `reifyAeneas%` to a function with a structure argument or result imports. -/
+meta def structNs : Name := `CatCrypt.Crypto.SecureCompilation.AeneasFront
+
+/-- The NF type of `α` is the word of `64` bits. -/
+meta def isWordTy (α : Expr) : MetaM Bool := do
+  let some inst ← synthInstance? (mkApp (mkConst ``AeVal) α) | return false
+  isDefEq (mkAppN (mkConst ``AeVal.nty) #[α, inst]) (mkApp (mkConst ``NfTy.word) (mkNatLit 64))
+
+/-- The field projections of a structure of scalars `T`, as a map from a value to its fields:
+    a structure type with no `AeVal` instance whose fields have the NF type `word 64`, or
+    `none`. -/
+meta def structFields? (T : Expr) : MetaM (Option (Expr → MetaM (Array Expr))) := do
+  let T ← whnfR T
+  let some n := T.getAppFn.constName? | return none
+  let env ← getEnv
+  unless isStructure env n do return none
+  if (← synthInstance? (mkApp (mkConst ``AeVal) T)).isSome then return none
+  let fs := getStructureFields env n
+  let proj (x : Expr) : MetaM (Array Expr) := fs.mapM fun f => mkProjection x f
+  let words ← withLocalDeclD `s T fun s => do
+    (← proj s).allM fun p => do isWordTy (← inferType p)
+  return if words && !fs.isEmpty then some proj else none
+
 /-- `ReadCond S V` by instance resolution: the bit, or `none`. -/
 meta def readCond? (S V : Expr) : MetaM (Option Expr) := do
   let Γ ← ctxOf V
@@ -1974,9 +1998,44 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         return ← mkAppM ``ReifyG.of_eq #[eqPrf, ← reify crate E rhs V]
   throwError "reifyAeneas%: no reading of{indentExpr m}"
 
+/-- The reading of the body `rhs` of the function `c` at the arguments `xs`, with the equation
+    `eqPrf` of `c xs` and `rhs`, the ghost arguments `outs` (the out-region of a structure
+    result), the valuation `V` and the result map `E`, the Boolean arguments bound first
+    (`Reify.argBit`): the program and the proof, for all ghost arguments and arguments, of
+    `ReifyG E (c xs) V p`, or of `Reify (c xs) V p` when `gen` is false. -/
+meta def reifyFn (c : Name) (lvls : List Level) (xs : Array Expr) (rhs eqPrf : Expr)
+    (outs : Array Expr) (V E : Expr) (gen : Bool) : MetaM Expr := do
+  let isBool (x : Expr) : MetaM Bool := do
+    return (← whnfR (← inferType x)).isConstOf ``Bool
+  let bools ← xs.filterM isBool
+  let zero := Lean.mkConst ``zeroU
+  let mut Vs : Array Expr := #[]
+  let mut Vb := V
+  for b in bools do
+    Vs := Vs.push Vb
+    Vb ← mkAppM ``vCons #[b, ← mkAppM ``vCons #[zero, Vb]]
+  let mut prf ← reify c.getRoot E rhs Vb
+  for (b, Vi) in bools.zip Vs |>.reverse do
+    prf ← mkAppM ``Reify.argBit #[b, rhs, Vi, prf]
+  let p ← progOf prf
+  if (outs ++ xs).any (fun x => p.containsFVar x.fvarId!) then
+    throwError "reifyAeneas%: the program depends on the arguments"
+  let prfEq ← mkAppM ``ReifyG.of_eq #[eqPrf, prf]
+  let fx := mkAppN (mkConst c lvls) xs
+  let S ← withLocalDeclD `p (← inferType p) fun q => do
+    let body ← mkForallFVars (outs ++ xs) (← if gen then mkAppM ``ReifyG #[E, fx, V, q]
+      else mkAppM ``Reify #[fx, V, q])
+    mkLambdaFVars #[q] body
+  let sound ← mkLambdaFVars (outs ++ xs) prfEq
+  mkAppOptM ``Reified.mk #[none, none, some S, some p, some sound]
+
 /-- `reifyAeneas% f`: the NF program of the Aeneas function `f` with the proof, for all
     arguments `xs`, of `Reify (f xs) (vCons x₁ (… vNil)) p`. The equation lemma of `f`, and of
-    the definitions of its crate it calls (its loop bodies), are the only unfoldings. -/
+    the definitions of its crate it calls (its loop bodies), are the only unfoldings. A
+    structure argument of scalar fields is bound field by field (`structFields?`); a structure
+    result is read with the result map `structRes` of `AeneasFront/Structs.lean` at a ghost
+    first argument `out`, the out-region, and the proof is of `ReifyG` for all `out` and
+    arguments. -/
 elab "reifyAeneas% " f:ident : term => do
   let c ← realizeGlobalConstNoOverloadWithInfo f
   let info ← getConstInfo c
@@ -1986,35 +2045,37 @@ elab "reifyAeneas% " f:ident : term => do
     let isBool (x : Expr) : TermElabM Bool := do
       return (← whnfR (← inferType x)).isConstOf ``Bool
     let V ← xs.foldrM (fun x acc => do
-      if ← isBool x then mkAppM ``wCons #[x, acc] else mkAppM ``vCons #[x, acc])
+      if ← isBool x then mkAppM ``wCons #[x, acc]
+      else if let some proj ← structFields? (← inferType x) then
+        (← proj x).foldrM (fun f acc' => mkAppM ``vCons #[f, acc']) acc
+      else mkAppM ``vCons #[x, acc])
       (mkConst ``vNil)
     let eqPrf := mkAppN (mkConst eqns[0]! lvls) xs
     let eqTy ← whnfR (← inferType eqPrf)
     let rhs := eqTy.appArg!
     let resT ← resTy rhs
     let boolRes := (← whnfR resT).isConstOf ``Bool
-    let E ← if boolRes then pure (Lean.mkConst ``bitRes) else mkAppOptM ``single #[some resT, none]
-    let bools ← xs.filterM isBool
-    let zero := Lean.mkConst ``zeroU
-    let mut Vs : Array Expr := #[]
-    let mut Vb := V
-    for b in bools do
-      Vs := Vs.push Vb
-      Vb ← mkAppM ``vCons #[b, ← mkAppM ``vCons #[zero, Vb]]
-    let mut prf ← reify c.getRoot E rhs Vb
-    for (b, Vi) in bools.zip Vs |>.reverse do
-      prf ← mkAppM ``Reify.argBit #[b, rhs, Vi, prf]
-    let p ← progOf prf
-    if xs.any (fun x => p.containsFVar x.fvarId!) then
-      throwError "reifyAeneas%: the program depends on the arguments"
-    let prfEq ← mkAppM ``ReifyG.of_eq #[eqPrf, prf]
-    let fx := mkAppN (mkConst c lvls) xs
-    let S ← withLocalDeclD `p (← inferType p) fun q => do
-      let body ← mkForallFVars xs (← if boolRes then mkAppM ``ReifyG #[E, fx, V, q]
-        else mkAppM ``Reify #[fx, V, q])
-      mkLambdaFVars #[q] body
-    let sound ← mkLambdaFVars xs prfEq
-    mkAppOptM ``Reified.mk #[none, none, some S, some p, some sound]
+    let resStruct ← if boolRes then pure none else structFields? resT
+    match resStruct with
+    | none =>
+      let E ← if boolRes then pure (Lean.mkConst ``bitRes)
+        else mkAppOptM ``single #[some resT, none]
+      reifyFn c lvls xs rhs eqPrf #[] V E boolRes
+    | some proj =>
+      let k ← withLocalDeclD `y resT fun y => return (← proj y).size
+      let kE := mkNatLit k
+      let hk ← mkDecideProof (← mkAppM ``LT.lt #[kE, mkNatLit (2 ^ 32)])
+      let ws ← withLocalDeclD `y resT fun y => do
+        let es ← (← proj y).mapM fun f => mkAppM ``AeVal.emb #[f]
+        mkLambdaFVars #[y] (← mkListLit (mkApp (mkConst ``BitVec) (mkNatLit 64)) es.toList)
+      let hws ← withLocalDeclD `y resT fun y => do
+        let len ← mkAppM ``List.length #[(mkApp ws y).headBeta]
+        mkLambdaFVars #[y] (← mkExpectedTypeHint (← mkEqRefl kE) (← mkEq len kE))
+      let outTy ← mkAppM ``Aeneas.Std.Array
+        #[mkConst ``Aeneas.Std.U64, ← mkAppM ``usz #[kE]]
+      withLocalDeclD `out outTy fun out => do
+        let E ← mkAppM (structNs ++ `structRes) #[kE, hk, out, ws, hws]
+        reifyFn c lvls xs rhs eqPrf #[out] (← mkAppM ``vCons #[out, V]) E true
 
 end ReifyMeta
 
