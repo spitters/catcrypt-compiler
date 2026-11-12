@@ -209,6 +209,7 @@ CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledStepBy
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledStructs
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
+CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyCompleteProbe
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord

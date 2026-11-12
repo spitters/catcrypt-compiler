@@ -3524,6 +3524,7 @@ def exampleModules1 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.X25519LadderDSLEmit,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.X25519StepBodiesSafety,
     Lake.Glob.one `CatCrypt.Crypto.Jasmin.Examples.XEdDSAVerifySplitSafety,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyCompleteProbe,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.AsmSquareDemo,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CarryMulGuardSat,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Ascent.Demos.CertifyThirdPartyDemo,
