@@ -426,11 +426,11 @@ CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomHiFree
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomNop
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldKinds
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldLoopCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldMulCarryFlagsTest
 CatCrypt.Crypto.SecureCompilation.Haxc.FrontTysPos
 CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
-CatCrypt.Crypto.SecureCompilation.Haxc.HtermOfKinds
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
