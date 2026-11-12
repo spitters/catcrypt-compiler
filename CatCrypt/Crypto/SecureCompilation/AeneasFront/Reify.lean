@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Loops
+public import CatCrypt.Crypto.SecureCompilation.AeneasFront.IterModel
 import all Init.Internal.Order.Basic
 public import HaxAscent.RustSemantics.BackendLoops
 public meta import Lean.Elab.Term
@@ -50,7 +51,13 @@ lemma proved once:
   as trip index. Its hypothesis on the body is `range_body` (through `next_usize`) with the
   step of the body split off its final continuation by `tailCont_bind` and `tailCont_ok`; the
   loop is `foldRangeAux` of the step by `loop_range`, and the fold is the counted loop by
-  `foldRange_reify`.
+  `foldRange_reify`;
+* a loop `loop F (st₀, acc)` over an iterator adapter (`enumerate` or `step_by` of a range,
+  `enumerate` of an array, `zip` of two arrays) whose state is indexed by the trip index
+  (`IndexedIter`, instances in `AeneasFront/Iterators.lean`, which the caller imports):
+  `Reify.indexedForLoop`, the counted `forLoop` of the step that binds the item of the trip
+  (`loop_indexed`); the adapter's state is built by binds whose value the reader computes
+  (`bind_of_eq_ok`).
 
 Instance resolution follows the syntax of the body, and the proof term it returns is the
 composition of these lemmas. The elaborator unfolds only the equation lemma `f.eq_1` of the
@@ -1406,6 +1413,122 @@ theorem Reify.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var
     rw [bind_tc_ok, nfToRustM]
     rfl
 
+/-! ## Loops over iterator adapters
+
+The Aeneas backend prints a loop over an iterator adapter (`enumerate`, `step_by`, `zip`) as
+`loop F (st₀, acc)` whose body steps the adapter state `st₀` by the adapter's `next`. When the
+state runs through positions indexed by a trip index (`IndexedIter`), the loop is the fold
+`foldRangeAux` of a step that binds the item of the trip (`loop_indexed`), and is read as the
+counted loop of that step, as a range loop is (`Reify.indexedForLoop`). The instances of
+`IndexedIter` at the adapters are in `AeneasFront/Iterators.lean`. -/
+
+/-- The `usize` word of a natural number. -/
+abbrev usz (j : Nat) : Usize := ⟨BitVec.ofNat _ j⟩
+
+theorem usz_val {j : Nat} (h : j < 2 ^ UScalarTy.Usize.numBits) : (usz j).val = j := by
+  change (BitVec.ofNat _ j).toNat = j
+  rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt h]
+
+/-- **An iterator state indexed by the trip index.** From `st₀ = pos 0`, the function `next`
+    at `pos j` yields `item j` and `pos (j + 1)` below the trip count `cnt`, and yields no item
+    at `pos cnt`. -/
+structure IndexedIter {I Item : Type} (next : I → RustM (Option Item × I)) (st₀ : I)
+    (cnt : Usize) where
+  /-- The state before the trip `j`. -/
+  pos : Nat → I
+  /-- The item of the trip at an index. -/
+  item : Usize → RustM Item
+  /-- The step below the trip count. -/
+  hnext : ∀ j, j < cnt.val → next (pos j) = item (usz j) >>= fun x => .ok (some x, pos (j + 1))
+  /-- The end at the trip count. -/
+  hend : ∃ rest, next (pos cnt.val) = .ok (none, rest)
+  /-- The initial state. -/
+  h0 : pos 0 = st₀
+
+/-- **The loop over an indexed iterator is a counted loop.** If the body `F` steps the state
+    by `next` and continues with `K`, which is done at no item and at an item runs a step
+    `f acc i` after binding `item i` (`hsome`), then the Aeneas `loop` from `pos j` is the fold
+    `foldRangeAux f` over the remaining trips. -/
+theorem loop_indexed {I Item σ : Type} {next : I → RustM (Option Item × I)} {st₀ : I}
+    {cnt : Usize} (it : IndexedIter next st₀ cnt)
+    (F : I × σ → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (K : σ → Option Item × I → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (f : σ → Usize → RustM σ)
+    (hF : ∀ st acc, F (st, acc) = next st >>= K acc)
+    (hnone : ∀ acc r, K acc (none, r) = .ok (.done acc))
+    (hsome : ∀ acc i r, (it.item i >>= fun x => K acc (some x, r)) =
+      f acc i >>= fun a => .ok (.cont (r, a))) :
+    ∀ k j acc, j + k = cnt.val →
+      Aeneas.Std.loop F (it.pos j, acc) = HaxBackend.foldRangeAux f k j acc
+  | 0, j, acc, hk => by
+    obtain rfl : j = cnt.val := by omega
+    obtain ⟨rest, hr⟩ := it.hend
+    rw [loop.eq_1, hF, hr, bind_tc_ok, hnone]
+    rfl
+  | k + 1, j, acc, hk => by
+    have hs : (next (it.pos j) >>= K acc) =
+        f acc (usz j) >>= fun a => .ok (.cont (it.pos (j + 1), a)) := by
+      rw [it.hnext j (by omega), bind_assoc_eq]
+      simp only [bind_tc_ok]
+      exact hsome acc (usz j) (it.pos (j + 1))
+    rw [loop.eq_1, hF, hs, HaxBackend.foldRangeAux]
+    cases hf : f acc (usz j) with
+    | ok a =>
+      simp only [bind_tc_ok]
+      exact loop_indexed it F K f hF hnone hsome k (j + 1) a (by omega)
+    | fail e => rfl
+    | div => rfl
+
+/-- **A loop over an indexed iterator.** An Aeneas `loop` from the state `st₀` of an
+    `IndexedIter` with the trip count `cnt`, whose body steps the state by `next` and runs `f`
+    on the item (`hF`, `hnone`, `hsome`), with each step `f acc i` read by `pb` at the state,
+    the trip index and the trip count, is the counted loop of `pb`: the trip count is bound as a
+    literal. The proof is `loop_indexed` and `foldRange_reify`. -/
+theorem Reify.indexedForLoop {I Item σ : Type} [AeVal σ] {Γ : Ctxt nfDialect}
+    {v : Var Γ (AeVal.nty σ)}
+    {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
+    {next : I → RustM (Option Item × I)} {st₀ : I} {cnt : Usize}
+    (it : IndexedIter next st₀ cnt)
+    (F : I × σ → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (K : σ → Option Item × I → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (f : σ → Usize → RustM σ) (init : σ) (V : Valuation Γ)
+    [hi : Lookup V (AeVal.emb init) v]
+    (hF : ∀ st acc, F (st, acc) = next st >>= K acc)
+    (hnone : ∀ acc r, K acc (none, r) = .ok (.done acc))
+    (hsome : ∀ acc i r, (it.item i >>= fun x => K acc (some x, r)) =
+      f acc i >>= fun a => .ok (.cont (r, a)))
+    (hb : ∀ (i : Usize) (acc : σ),
+      ReifyG single (f acc i) (vCons acc (vCons i (vCons cnt V))) pb) :
+    ReifyG single (Aeneas.Std.loop F (st₀, init)) V
+      (.var (litE cnt) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) where
+  sound y hy := by
+    rw [← it.h0, loop_indexed it F K f hF hnone hsome cnt.val 0 init (by omega)] at hy
+    have hn : cnt.val < 2 ^ 64 := lt64 cnt
+    have hfold := foldRange_reify (vCons cnt V) pb f hb cnt.val 0 init y
+      (by have := cnt.bv.isLt; simp only [UScalar.val] at this ⊢; omega) hy
+    rw [nfToRustM, aeExpr_litE, bind_tc_ok, nfToRustM]
+    have hc : HasWord64.toNat (d := nfDialect)
+        ((Ctxt.Var.here (Γ := Γ)).lookup
+          (Valuation.extend (t := NfTy.word 64) V (embW cnt))) = cnt.val := by
+      change (BitVec.ofNat 64 cnt.val).toNat = cnt.val
+      rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hn]
+    have hinit : Expr.lookupArgs (HVector.cons v.there HVector.nil)
+        (Valuation.extend (t := NfTy.word 64) V (embW cnt)) = single init := by
+      change HVector.cons (v.lookup V) HVector.nil = _
+      rw [hi.eq]
+    rw [hc, hinit, List.range_eq_range', extend_eq]
+    refine (congrArg (fun z => z >>= fun acc =>
+      nfToRustM (NFProg.ret (HVector.cons Var.here HVector.nil))
+        (hvAppend acc (HVector.cons (f := fun t => ⟦t⟧) (t := NfTy.word 64) (embW cnt) V)))
+          hfold).trans ?_
+    rw [bind_tc_ok, nfToRustM]
+    rfl
+
+/-- A bind of a computation with the value `v` is the continuation at `v`. -/
+theorem bind_of_eq_ok {α β : Type} (m : RustM α) (v : α) (h : m = .ok v) (k : α → RustM β) :
+    (m >>= k) = k v := by
+  rw [h, bind_tc_ok]
+
 /-! ## The elaborator -/
 
 /-- An NF program with its soundness statement `S`. -/
@@ -1530,6 +1653,102 @@ meta def rangeStep (F n σ : Expr) : MetaM (Expr × Expr) := do
     let hF ← mkLambdaFVars #[sv, acc] (← mkEqTrans eq1 rb)
     return (f, hF)
 
+/-- The binds of a chain with their continuations opened, each final computation in weak
+    head normal form without unfolding (`whnfCore`): the matches of a loop body on the item and
+    the stepped state are reduced. -/
+meta partial def normBinds (e : Expr) : MetaM Expr := do
+  let e := e.headBeta
+  if e.isAppOfArity ``Bind.bind 6 then
+    let k := e.getArg! 5
+    if k.isLambda then
+      let k' ← lambdaTelescope k fun xs b => do mkLambdaFVars xs (← normBinds b)
+      return mkAppN e.getAppFn (e.getAppArgs.set! 5 k')
+  whnfCore e
+
+/-- The namespace of the adapter instances of `AeneasFront/Iterators.lean`, which a module
+    applying `reifyAeneas%` to a loop over an iterator adapter imports. -/
+meta def iterNs : Name := `CatCrypt.Crypto.SecureCompilation.AeneasFront
+
+/-- The `IndexedIter` of an adapter state `st` as the backend prints it, with the bind lemma of
+    its item (`i ↦ k ↦ proof of item i >>= k = …`), or `none`: `enumerate` and `step_by` of a
+    range from `0`, `enumerate` of the iterator of an array, `zip` of the iterators of two
+    arrays. -/
+meta def adapterIter? (st : Expr) : MetaM (Option (Expr × (Expr → Expr → MetaM Expr))) := do
+  let st ← whnfR st
+  let rangeFrom0? (r : Expr) : MetaM (Option Expr) := do
+    let r ← whnfR r
+    if r.isAppOfArity ``core.ops.range.Range.mk 3 then
+      if ← isDefEq (← mkAppM ``UScalar.val #[r.getArg! 1]) (mkNatLit 0) then
+        return some (r.getArg! 2)
+    return none
+  let arrayIter? (it : Expr) : MetaM (Option Expr) := do
+    let it ← whnfR it
+    if it.isAppOfArity ``core.slice.iter.Iter.mk 3 then
+      if ← isDefEq (it.getArg! 2) (mkNatLit 0) then
+        let sl ← whnfR (it.getArg! 1)
+        if sl.isAppOfArity ``Aeneas.Std.Array.to_slice 3 then
+          return some (sl.getArg! 2)
+    return none
+  if st.isAppOfArity ``core.iter.adapters.enumerate.Enumerate.mk 3 then
+    if let some n ← rangeFrom0? (st.getArg! 1) then
+      return some (← mkAppM (iterNs ++ `enumRangeIter) #[n],
+        fun i k => mkAppM (iterNs ++ `enumRange_item_bind) #[n, i, k])
+    if let some a ← arrayIter? (st.getArg! 1) then
+      return some (← mkAppM (iterNs ++ `enumArrayIter) #[a],
+        fun i k => mkAppM (iterNs ++ `enumArray_item_bind) #[a, i, k])
+  if st.isAppOfArity ``core.iter.adapters.step_by.StepBy.mk 3 then
+    if let some n ← rangeFrom0? (st.getArg! 1) then
+      let kk := st.getArg! 2
+      let hk ← mkDecideProof (← mkAppM ``LT.lt #[mkNatLit 0, ← mkAppM ``UScalar.val #[kk]])
+      return some (← mkAppM (iterNs ++ `stepByRangeIter) #[n, kk, hk],
+        fun i k => mkAppM (iterNs ++ `stepByRange_item_bind) #[n, kk, hk, i, k])
+  if st.isAppOfArity ``core.iter.adapters.zip.Zip.mk 4 then
+    if let some a ← arrayIter? (st.getArg! 2) then
+      if let some b ← arrayIter? (st.getArg! 3) then
+        return some (← mkAppM (iterNs ++ `zipArrayIter) #[a, b],
+          fun i k => mkAppM (iterNs ++ `zipArray_item_bind) #[a, b, i, k])
+  return none
+
+/-- The continuation `K`, the step `f` and the hypotheses `hF`, `hnone`, `hsome` of
+    `Reify.indexedForLoop` for the body `F` of a loop over the indexed iterator `itE` with
+    states of type `σ`: the body at `(st, acc)` is unfolded by the equation lemma of the
+    definition it calls into a bind of `next st` and `K acc`; at an item, the bind lemma `ib` of
+    the item followed by `K` is split into the step and its final continuation (`tailCont`). -/
+meta def indexedStep (F σ itE : Expr) (ib : Expr → Expr → MetaM Expr) :
+    MetaM (Expr × Expr × Expr × Expr × Expr) := do
+  let itTy ← whnfR (← inferType itE)
+  let I := itTy.getArg! 0
+  let Item := itTy.getArg! 1
+  let (K, hF) ← withLocalDeclD `st I fun st => withLocalDeclD `acc σ fun acc => do
+    let lhs ← whnfCore (mkApp F (← mkAppM ``Prod.mk #[st, acc]))
+    let some c := lhs.getAppFn.constName? |
+      throwError "reifyAeneas%: no reading of the adapter loop body{indentExpr lhs}"
+    let some eqns ← getEqnsFor? c |
+      throwError "reifyAeneas%: no equation lemma for the adapter loop body {c}"
+    let eq1 := mkAppN (mkConst eqns[0]! lhs.getAppFn.constLevels!) lhs.getAppArgs
+    let B := (← whnfR (← inferType eq1)).appArg!
+    unless B.isAppOfArity ``Bind.bind 6 do
+      throwError "reifyAeneas%: the adapter loop body does not step its iterator{indentExpr B}"
+    let K ← mkLambdaFVars #[acc] (B.getArg! 5)
+    if K.containsFVar st.fvarId! then
+      throwError "reifyAeneas%: the adapter loop body reads its iterator"
+    return (K, ← mkLambdaFVars #[st, acc] eq1)
+  let hnone ← withLocalDeclD `acc σ fun acc => withLocalDeclD `r I fun r => do
+    let none' ← mkAppOptM ``Option.none #[Item]
+    mkLambdaFVars #[acc, r] (← mkEqRefl (mkApp2 K acc (← mkAppM ``Prod.mk #[none', r])))
+  let usize := Lean.mkConst ``Aeneas.Std.Usize
+  let (f, hsome) ← withLocalDeclD `acc σ fun acc => withLocalDeclD `i usize fun i =>
+    withLocalDeclD `r I fun r => do
+      let kx ← withLocalDeclD `x Item fun x => do
+        mkLambdaFVars #[x] (mkApp2 K acc (← mkAppM ``Prod.mk #[← mkAppM ``Option.some #[x], r]))
+      let hib ← ib i kx
+      let rhs ← normBinds (← instantiateMVars (← inferType hib)).appArg!
+      let (g, pg) ← tailCont r rhs
+      if g.containsFVar r.fvarId! then
+        throwError "reifyAeneas%: the step of the adapter loop reads the iterator"
+      return (← mkLambdaFVars #[acc, i] g, ← mkLambdaFVars #[acc, i, r] (← mkEqTrans hib pg))
+  return (K, f, hF, hnone, hsome)
+
 /-- `ReadCond S V` by instance resolution: the bit, or `none`. -/
 meta def readCond? (S V : Expr) : MetaM (Option Expr) := do
   let Γ ← ctxOf V
@@ -1630,6 +1849,13 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
       let Vc ← mkAppM ``vCons #[c, V]
       if (← synthE m1 Vc).isSome then
         return ← mkAppM ``Reify.bindLit #[c, m1, k, V, ← readUnder α E k Vc]
+    if (← synthInstance? (mkApp (mkConst ``AeVal) α)).isNone then
+      let w ← whnf m1
+      if w.isAppOfArity ``Aeneas.Std.RustM.ok 2 then
+        let v := w.getArg! 1
+        let h ← mkExpectedTypeHint (← mkEqRefl m1) (← mkEq m1 w)
+        let eq ← mkAppM ``bind_of_eq_ok #[m1, v, h, k]
+        return ← mkAppM ``ReifyG.of_eq #[eq, ← reify crate E (mkApp k v).headBeta V]
     throwError "reifyAeneas%: no reading of the operation{indentExpr m1}"
   if m.isAppOfArity ``ite 5 then
     let c := m.getArg! 1
@@ -1680,6 +1906,21 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
               throwError "reifyAeneas%: the program of the range loop step depends on its state"
             mkLambdaFVars #[i, acc] prf
         return ← mkAppM ``Reify.rangeForLoop #[body, n, acc0, f, V, hF, hb]
+      if let some (itE, ib) ← adapterIter? rng then
+        let σ' := σw.getArg! 1
+        let acc0 := init.getArg! 3
+        let cnt := (← whnfR (← inferType itE)).getArg! 4
+        let (K, f, hF, hnone, hsome) ← indexedStep body σ' itE ib
+        let E' ← mkAppOptM ``single #[some σ', none]
+        let hb ← withLocalDeclD `i (Lean.mkConst ``Aeneas.Std.Usize) fun i =>
+          withLocalDeclD `acc σ' fun acc => do
+            let V' ← mkAppM ``vCons #[acc, ← mkAppM ``vCons #[i, ← mkAppM ``vCons #[cnt, V]]]
+            let prf ← reify crate E' (mkApp2 f acc i).headBeta V'
+            let p ← progOf prf
+            if p.containsFVar i.fvarId! || p.containsFVar acc.fvarId! then
+              throwError "reifyAeneas%: the program of the adapter loop step depends on its state"
+            mkLambdaFVars #[i, acc] prf
+        return ← mkAppM ``Reify.indexedForLoop #[itE, body, K, f, acc0, V, hF, hnone, hsome, hb]
     let Es ← mkAppOptM ``stepVal #[some σ, none]
     return ← mkAppM ``Reify.loop #[body, init, V, ← readUnder σ Es body V]
   if let some c ← litOf m then
