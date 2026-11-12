@@ -18,15 +18,24 @@ kept by a renaming of general-purpose names that is injective and fixes every ot
 instruction of its input or such a renaming of one. The two three-address forms are the
 subtraction `SUB:64 D, [A, D]`, which the legaliser routes through the scratch register `R15`
 and its save slot, and the three-address compare `CMP:64 D, [A, S]`, which the legaliser
-rewrites into `CMP:64 A, [A, S]`; both rewrites consist of gate forms.
+rewrites into `CMP:64 A, [A, S]`; both rewrites consist of gate forms. The three-address
+group-1 operation against an immediate `M D, [A, #v]` with `v < 2^31` becomes the copy
+`MOV:64 D, A` and the tied operation `M D, [D, #v]`, both gate forms.
+
+The constant-index fold `ConstIndexFold.foldTarget?` rewrites an indexed load or store whose
+index register holds a known value into a whole-word cell access at a displacement below
+`2^31`, and the copy out of a frame slot of a known value below `2^31` into an immediate
+move; on a covered instruction, the array-ABI spelling `ConstIndexFold.spellMemInstr` of each
+rewrite is a gate form.
 
 ## Main definitions
 
 * `GpRenaming ρ`: `ρ` maps general-purpose names injectively to general-purpose names and
   fixes every other name.
 * `renameR ρ i`: the operation `i` with every register name renamed by `ρ`.
-* `ThreeAddrSubSelf i`, `ThreeAddrCmp i`: the subtraction from the destination and the
-  three-address compare.
+* `ThreeAddrSubSelf i`, `ThreeAddrCmp i`, `ThreeAddrAluImm i`: the subtraction from the
+  destination, the three-address compare and the three-address operation against an
+  immediate.
 
 ## Main results
 
@@ -40,11 +49,16 @@ rewrites into `CMP:64 A, [A, S]`; both rewrites consist of gate forms.
 * `legalizeInstr_subSelf`, `scratchRoute_subSelf_gateForm`: the legaliser routes the
   subtraction from the destination through gate forms.
 * `legalizeInstr_cmp`: the legaliser rewrites the three-address compare into a gate form.
-* `threeAddrAlu_renameR`, `threeAddrSubSelf_renameR`, `threeAddrCmp_renameR`: a renaming keeps
-  the three-address forms.
+* `legalizeInstr_threeAddrImm`: the legaliser rewrites the three-address operation against an
+  immediate into gate forms.
+* `threeAddrAlu_renameR`, `threeAddrSubSelf_renameR`, `threeAddrCmp_renameR`,
+  `threeAddrAluImm_renameR`: a renaming keeps the three-address forms.
 * `covered_twoAddrBody_three`: the legalised body of a body of covered instructions,
   three-address forms and unfused high-word bindings is covered up to unfused high-word
   bindings.
+* `cellParts?_memName`: a cell name over a general-purpose base parses back to its parts.
+* `gateForm_spellMemInstr_foldTarget`: the spelled rewrite of a covered instruction by the
+  constant-index fold is a gate form.
 -/
 
 @[expose] public section
@@ -363,6 +377,59 @@ def ThreeAddrCmp (i : LinstrR) : Prop :=
   ∃ (d a s : String), gpOk a = true ∧ gpOk s = true ∧
     i = .Lopn [.reg d] "CMP:64" [.reg a, .reg s]
 
+/-- **The three-address group-1 operation against an immediate** `M D, [A, #v]` over
+    general-purpose names, `M` among `ADD`, `SUB`, `AND`, `OR` and `XOR` at the 64-bit tag and
+    `v < 2^31`, the form copy propagation writes when it substitutes an immediate for the second
+    source of a three-address operation. -/
+def ThreeAddrAluImm (i : LinstrR) : Prop :=
+  ∃ (m d a : String) (v : Nat), m ∈ ["ADD:64", "SUB:64", "AND:64", "OR:64", "XOR:64"] ∧
+    gpOk d = true ∧ gpOk a = true ∧ v < 2 ^ 31 ∧ i = .Lopn [.reg d] m [.reg a, .imm v]
+
+/-- An immediate below `2^31` sign-extends from 32 bits. -/
+theorem fitsImm32S_of_lt {v : Nat} (h : v < 2 ^ 31) : ScalarEncoder.fitsImm32S v = true := by
+  simp only [ScalarEncoder.fitsImm32S, Bool.or_eq_true, decide_eq_true_eq]
+  omega
+
+/-- A renaming keeps a three-address operation against an immediate. -/
+theorem threeAddrAluImm_renameR {ρ : String → String} (h : GpRenaming ρ) {i : LinstrR}
+    (hi : ThreeAddrAluImm i) : ThreeAddrAluImm (renameR ρ i) := by
+  obtain ⟨m, d, a, v, hm, hd, ha, hv, rfl⟩ := hi
+  exact ⟨m, ρ d, ρ a, v, hm, h.gp d hd, h.gp a ha, hv, rfl⟩
+
+/-- **The legaliser rewrites a three-address operation against an immediate into gate
+    forms**: `M D, [A, #v]` becomes the copy `MOV:64 D, A` and the tied operation
+    `M D, [D, #v]`, or stays when `A = D`. -/
+theorem legalizeInstr_threeAddrImm (b : Lcmd) (ok : Bool) (x : Linstr)
+    (h : ThreeAddrAluImm x.li_i) : ∀ y ∈ legalizeInstr ok x, GateForm b y.li_i := by
+  obtain ⟨m, d, a, v, hm, hd, ha, hv, hx⟩ := h
+  have hgf : GateForm b (.Lopn [.reg d] m [.reg d, .imm v]) :=
+    .aluImm m d v hm hd (by omega) (fitsImm32S_of_lt hv)
+  intro y hy
+  by_cases had : a = d
+  · subst had
+    rw [legalizeInstr_of_tiedOk ok x (by rw [hx]; simp [tiedOk]), List.mem_singleton] at hy
+    rw [hy, hx]
+    exact hgf
+  · unfold legalizeInstr at hy
+    rw [hx] at hy
+    have hmd : LprogAsmPrinter.isMemOperand (.reg d) = false :=
+      PrintedCoveredFuse.isMemOperand_of_gpOk hd
+    simp only [List.mem_cons, List.not_mem_nil, or_false] at hm
+    rcases hm with rfl | rfl | rfl | rfl | rfl <;>
+      simp only [needsTie, tiedBases, tieBase, ↓Char.isValue, String.reduceToList,
+        Char.reduceBNe, Bool.and_self, List.takeWhile_cons_of_pos, bne_self_eq_false,
+        Bool.and_true, Bool.false_eq_true, not_false_eq_true, List.takeWhile_cons_of_neg,
+        String.ofList_cons, String.reduceSingleton, String.ofList_nil, String.append_empty,
+        String.reduceAppend, List.contains_eq_mem, List.mem_cons, String.reduceEq,
+        List.not_mem_nil, or_self, or_false, or_true, decide_true, String.reduceBEq,
+        Bool.or_self, Bool.or_false, Bool.true_and, bne_iff_ne, ne_eq, LOperand.reg.injEq, had,
+        ↓reduceIte, movFor, BEq.rfl, isRegOrImm, Bool.not_true, LprogLeak.opNames,
+        decide_false, Bool.not_false, hmd, Bool.false_and] at hy
+    all_goals
+      rcases hy with rfl | rfl
+      · exact .movRR _ d a (by simp) hd ha
+      · exact hgf
+
 /-- A renaming keeps a three-address operation of `PrintedCoveredFuse.ThreeAddrAlu`. -/
 theorem threeAddrAlu_renameR {ρ : String → String} (h : GpRenaming ρ) {i : LinstrR}
     (hi : ThreeAddrAlu i) : ThreeAddrAlu (renameR ρ i) := by
@@ -481,14 +548,15 @@ theorem labelAt_twoAddrBody (b : Lcmd) (l : LLabel) (h : (labelAt b l).isSome = 
 
 /-- **Covered output of the two-address legaliser on the three-address forms**: on a body each
     of whose instructions is covered in it, a three-address operation of `ThreeAddrAlu`, a
-    subtraction from the destination, a three-address compare or an unfused high-word
-    binding, every instruction of the legalised body is covered in it or an unfused high-word
-    binding, when the legalised body agrees with the input on its frame and, if the body holds
-    a subtraction from the destination, no instruction of the body names the scratch register
-    and the legalised body resolves its save slot for a 64-bit load. -/
+    subtraction from the destination, a three-address compare, a three-address operation
+    against an immediate or an unfused high-word binding, every instruction of the legalised
+    body is covered in it or an unfused high-word binding, when the legalised body agrees with
+    the input on its frame and, if the body holds a subtraction from the destination, no
+    instruction of the body names the scratch register and the legalised body resolves its
+    save slot for a 64-bit load. -/
 theorem covered_twoAddrBody_three {b : Lcmd}
     (hcov : ∀ x ∈ b, Covered b x.li_i ∨ ThreeAddrAlu x.li_i ∨ ThreeAddrSubSelf x.li_i ∨
-      ThreeAddrCmp x.li_i ∨ UnfusedMulHi x.li_i)
+      ThreeAddrCmp x.li_i ∨ ThreeAddrAluImm x.li_i ∨ UnfusedMulHi x.li_i)
     (hsub : (∃ x ∈ b, ThreeAddrSubSelf x.li_i) → bodyAvoids b = true ∧
       kOk (Params.ofBody (twoAddrBody b)) (scratchSave x86Data) = true)
     (hf : FrameAgree b (twoAddrBody b)) :
@@ -497,7 +565,7 @@ theorem covered_twoAddrBody_three {b : Lcmd}
   have hy' := hy
   simp only [twoAddrBody, LegalizeShiftImm.legalizeBody, List.mem_flatMap] at hy'
   obtain ⟨x, hx, hy'⟩ := hy'
-  rcases hcov x hx with h | h | h | h | h
+  rcases hcov x hx with h | h | h | h | h | h
   · rw [legalizeInstr_of_tiedOk _ x (tiedOk_of_covered h), List.mem_singleton] at hy'
     subst hy'
     exact Or.inl (covered_of_frameAgree h hf (labelAt_twoAddrBody b))
@@ -507,10 +575,124 @@ theorem covered_twoAddrBody_three {b : Lcmd}
     rw [hav, legalizeInstr_subSelf x had hxi] at hy'
     exact Or.inl (Or.inl (scratchRoute_subSelf_gateForm _ _ hd ha hk y hy'))
   · exact Or.inl (Or.inl (legalizeInstr_cmp _ _ x h y hy'))
+  · exact Or.inl (Or.inl (legalizeInstr_threeAddrImm _ _ x h y hy'))
   · rw [legalizeInstr_of_tiedOk _ x (tiedOk_of_unfusedMulHi h), List.mem_singleton] at hy'
     subst hy'
     exact Or.inr h
 
 end TwoAddr
+
+/-! ## 5. The constant-index fold -/
+
+section Fold
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.ConstIndexFold (KEnv foldOK foldTarget?
+  spellMemInstr)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.SailX86Decoder (dispOk32)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (isGpName)
+
+/-- The cell name `mem.B.off` over a general-purpose base `B` has the parts `(B, off)`. -/
+theorem cellParts?_memName {B : String} (hB : gpOk B = true) (off : Nat) :
+    cellParts? (memName B off) = some (B, off) := by
+  have hd : natOfDigits? (Nat.toDigits 10 off) = some off := by
+    simpa using VIR.JasminImmShiftMnem.natOfDigits?_toString off
+  simp only [gpOk, DecodePrinted.gpList, List.contains_eq_mem, List.mem_cons,
+    List.not_mem_nil, decide_eq_true_eq, or_false] at hB
+  rcases hB with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl |
+    rfl | rfl
+  all_goals simp [cellParts?, memName, hd, hasPrefix]
+
+/-- An offset below `2^31` is a `rel32` displacement. -/
+theorem dispOk32_ofNat_of_lt {off : Nat} (h : off < 2 ^ 31) :
+    dispOk32 (Int.ofNat off) = true := by
+  simp only [dispOk32, decide_eq_true_eq]
+  grind
+
+/-- A general-purpose name of the gate is an encoder register. -/
+theorem isGpName_of_gpOk {r : String} (h : gpOk r = true) : isGpName r = true :=
+  ((PrintedCoveredLower.gpOk_iff_isGpName r).1 h).1
+
+/-- **The fold rewrites a covered access into a gate form**: when `foldTarget?` rewrites an
+    instruction covered in `b`, the array-ABI spelling of its direct form is a gate form of
+    every body. The indexed load and store become the whole-word cell accesses `LOAD:64` and
+    `STORE:64` at a displacement below `2^31`, which `foldOK` bounds, and the copy out of a
+    frame slot becomes the immediate move `MOV:64 D, #v` with `v < 2^31`. -/
+theorem gateForm_spellMemInstr_foldTarget {b b' : Lcmd} {env : KEnv} {i i' : LinstrR}
+    (hf : foldTarget? env i = some i') (hc : Covered b i) :
+    GateForm b' (spellMemInstr i') := by
+  have hg : GateForm b i := by
+    rcases hc with hc | hc | hc
+    · exact hc
+    · exfalso
+      unfold foldTarget? at hf
+      rcases hc with ⟨n, _, _, _, -, -, -, rfl⟩ | ⟨n, _, _, _, -, -, -, rfl⟩ |
+        ⟨n, _, _, _, -, -, -, rfl⟩ | ⟨_, -, rfl⟩ <;> (try cases n) <;> simp at hf
+    · exfalso
+      unfold foldTarget? at hf
+      rcases hc with ⟨_, _, -, -, -, rfl⟩ | ⟨_, _, _, _, -, -, -, -, rfl⟩ <;> simp at hf
+  have h1 : ∀ d B x sc, i = .Lopn [.reg d] "LOADIDX" [.arrIdx B x sc] →
+      gpOk d = true ∧ gpOk B = true := by
+    intro d B x sc he
+    cases hg <;> grind
+  have h2 : ∀ d B x sc vn, i = .Lopn [.reg d] "STOREIDX" [.arrIdx B x sc, .reg vn] →
+      gpOk B = true ∧ gpOk vn = true := by
+    intro d B x sc vn he
+    cases hg <;> grind
+  have h3 : ∀ x, i ≠ .Lopn [.reg "RSP"] "MOV:64" [.reg x] := by
+    intro x he
+    have r1 : gpOk "RSP" = false := by decide
+    have r2 : LprogBytes.isSpillOrQsave "RSP" = false := by decide
+    have r3 : cellParts? "RSP" = none := by simp [cellParts?, hasPrefix]
+    cases hg
+    case tagShift b k d s hb _ _ _ _ =>
+      have hne : GateOfLegal.tagMnem b k ≠ "MOV:64" := by tag_ne hb
+      grind
+    all_goals grind [GateOfLegal.castMnems]
+  unfold foldTarget? at hf
+  split at hf
+  · rename_i d B x sc
+    obtain ⟨hd, hB⟩ := h1 d B x sc rfl
+    split at hf
+    · split at hf
+      · rename_i v _ hok
+        simp only [Option.some.injEq] at hf
+        subst hf
+        simp only [foldOK, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hok
+        obtain ⟨⟨rfl, -⟩, hlt⟩ := hok
+        simp only [spellMemInstr, isGpName_of_gpOk hd, ite_true]
+        exact .load _ _ _ _ (cellParts?_memName hB _) hd hB (dispOk32_ofNat_of_lt hlt)
+      · simp at hf
+    · simp at hf
+  · rename_i d B x sc vn
+    obtain ⟨hB, hv⟩ := h2 d B x sc vn rfl
+    split at hf
+    · split at hf
+      · rename_i v _ hok
+        simp only [Option.some.injEq] at hf
+        subst hf
+        simp only [foldOK, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hok
+        obtain ⟨⟨rfl, -⟩, hlt⟩ := hok
+        simp only [spellMemInstr, isGpName_of_gpOk hv, ite_true]
+        exact .store _ _ _ _ (cellParts?_memName hB _) hv hB (dispOk32_ofNat_of_lt hlt)
+      · simp at hf
+    · simp at hf
+  · rename_i d x
+    split at hf
+    · split at hf
+      · rename_i v _ hok
+        simp only [Option.some.injEq] at hf
+        subst hf
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at hok
+        obtain ⟨⟨hgp, -⟩, hlt⟩ := hok
+        have hd : gpOk d = true := by
+          refine PrintedCoveredLower.gpOk_of_isGpName hgp ?_
+          rintro rfl
+          exact h3 x rfl
+        exact .movImm64 d _ hd (by omega)
+      · simp at hf
+    · simp at hf
+  · simp at hf
+
+end Fold
 
 end CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredStages
