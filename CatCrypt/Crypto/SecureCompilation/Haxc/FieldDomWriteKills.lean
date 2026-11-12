@@ -468,13 +468,15 @@ example (S : FieldDomStages)
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
       {t : JasminTy} {r : Exported} {cert : List (String × String)},
       fieldDomB e σ = true → FieldBody e σ fname b t r cert → FieldChainShape σ t r) :
-    type_of% @S.coCfgB := @fieldDom_coCfgB_of_chainShape hS
+    type_of% @S.coCfgB :=
+  fun h hB => fieldDom_coCfgB_of_chainShape hS (fieldDomB_of_fieldDomB' h) hB
 
 example (S : FieldDomStages)
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
       {t : JasminTy} {r : Exported} {cert : List (String × String)},
       fieldDomB e σ = true → FieldBody e σ fname b t r cert → FieldChainShape σ t r) :
-    type_of% @S.coEntryFix := @fieldDom_coEntryFix_of_chainShape hS
+    type_of% @S.coEntryFix :=
+  fun h hB => fieldDom_coEntryFix_of_chainShape hS (fieldDomB_of_fieldDomB' h) hB
 
 /-! ## 6. The exported instructions of loads, stores and memory-free bindings -/
 

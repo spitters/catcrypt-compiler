@@ -157,6 +157,7 @@ theorem fieldDom_cellRegions (h : fieldDomB e σ = true) (hB : FieldBody e σ fn
   simp only [Bool.and_eq_true, beq_iff_eq]
   exact ⟨by rw [regLen_rsOf_fieldAbi ha hreg, hpn], hpj.symm⟩
 
-example (S : FieldDomStages) : type_of% @S.cellRegions := @fieldDom_cellRegions
+example (S : FieldDomStages) : type_of% @S.cellRegions :=
+  fun h hB => fieldDom_cellRegions (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

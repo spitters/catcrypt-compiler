@@ -334,6 +334,7 @@ theorem fieldDom_regionResultB (h : fieldDomB e σ = true) (hB : FieldBody e σ 
     rw [hroot]
     simp [regionResultB, hres, habi, hslot, JasminLsemWidthN.operandName]
 
-example (S : FieldDomStages) : type_of% @S.regionResultB := @fieldDom_regionResultB
+example (S : FieldDomStages) : type_of% @S.regionResultB :=
+  fun h hB => fieldDom_regionResultB (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

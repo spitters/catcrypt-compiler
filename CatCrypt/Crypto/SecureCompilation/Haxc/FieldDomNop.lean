@@ -147,6 +147,7 @@ theorem fieldDom_regionNopB (h : fieldDomB e σ = true) (hB : FieldBody e σ fna
     rw [hret]
     rfl
 
-example (S : FieldDomStages) : type_of% @S.regionNopB := @fieldDom_regionNopB
+example (S : FieldDomStages) : type_of% @S.regionNopB :=
+  fun h hB => fieldDom_regionNopB (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

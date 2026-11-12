@@ -369,6 +369,7 @@ theorem fieldDom_coResultName (h : fieldDomB e σ = true) (hB : FieldBody e σ f
       (written_webRen tab hacc hst hplain hssa
         (fun y hy => by unfold regionWebsObs; exact List.mem_append_left _ hy) hW) (hm _ _)
 
-example (S : FieldDomStages) : type_of% @S.coResultName := @fieldDom_coResultName
+example (S : FieldDomStages) : type_of% @S.coResultName :=
+  fun h hB => fieldDom_coResultName (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

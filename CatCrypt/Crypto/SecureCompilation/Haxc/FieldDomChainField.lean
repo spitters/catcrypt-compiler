@@ -453,8 +453,10 @@ theorem fieldDom_coEntryFix' (h : fieldDomB e σ = true) (hB : FieldBody e σ fn
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coEntryFix" :=
   fieldDom_coEntryFix_of_chainShape (fun h' hB' => fieldDom_fieldChainShape h' hB') h hB
 
-example (S : FieldDomStages) : type_of% @S.coCfgB := @fieldDom_coCfgB'
+example (S : FieldDomStages) : type_of% @S.coCfgB :=
+  fun h hB => fieldDom_coCfgB' (fieldDomB_of_fieldDomB' h) hB
 
-example (S : FieldDomStages) : type_of% @S.coEntryFix := @fieldDom_coEntryFix'
+example (S : FieldDomStages) : type_of% @S.coEntryFix :=
+  fun h hB => fieldDom_coEntryFix' (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

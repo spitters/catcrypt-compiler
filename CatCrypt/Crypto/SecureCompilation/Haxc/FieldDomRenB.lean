@@ -1157,7 +1157,8 @@ theorem fieldDom_renB (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t
   · obtain ⟨hp2, -⟩ := hphys p hp
     exact fun he => hp2.not_codeName (he ▸ codeName_argName j)
 
-example (S : FieldDomStages) : type_of% @S.renB := @fieldDom_renB
+example (S : FieldDomStages) : type_of% @S.renB :=
+  fun h hB => fieldDom_renB (fieldDomB_of_fieldDomB' h) hB
 
 end Field
 
@@ -1182,7 +1183,8 @@ theorem fieldDom_coResultCopy (h : fieldDomB e σ = true) (_hB : FieldBody e σ 
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-example (S : FieldDomStages) : type_of% @S.coResultCopy := @fieldDom_coResultCopy
+example (S : FieldDomStages) : type_of% @S.coResultCopy :=
+  fun h hB => fieldDom_coResultCopy (fieldDomB_of_fieldDomB' h) hB
 
 end ResultCopy
 

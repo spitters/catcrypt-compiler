@@ -11,9 +11,12 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.RegionStages
 # Refusal completeness of `compileA` on the field domain
 
 The field domain of the Lean front is the set of typed expressions that are one tagged call
-`m#p<p>` of a prime-ir method on word-array operands, at a modulus `p ≥ 2^64` with a wide
-template, under the layout `fieldAbi k n`. `fieldDomB` decides membership by reading the
-expression and the layout; no stage of the compiler runs.
+`m#p<p>` of a prime-ir method on word-array operands of `n < 2^60` words, at a modulus
+`p ≥ 2^64` with a wide template, under the layout `fieldAbi k n` with its frame range.
+`fieldDomB'` decides membership by reading the expression and the layout; no stage of the
+compiler runs. `fieldDomB` is the same decision without the frame range and the bound on `n`;
+a member of `fieldDomB'` is a member of `fieldDomB` (`fieldDomB_of_fieldDomB'`), and the
+stage lemmas stated on `fieldDomB` apply to the members of `fieldDomB'` through it.
 
 `compileA_isSome_of_fieldDom` states that `compileA` accepts every member, under the
 hypothesis `S : FieldDomStages`. The fields of `FieldDomStages` are the stage facts, one per
@@ -30,7 +33,9 @@ facts to the definitions of the gate and of the back half.
 
 * `fieldLit` — the tagged call of a method at a modulus on the operands of `ctxK k`.
 * `fieldDomE` — the field expressions, with their numbers of operands and of words.
-* `fieldDomB` — the field domain, as a decision on a typed expression and a layout.
+* `fieldDomB` — the field expressions under a layout that is `fieldAbi k n` field by field.
+* `fieldFrameB` — the frame range of the layout is that of `fieldAbi k n`.
+* `fieldDomB'` — the field domain, as a decision on a typed expression and a layout.
 * `FieldBody` — the printed body, the webs and the certificate that the stages of `compileA`
   produce on a member of the domain.
 
@@ -38,7 +43,9 @@ facts to the definitions of the gate and of the back half.
 
 * `fieldDomE_wide` — a field expression is the lift of `fieldLit` at a modulus with a wide
   template.
-* `fieldDomB_fieldAbi` — a field expression is a member under its layout `fieldAbi k n`.
+* `fieldDomB_of_fieldDomB'` — a member of `fieldDomB'` is a member of `fieldDomB`.
+* `fieldDomB'_fieldAbi` — a field expression of `n < 2 ^ 60` words is a member under its
+  layout `fieldAbi k n`.
 * `regionCoB_of_regionCoStage_eq_none` — no refusing stage of the gate means the gate passes.
 * `compileRegion_isSome_of_stages` — the back half accepts when each of its stages does.
 * `compileA_isSome_of_fieldDom` — `compileA` accepts every member of the field domain.
@@ -140,6 +147,41 @@ theorem fieldAbiB_fieldAbi (k n : Nat) : fieldAbiB (fieldAbi k n) k n = true := 
 theorem fieldDomB_fieldAbi {e : _root_.Hax.TExpr} {k n : Nat} (h : fieldDomE e = some (k, n)) :
     fieldDomB e (fieldAbi k n) = true := by
   simp only [fieldDomB, h, fieldAbiB_fieldAbi]
+
+/-- The frame range of the layout `σ` is that of `fieldAbi k n`. -/
+def fieldFrameB (σ : AbiLayout) (k n : Nat) : Bool :=
+  σ.frameLo == (fieldAbi k n).frameLo && σ.frameHi == (fieldAbi k n).frameHi
+
+/-- **The field domain at the frame range and the region length of the gate**: a field
+    expression (`fieldDomE`) with `k` distinct operands of `n < 2 ^ 60` words, under a layout
+    that is `fieldAbi k n` field by field (`fieldAbiB`) and has its frame range
+    (`fieldFrameB`). -/
+def fieldDomB' (e : _root_.Hax.TExpr) (σ : AbiLayout) : Bool :=
+  match fieldDomE e with
+  | some (k, n) => fieldAbiB σ k n && fieldFrameB σ k n && decide (n < 2 ^ 60)
+  | none => false
+
+/-- **A member of `fieldDomB'` is a member of `fieldDomB`.** -/
+theorem fieldDomB_of_fieldDomB' {e : _root_.Hax.TExpr} {σ : AbiLayout}
+    (h : fieldDomB' e σ = true) : fieldDomB e σ = true := by
+  unfold fieldDomB' at h
+  unfold fieldDomB
+  split at h
+  · rename_i k n hE
+    simp only [hE, Bool.and_eq_true] at h ⊢
+    exact h.1.1
+  · cases h
+
+/-- The layout `fieldAbi k n` has the frame range of `fieldAbi k n`. -/
+theorem fieldFrameB_fieldAbi (k n : Nat) : fieldFrameB (fieldAbi k n) k n = true := by
+  simp [fieldFrameB]
+
+/-- A field expression with `k` operands of `n < 2 ^ 60` words is in `fieldDomB'` under
+    `fieldAbi k n`. -/
+theorem fieldDomB'_fieldAbi {e : _root_.Hax.TExpr} {k n : Nat} (h : fieldDomE e = some (k, n))
+    (hn : n < 2 ^ 60) : fieldDomB' e (fieldAbi k n) = true := by
+  simp only [fieldDomB', h, fieldAbiB_fieldAbi, fieldFrameB_fieldAbi, hn, decide_true,
+    Bool.and_self]
 
 /-! ## 2. The bridges -/
 
@@ -367,7 +409,7 @@ def FieldBody (e : _root_.Hax.TExpr) (σ : AbiLayout) (fname : String) (b : Lcmd
 structure FieldDomStages : Prop where
   /-- Stage `F1`: the translation `haxToNF` refuses nothing on the field domain (`crateArrOk`,
       `haxFrontShapeOk`, `linkNameOk`). Proved by row R2. -/
-  refusal {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB e σ = true) :
+  refusal {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB' e σ = true) :
     (HaxModule.single e).refusal? σ = none
   /-- Stage `F2`: on a module `refusal?` accepts, the translation and the chain `extChain`
       return a program. Proved as `fieldDom_chainNF` (`Haxc/FieldDomFront.lean`) from
@@ -395,7 +437,7 @@ structure FieldDomStages : Prop where
   /-- Stage `F7`: the output of the chain on the field domain has no `call`, so the callee
       table is empty (`regionCallee_of_callFree`). Proved by row R2. -/
   callFree {e : _root_.Hax.TExpr} {σ : AbiLayout} {t : JasminTy}
-    {q : NFProg jasminDialect (nfCtx σ) [t]} (h : fieldDomB e σ = true)
+    {q : NFProg jasminDialect (nfCtx σ) [t]} (h : fieldDomB' e σ = true)
     (hq : haxEntry.chainNF (HaxModule.single e) σ = some ⟨t, q⟩) : q.callFree = true
   /-- Stage `F8`: the allocation `regionLprogC` returns a program when the export does. Proved
       as `fieldDom_regionLprogCSome` (`Haxc/FieldDomFront.lean`), as in
@@ -413,136 +455,136 @@ structure FieldDomStages : Prop where
   /-- Stage `F10`: the gated encoder accepts the printed body of the field domain. Proved by row
       R5, from `encodable_of_printedAddrWB` at stage `G15`. -/
   encode {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     (X86Backend.LprogBytes.encodeLfundefBytesChecked b).isSome = true
   /-- Stage `G1`: the code with the result copies is in the class `clsB` and free of `mulx`.
       Proved by row R3, from `regionCoStage_ne_coClass`. -/
   coClass {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coClass"
   /-- Stage `G2`: the coalescing check `coCfgB`. Proved by row R3, from
       `regionCoStage_accept_of_classes`. -/
   coCfgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB"
   /-- Stage `G3`: the entry names are fixed by the alias map. Proved by row R3, from
       `regionCoStage_accept_of_classes`. -/
   coEntryFix {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coEntryFix"
   /-- Stage `G4`: the renaming check `renB`. Proved by row R4. -/
   renB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "renB"
   /-- Stage `G5`: the observed arrays are names of the coalesced code. Proved by row R4. -/
   coResultName {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultName"
   /-- Stage `G6`: the result copy names are names of the coalesced code, fixed by the renaming.
       Proved by row R4. -/
   coResultCopy {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultCopy"
   /-- Stage `G7`: the result check `regionResultB`. Proved by row R4. -/
   regionResultB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionResultB"
   /-- Stage `G8`: the merge check `regionMergeB`. Proved by row R4, from
       `mergeSep_regionLprogC_complete`. -/
   regMerge {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regMerge"
   /-- Stage `G9`: the check `regionNopB`. Proved by row R4. -/
   regionNopB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionNopB"
   /-- Stage `G10`: the fusion check `fuseOKL`. Proved by row R4. -/
   fuseOKL {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseOKL"
   /-- Stage `G11`: the fusion sites check `regionSitesB`. Proved by row R4. -/
   fuseResultName {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseResultName"
   /-- Stage `G12`: the cell fold check `regionFoldB`. Proved by row R4. -/
   regionFoldB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionFoldB"
   /-- Stage `G13`: the translation validation `ownedCheckMC` of the reference against the cell
       image of the printed body. Proved by row R7b, from `ownedCheckMC_of_res` of row R7a. -/
   ownedCheckMC {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "ownedCheckMC"
   /-- Stage `G14`: the index invariant check `idxInvCheckB`. Proved by row R8. -/
   idxInvCheckB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "idxInvCheckB"
   /-- Stage `G15`: the printed body is in the class `regionPrintedB` (`printedAddrWB`). Proved by
       row R5, with the fixes of rows R5a and R6. -/
   regionPrintedB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionPrintedB"
   /-- Stage `G16`: the physical image check `physImgB`. Proved by row R9. -/
   physImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "physImgB"
   /-- Stage `G17`: the image gate `calleeImgBT none`. Proved by row R9, from
       `imgGateBW_of_legal`. -/
   regionImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionImgB"
   /-- Stage `G18`: the frame check `frameOkB`. Proved by row R4. -/
   frameOkB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "frameOkB"
   /-- Stage `G19`: the entry check `entryB`. Proved by row R4. -/
   entryB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "entryB"
   /-- Stage `G20`: the cell names check `cellNamesRB`. Proved by row R4. -/
   cellNamesRB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB"
   /-- Stage `G21`: the cell regions check. Proved by row R4. -/
   cellRegions {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellRegions"
   /-- Stage `C1`: the leak check `regionLeakB`. Proved by row R3 (its first four conjuncts) and
       row R7c (`ownedCheckML`). -/
   regionLeakB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionLeakB σ exportReg b t r.code r.res cert = true
   /-- Stage `C2`: the printed body passes `printedAddrWB`. Proved by row R5. -/
   printedAddrWB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) : printedAddrWB b = true
   /-- Stage `C3`: the constant-time image gate `imgGateCW`. Proved by row R9, from
       `imgGateCW_of_imgGateBW`. -/
   imgGateCW {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
-    {r : Exported} {cert : List (String × String)} (h : fieldDomB e σ = true)
+    {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     imgGateCW (X86Backend.ImageStraightCells.frameMarkC
         (regionCoParts σ exportReg b t r.code r.res cert).cells b)
@@ -559,7 +601,7 @@ variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t 
   {r : Exported} {cert : List (String × String)}
 
 /-- The gate names no refusing stage on the field domain: stages `G1`-`G21`. -/
-theorem fieldDom_regionCoStage (S : FieldDomStages) (h : fieldDomB e σ = true)
+theorem fieldDom_regionCoStage (S : FieldDomStages) (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname = none := by
   refine regionCoStage_eq_none_of_ne fun s hs => ?_
@@ -575,7 +617,7 @@ theorem fieldDom_regionCoStage (S : FieldDomStages) (h : fieldDomB e σ = true)
     S.entryB h hB, S.cellNamesRB h hB, S.cellRegions h hB]
 
 /-- The constant-time gate passes on the field domain: stages `C1`-`C3`. -/
-theorem fieldDom_regionCtB (S : FieldDomStages) (h : fieldDomB e σ = true)
+theorem fieldDom_regionCtB (S : FieldDomStages) (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCtB σ exportReg b t r.code r.res cert = true := by
   simp only [regionCtB, S.regionLeakB h hB, S.printedAddrWB h hB,
@@ -593,8 +635,8 @@ end Gate
     (`fieldDom_regionCtB`), assembled by `compileRegion_isSome_of_stages`. -/
 theorem compileA_isSome_of_fieldDom (S : FieldDomStages) {e : _root_.Hax.TExpr}
     {σ : AbiLayout} (fname : String)
-    (h : fieldDomB e σ = true) : (compileA e σ fname).isSome = true := by
-  rw [fieldDom_compileA_eq fname h]
+    (h : fieldDomB' e σ = true) : (compileA e σ fname).isSome = true := by
+  rw [fieldDom_compileA_eq fname (fieldDomB_of_fieldDomB' h)]
   unfold NFEntry.compileR
   have hr := S.refusal h
   obtain ⟨⟨t0, q⟩, hq⟩ := S.chainNF hr
@@ -620,84 +662,84 @@ section Rows
 open CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontFields
 
 /-- The product at the P-256 base prime is in the field domain. -/
-theorem p256Mul_fieldDom : fieldDomB p256MulTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p256Mul_fieldDom : fieldDomB' p256MulTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The square at the P-256 base prime is in the field domain. -/
-theorem p256Sqr_fieldDom : fieldDomB p256SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p256Sqr_fieldDom : fieldDomB' p256SqrTE (fieldAbi 1 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The sum at the P-256 base prime is in the field domain. -/
-theorem p256Add_fieldDom : fieldDomB p256AddTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p256Add_fieldDom : fieldDomB' p256AddTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The difference at the P-256 base prime is in the field domain. -/
-theorem p256Sub_fieldDom : fieldDomB p256SubTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p256Sub_fieldDom : fieldDomB' p256SubTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The product at the secp256k1 base prime is in the field domain. -/
-theorem secp256k1Mul_fieldDom : fieldDomB secp256k1MulTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem secp256k1Mul_fieldDom : fieldDomB' secp256k1MulTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The square at the secp256k1 base prime is in the field domain. -/
-theorem secp256k1Sqr_fieldDom : fieldDomB secp256k1SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem secp256k1Sqr_fieldDom : fieldDomB' secp256k1SqrTE (fieldAbi 1 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The sum at the secp256k1 base prime is in the field domain. -/
-theorem secp256k1Add_fieldDom : fieldDomB secp256k1AddTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem secp256k1Add_fieldDom : fieldDomB' secp256k1AddTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The difference at the secp256k1 base prime is in the field domain. -/
-theorem secp256k1Sub_fieldDom : fieldDomB secp256k1SubTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem secp256k1Sub_fieldDom : fieldDomB' secp256k1SubTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The product at the P-384 base prime is in the field domain. -/
-theorem p384Mul_fieldDom : fieldDomB p384MulTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p384Mul_fieldDom : fieldDomB' p384MulTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The square at the P-384 base prime is in the field domain. -/
-theorem p384Sqr_fieldDom : fieldDomB p384SqrTE (fieldAbi 1 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p384Sqr_fieldDom : fieldDomB' p384SqrTE (fieldAbi 1 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The sum at the P-384 base prime is in the field domain. -/
-theorem p384Add_fieldDom : fieldDomB p384AddTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p384Add_fieldDom : fieldDomB' p384AddTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The difference at the P-384 base prime is in the field domain. -/
-theorem p384Sub_fieldDom : fieldDomB p384SubTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem p384Sub_fieldDom : fieldDomB' p384SubTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The product at the BN254 base prime is in the field domain. -/
-theorem bn254Mul_fieldDom : fieldDomB bn254MulTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bn254Mul_fieldDom : fieldDomB' bn254MulTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The square at the BN254 base prime is in the field domain. -/
-theorem bn254Sqr_fieldDom : fieldDomB bn254SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bn254Sqr_fieldDom : fieldDomB' bn254SqrTE (fieldAbi 1 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The sum at the BN254 base prime is in the field domain. -/
-theorem bn254Add_fieldDom : fieldDomB bn254AddTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bn254Add_fieldDom : fieldDomB' bn254AddTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The difference at the BN254 base prime is in the field domain. -/
-theorem bn254Sub_fieldDom : fieldDomB bn254SubTE (fieldAbi 2 4) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bn254Sub_fieldDom : fieldDomB' bn254SubTE (fieldAbi 2 4) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The product at the BLS12-381 base prime is in the field domain. -/
-theorem bls12381Mul_fieldDom : fieldDomB bls12381MulTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bls12381Mul_fieldDom : fieldDomB' bls12381MulTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The square at the BLS12-381 base prime is in the field domain. -/
-theorem bls12381Sqr_fieldDom : fieldDomB bls12381SqrTE (fieldAbi 1 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bls12381Sqr_fieldDom : fieldDomB' bls12381SqrTE (fieldAbi 1 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The sum at the BLS12-381 base prime is in the field domain. -/
-theorem bls12381Add_fieldDom : fieldDomB bls12381AddTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bls12381Add_fieldDom : fieldDomB' bls12381AddTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 /-- The difference at the BLS12-381 base prime is in the field domain. -/
-theorem bls12381Sub_fieldDom : fieldDomB bls12381SubTE (fieldAbi 2 6) = true :=
-  fieldDomB_fieldAbi (by decide +kernel)
+theorem bls12381Sub_fieldDom : fieldDomB' bls12381SubTE (fieldAbi 2 6) = true :=
+  fieldDomB'_fieldAbi (by decide +kernel) (by norm_num)
 
 end Rows
 

@@ -279,6 +279,7 @@ theorem fieldDom_fuseResultName (h : fieldDomB e σ = true) (hB : FieldBody e σ
     rw [hret] at hy'
     cases hy'
 
-example (S : FieldDomStages) : type_of% @S.fuseResultName := @fieldDom_fuseResultName
+example (S : FieldDomStages) : type_of% @S.fuseResultName :=
+  fun h hB => fieldDom_fuseResultName (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

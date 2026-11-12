@@ -70,7 +70,8 @@ theorem fieldDom_regionLeakB_head (_h : fieldDomB e σ = true)
         (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)) = true :=
   RegionExportForms.regionLeakB_four (fieldDom_formB hB) σ exportReg b t cert
 
-example (S : FieldDomStages) : type_of% @S.coClass := @fieldDom_coClass
+example (S : FieldDomStages) : type_of% @S.coClass :=
+  fun h hB => fieldDom_coClass (fieldDomB_of_fieldDomB' h) hB
 
 example (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionLeakB σ exportReg b t r.code r.res cert

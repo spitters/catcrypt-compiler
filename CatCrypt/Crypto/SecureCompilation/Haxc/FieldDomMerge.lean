@@ -458,6 +458,7 @@ theorem fieldDom_regMerge (h : fieldDomB e σ = true) (hB : FieldBody e σ fname
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regMerge" :=
   regionCoStage_ne_regMerge (regionMergeB_of_tau_nil (fieldDom_tau_nil h hB))
 
-example (S : FieldDomStages) : type_of% @S.regMerge := @fieldDom_regMerge
+example (S : FieldDomStages) : type_of% @S.regMerge :=
+  fun h hB => fieldDom_regMerge (fieldDomB_of_fieldDomB' h) hB
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete
