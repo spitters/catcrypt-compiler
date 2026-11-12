@@ -63,7 +63,7 @@ flowchart TD
 | Stage | Definition | Check | Theorem |
 |---|---|---|---|
 | Rust to a typed literal | hax frontend export read by `haxpipeT` (hax-lean) | the hax subset | the hax-lean semantics `evalImp` is the source semantics |
-| Lean function to a literal | [`reifyImp%`](CatCrypt/Hax/ReifyImp.lean), with [`reifyField%`](CatCrypt/Hax/ReifyField.lean) over `ZMod p` | elaboration; the tactic `ascend_reified` | [`leanFront_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/LeanFront.lean) |
+| Lean function to a literal | [`reifyImp%`](CatCrypt/Hax/ReifyImp.lean), with [`reifyField%`](CatCrypt/Hax/ReifyField.lean) over `ZMod p` | elaboration; the tactic `ascend_reified` | [`leanFront_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/LeanFront.lean), [`leanFront_correct_mixed`](CatCrypt/Crypto/SecureCompilation/Haxc/LeanFrontMixed.lean) |
 | Aeneas output to an NF program | [`reifyAeneas%`](CatCrypt/Crypto/SecureCompilation/AeneasFront/Reify.lean), entry [`aeneasEntry`](CatCrypt/Crypto/SecureCompilation/AeneasFront/Entry.lean) | elaboration, proof by construction | `NFEntry.compileR_correct` at `aeneasEntry`; [`aeneasEntry_compileR_ct`](CatCrypt/Crypto/SecureCompilation/AeneasFront/EntryCT.lean) |
 | Front | [`haxToNF`](CatCrypt/Crypto/SecureCompilation/Haxc/NFChain.lean) | [`HaxModule.refusal?`](CatCrypt/Crypto/SecureCompilation/Haxc/NFChain.lean), decided | [`NFEntry.compileR_correct`](CatCrypt/Crypto/SecureCompilation/Haxc/ComposeV1.lean) at `haxEntry` |
 | Chain to the Jasmin dialect | [`extChain`](CatCrypt/Crypto/SecureCompilation/Haxc/ExtChain.lean), a run of a certified pass chain | per-step side conditions, decided | [`extChainCert`, `extChain_denote`](CatCrypt/Crypto/SecureCompilation/Haxc/ExtChain.lean); [`PassChain.Cert.sound`](CatCrypt/Crypto/SecureCompilation/VIR/PassChain.lean) |
@@ -78,7 +78,11 @@ source. A Rust function enters through hax: `haxpipeT` reads the export of the h
 as a typed hax-lean module, and `haxToNF` translates it. A Lean function enters through
 `reifyImp%`, which reads its body over words, arrays, counted folds and calls as a hax-lean
 literal, and `ascend_reified` proves that the literal denotes the function; `reifyField%`
-first reads the operations of `ZMod p` as field calls. The output of Aeneas for a Rust
+first reads the operations of `ZMod p` as field calls, and reads and updates of an array over
+`ZMod p` at a modulus below `2^64` as the runtime operations `index` and `array_update`.
+`leanFront_correct` states that the bytes of `compileA` on the typed literal compute the
+function, and `leanFront_correct_mixed` states it at a layout whose parameters are scalars and
+word arrays in any order. The output of Aeneas for a Rust
 function enters through `reifyAeneas%`, which reads it as an NF program with a proof built
 alongside the reading. The first two reach `compileA`; the third enters the same back half
 at `aeneasEntry`. A hand-written `Com` or `NFProg` term is not an input.

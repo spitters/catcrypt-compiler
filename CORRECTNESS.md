@@ -181,11 +181,17 @@ tables with the accepted programs.
   checks `regionCtB`. `haxc_correct_auto` is `NFEntry.compileR_correct_linked` at
   `haxEntry` and the stages `pairStage`, through `compileRegion_correct`. The compile line is
   `compileA = haxToNF → extChain → compileRegion`, and `compileRegion` is the only back
-  half; the field modules compile through it as well. The Aeneas front is a second entry of
-  the same compiler: `aeneasEntry` (`AeneasFront/Entry.lean`) takes an Aeneas-printed Lean
-  function, read by `reifyAeneas%` with a proof of its denotation, to `extChain` and
-  `compileRegion`, so `NFEntry.compileR_correct` and `aeneasEntry_compileR_ct` hold at it;
-  `AeneasFront/README.md` lists its statements and the test functions compiled to bytes. On a module with linked functions,
+  half; the field modules compile through it as well. The compiler has three fronts
+  ([PIPELINE.md](PIPELINE.md)), each with an entry of the region compiler and a correctness
+  theorem. The hax front is `haxToNF` at the entry `haxEntry`, reached through `compileA`,
+  with `haxc_correct_auto`. The Aeneas front `reifyAeneas%` reads the Lean output of Aeneas
+  for a Rust function as an `NFProg nfDialect` program with a proof of its denotation; its
+  entry is `aeneasEntry` (`AeneasFront/Entry.lean`), through `extChain` and `compileRegion`,
+  and `NFEntry.compileR_correct` and `aeneasEntry_compileR_ct` (`AeneasFront/EntryCT.lean`)
+  hold at it; `AeneasFront/README.md` lists its statements and the test functions compiled
+  to bytes. The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
+  hax-lean literal that enters `compileA`, with `leanFront_correct` and
+  `leanFront_correct_mixed` (section "The Lean front" below). On a module with linked functions,
   `compileRegion` reads the table of their data (`CalleeTab`) and checks the calling body
   in one class of printed bodies: `printedAddrCWB` with the gate `imgGateCBW`
   (`X86Backend/ImageAddrCallW.lean`), which admits one-bit and cell-indexed instructions,
@@ -291,11 +297,25 @@ tables with the accepted programs.
   `word_bound` (CatCrypt-core module `CatCryptCore.Tactics.WordBound`) closes
   word-bound side goals.
 
-#### The field instances of the Lean front
+#### The Lean front
 
 The fronts of the compiler and their theorems are listed in [PIPELINE.md](PIPELINE.md). A Lean
-function over `ZMod p` enters through `reifyField%` (`CatCrypt/Hax/ReifyField.lean`), which reads
-its field operations as calls of the tagged heads `m#p<p>`. An element of `ZMod p` is encoded as the integer of its canonical representative below
+function enters through `reifyImp%` (`CatCrypt/Hax/ReifyImp.lean`), which reads its body
+(`let` bindings, applications of named operations as calls, tuples and their projections,
+conditionals, options and literals) as an `ImpExpr` literal in A-normal form.
+No theorem covers the reifier; the tactic `ascend_reified` runs the ascent generator on each
+literal and proves that it denotes the function (`FnCorres`). `leanFront_correct`
+(`Haxc/LeanFront.lean`) states that the decoded bytes of `compileA` on the typed literal halt
+with the encoding of the function's value, from every entry state whose canonical environment
+is the entry environment of the ascent result at an argument in its guard; `leanFront_correct_mixed`
+(`Haxc/LeanFrontMixed.lean`) is that statement at a layout without constants whose parameters
+are `u64` scalars and word arrays in any order, each read from its register (`AbiArg.read`).
+
+A Lean function over `ZMod p` enters through `reifyField%` (`CatCrypt/Hax/ReifyField.lean`), which reads
+its field operations as calls of the tagged heads `m#p<p>`, an application of `Hax.index` or
+`Hax.array_update` at an element type `ZMod p` with `p < 2^64` as the runtime operation `index` or
+`array_update`, and a counted fold `Hax.foldRange` as a `for` loop. The instance `mix_bytes` (`Haxc/LeanFrontMixed.lean`) compiles a function over
+BabyBear that reads two arrays at fixed indices and multiplies by a scalar. An element of `ZMod p` is encoded as the integer of its canonical representative below
 `2^64` and as the array of its `fieldLimbs p` little-endian limbs at `p ≥ 2^64`
 (`enc_zmod`, `enc_zmod_wide`), the values the table of `compileA` reads at a narrow and at a
 wide tagged head. `leanFront_correct_field2` and `leanFront_correct_field1` state the
