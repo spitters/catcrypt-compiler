@@ -20,7 +20,8 @@ of the compiler, so the compiler `NFEntry.compileR` and its correctness theorem
 `NFEntry.compileR_correct` apply to them with no further proof.
 
 * The codes `AeTy` and the value map `AeTy.val`: an unsigned scalar of a width of at most
-  64 bits is the word of 64 bits of its value, a boolean is the word `0` or `1` that the
+  64 bits is the word of 64 bits of its value, a signed scalar of at most 64 bits the word
+  of 64 bits of its bit pattern, a boolean is the word `0` or `1` that the
   System V layout passes in a scalar register (its layout entry is a scalar of the bound
   `1`, its read-back the integer of the register), and an array of `n`
   values is the array of their images; one clause covers every width. `AeTy.vals` maps an
@@ -49,6 +50,8 @@ of the compiler, so the compiler `NFEntry.compileR` and its correctness theorem
 
 * `aeneasToNF_sound` — a run of a source is a run of its program.
 * `enc_val_bool`, `aeneasRuns_bool` — a Boolean result is read back as the integer `0` or `1`.
+* `enc_val_i`, `aeneasRuns_int` — a signed result is read back as the integer of its bit
+  pattern, whose two's-complement reading is the value.
 
 The correctness of the compiled bytes is `aeneasEntry.compileR_correct`, which is
 `NFEntry.compileR_correct aeneasEntry`.
@@ -74,10 +77,13 @@ open Aeneas.Std (RustM UScalar UScalarTy)
 /-! ## The value map -/
 
 /-- The types of the Aeneas values the front reads, as codes: an unsigned scalar of a width
-    of at most 64 bits, a boolean, an array of `n` values. -/
+    of at most 64 bits, a signed scalar of at most 64 bits, a boolean, an array of `n`
+    values. -/
 inductive AeTy where
   /-- `UScalar ty`, of at most 64 bits. -/
   | u (ty : UScalarTy) (h : ty.numBits ≤ 64)
+  /-- `IScalar ty`, of at most 64 bits. -/
+  | i (ty : Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64)
   /-- `Bool`. -/
   | bool
   /-- `Array τ n`. -/
@@ -86,6 +92,7 @@ inductive AeTy where
 /-- The Aeneas type of a code. -/
 @[reducible] def AeTy.denote : AeTy → Type
   | .u ty _ => UScalar ty
+  | .i ty _ => Aeneas.Std.IScalar ty
   | .bool => Bool
   | .arr n τ => Aeneas.Std.Array τ.denote n
 
@@ -93,6 +100,7 @@ inductive AeTy where
     the layout, an array of `n` values an array of length `n.val`. -/
 def AeTy.nf : AeTy → NfTy
   | .u _ _ => .word 64
+  | .i _ _ => .word 64
   | .bool => .word 64
   | .arr n τ => .arr n.val τ.nf
 
@@ -101,6 +109,7 @@ def AeTy.nf : AeTy → NfTy
     elements. One clause covers every width. -/
 def AeTy.val : (τ : AeTy) → τ.denote → τ.nf.denote
   | .u _ _, x => BitVec.ofNat 64 x.val
+  | .i _ _, x => BitVec.ofNat 64 x.bv.toNat
   | .bool, b => BitVec.ofNat 64 b.toNat
   | .arr _ τ, a => fun i => τ.val (a.val[i.val]'(by rw [a.property]; exact i.isLt))
 
@@ -205,6 +214,29 @@ theorem aeneasRuns_bool {σ : AbiLayout} {args : List AeTy}
     ∃ a y, fn a = .ok y ∧ v = .int (y.toNat : Int) := by
   obtain ⟨_, _, _, a, y, _, _, _, hfn, hv⟩ := h
   exact ⟨a, y, hfn, hv.trans (enc_val_bool y)⟩
+
+/-- **The read-back of a signed word**: the encoding of the image of a signed word under the
+    value map is the integer of its bit pattern. -/
+theorem enc_val_i (ty : Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64) (x : Aeneas.Std.IScalar ty) :
+    enc (AeTy.i ty h).nf (AeTy.val (.i ty h) x) = .int (x.bv.toNat : Int) := by
+  have hx : x.bv.toNat < 2 ^ 64 :=
+    lt_of_lt_of_le x.bv.isLt (Nat.pow_le_pow_right (by decide) h)
+  simp only [AeTy.nf, AeTy.val, enc, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hx]
+
+/-- **A signed result is read back as its bit pattern**: at a source of the result code
+    `AeTy.i ty h`, the value of a run is an integer `n` whose two's-complement reading at the
+    width of `ty` is the value of the signed word the Aeneas function returns. -/
+theorem aeneasRuns_int {σ : AbiLayout} {args : List AeTy} {ty : Aeneas.Std.IScalarTy}
+    {h : ty.numBits ≤ 64} {fn : AeTy.Args args → RustM (Aeneas.Std.IScalar ty)}
+    {prog : NFProg nfDialect (args.map AeTy.nf) [(AeTy.i ty h).nf]}
+    {cert : ∀ a y, fn a = .ok y → ∃ fuel,
+      PDenP hax64WExit fuel prog (AeTy.vals args a) = some (.cons (AeTy.val (.i ty h) y) .nil)}
+    {sa : AState} {v : Value} (hr : aeneasRuns σ (AeSrc.ofFn args (.i ty h) fn prog cert) sa v) :
+    ∃ a y, fn a = .ok y ∧ ∃ n : Nat, v = .int (n : Int) ∧
+      Int.bmod (n : Int) (2 ^ ty.numBits) = y.val := by
+  obtain ⟨_, _, _, a, y, _, _, _, hfn, hv⟩ := hr
+  exact ⟨a, y, hfn, y.bv.toNat, hv.trans (enc_val_i ty h y),
+    (BitVec.toInt_eq_toNat_bmod y.bv).symm⟩
 
 /-! ## The entry -/
 

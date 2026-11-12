@@ -28,7 +28,9 @@ lemma proved once:
 
 * a bind `m >>= k`: `Reify.bind`, `Reify.bindLit` (a literal operand is bound first);
 * a value `ok x`, `ok (op x y)`: `Reify.okVar`, `Reify.okExpr`, `Reify.okLit`;
-* a branch `if x < y then a else b` (and `≤`, `>`, `≥`, `=`): `Reify.iteCmp`;
+* a branch `if x < y then a else b` on unsigned words: `Reify.iteLt`; a branch on any other
+  condition that `ReadBit` reads (the other comparisons, connectives, the signed comparisons
+  of `AeneasFront/Signed.lean`): `Reify.iteBit`;
 * a panic guard, `massert P`, `if c then k else fail e` and `if c then fail e else k`:
   `Reify.assert`, `Reify.iteFailElse`, `Reify.iteFail`, each an instance of `Reify.guardS`, and
   every other guard by `Reify.guardP`, of which `Reify.guardS` is itself an instance: the
@@ -990,6 +992,26 @@ instance readBitCmp {Γ Δ₁ Δ₂ : Ctxt nfDialect} {P : Prop} {ty : UScalarTy
       (aeCall2_cmp c x y) rfl),
     bit_of_iff hp.iff⟩
 
+/-- **A branch on a condition read as a prefix and a bit.** When the decision of `c` is read
+    by the prefix `p` as the bit at `v`, the prefix followed by the branch on `v`, whose arms
+    are read at the valuation after the prefix, reads `if c then a else b`. -/
+theorem Reify.iteBit {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {Γ Δ : Ctxt nfDialect} {p : NFPre nfDialect Γ Δ} {W : Valuation Δ} {v : Var Δ .bit}
+    {pa pb : NFProg nfDialect Δ ts} (c : Prop) [Decidable c] (a b : RustM α)
+    (V : Valuation Γ) [hs : ReadBit (decide c) V Δ p W v] (ha : ReifyG E a W pa)
+    (hb : ReifyG E b W pb) :
+    ReifyG E (if c then a else b) V (p.plug (.ifThenElse v pa pb (.ret (prefixVars ts Δ)))) :=
+  ReifyG.plug _ hs.reads ⟨fun r hr => by
+    rw [nfToRustM]
+    have hl : HasBoolBit.toBool (d := nfDialect) (v.lookup W) = decide c := hs.bit
+    rw [hl]
+    by_cases hc : c
+    · simp only [hc, ite_true, decide_true] at hr ⊢
+      rw [ha.sound r hr, bind_tc_ok, nfToRustM, lookupArgs_prefixVars]
+    · simp only [hc, ite_false, decide_false] at hr ⊢
+      rw [hb.sound r hr, ite_eq_right Bool.false_ne_true, bind_tc_ok, nfToRustM,
+        lookupArgs_prefixVars]⟩
+
 /-! ### The guard shapes -/
 
 /-- **The guard on a condition.** When the decision of `S` is read by the prefix `p` as the
@@ -1874,12 +1896,18 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         (fun V' bit => do
           mkAppM ``Reify.iteFailElse #[c, a, b'.getArg! 1, V', ← reify crate E a (← guardVal bit V')])
         (reify crate E a)
-    if c.isAppOfArity ``LT.lt 4 then
+    if c.isAppOfArity ``LT.lt 4 &&
+        (← whnfR (← inferType (c.getArg! 2))).isAppOf ``UScalar then
       let x := c.getArg! 2
       let y := c.getArg! 3
       let bit ← mkAppM ``CmpOp.aen #[mkConst ``CmpOp.lt, x, y]
       let Vb ← mkAppM ``vCons #[bit, V]
       return ← mkAppM ``Reify.iteLt #[x, y, a, b, V, ← reify crate E a Vb, ← reify crate E b Vb]
+    let dc := m.getArg! 2
+    if let some (Δ, p, W, v, inst) ← readBit? (← mkAppOptM ``decide #[c, dc]) V then
+      return ← mkAppOptM ``Reify.iteBit #[none, none, none, none, some Δ, some p, some W,
+        some v, none, none, some c, some dc, some a, some b, some V, some inst,
+        some (← reify crate E a W), some (← reify crate E b W)]
     throwError "reifyAeneas%: no reading of the condition{indentExpr c}"
   if m.isAppOfArity ``Aeneas.Std.loop 4 then
     let σ := m.getArg! 0
