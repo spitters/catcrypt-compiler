@@ -283,7 +283,7 @@ theorem aeCall2_checked {ty : UScalarTy} [h : TableTy ty] (o : AOp) (ho : tagged
       first | exact absurd this (by decide) | decide +kernel
   unfold aeCall2
   rw [hw, hc]
-  simp only [h.table, ho, Bool.and_self, ite_true, readW_wordV, bind_tc_ok]
+  simp only [checkedTy_of_tableTy h.table, ho, Bool.and_self, ite_true, readW_wordV, bind_tc_ok]
 
 /-- The word operations of `wordAt` read their tagged name. -/
 theorem aeCall2_word {ty : UScalarTy} {o : WordOp} (hw : wordAt ty o = true)
