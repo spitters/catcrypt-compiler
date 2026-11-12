@@ -8,9 +8,9 @@ module
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.IterModel
 
 /-!
-# Test inputs: loops over the iterator adapters `enumerate` and `zip`
+# Test inputs: loops over the iterator adapters `enumerate`, `zip` and `step_by`
 
-Three functions written in the form the Aeneas Lean backend (commit `b08bf81`) prints a `for`
+Four functions written in the form the Aeneas Lean backend (commit `b08bf81`) prints a `for`
 loop over an iterator adapter: a loop body that steps the adapter state by its `next` function
 and matches on the item (as `vec_iter.sum_enumerate` and `iterators.zip_iter` of the Aeneas test
 outputs), the loop as `loop` over the body, and the function building the adapter state by the
@@ -19,11 +19,13 @@ docstrings. The accumulator is an argument. The module states no theorem.
 
 * `enum_range_sum`: `for (j, i) in (0..4).enumerate() { acc = acc + a[i] }`;
 * `enum_array_sum`: `for (i, x) in a.iter().enumerate() { acc = acc + x + b[i] }`;
-* `zip_array_sum`: `for (x, y) in a.iter().zip(b.iter()) { acc = acc + x + y }`.
+* `zip_array_sum`: `for (x, y) in a.iter().zip(b.iter()) { acc = acc + x + y }`;
+* `step_by_range_sum`: `for i in (0..8).step_by(2) { acc = acc + a[i] }`.
 
 ## Main results
 
-* `enum_range_sum`, `enum_array_sum`, `zip_array_sum` — the three test functions
+* `enum_range_sum`, `enum_array_sum`, `zip_array_sum`, `step_by_range_sum`: the test
+  functions
 -/
 
 @[expose] public section
@@ -138,6 +140,37 @@ def zip_array_sum (a b : Array Std.U32 4#usize) (acc : Std.U32) : Result Std.U32
       (core.iter.traits.collect.IntoIterator.Blanket
         (core.iter.traits.iterator.IteratorSliceIter Std.U32)) i i1
   zip_array_sum_loop iter acc
+
+/-- The loop body of `step_by_range_sum`. -/
+def step_by_range_sum_loop.body (a : Array Std.U32 8#usize)
+    (iter : core.iter.adapters.step_by.StepBy (core.ops.range.Range Std.Usize))
+    (acc : Std.U32) :
+    Result (ControlFlow ((core.iter.adapters.step_by.StepBy
+      (core.ops.range.Range Std.Usize)) × Std.U32) Std.U32) := do
+  let (o, iter1) ←
+    core.iter.adapters.step_by.IteratorStepBy.next
+      (core.iter.traits.iterator.IteratorRange core.iter.range.StepUsize) iter
+  match o with
+  | none => ok (done acc)
+  | some i =>
+    let x ← Array.index_usize a i
+    let acc1 ← acc + x
+    ok (cont (iter1, acc1))
+
+/-- The loop of `step_by_range_sum`. -/
+def step_by_range_sum_loop (a : Array Std.U32 8#usize)
+    (iter : core.iter.adapters.step_by.StepBy (core.ops.range.Range Std.Usize))
+    (acc : Std.U32) : Result Std.U32 := do
+  loop (fun (iter1, acc1) => step_by_range_sum_loop.body a iter1 acc1) (iter, acc)
+
+/-- `fn step_by_range_sum(a: &[u32; 8], mut acc: u32) -> u32 {
+      for i in (0..8).step_by(2) { acc = acc + a[i]; } acc }` -/
+def step_by_range_sum (a : Array Std.U32 8#usize) (acc : Std.U32) : Result Std.U32 := do
+  let iter ←
+    core.iter.traits.iterator.Iterator.step_by.trait_default
+      (core.iter.traits.iterator.IteratorRange core.iter.range.StepUsize)
+      { start := 0#usize, «end» := 8#usize } 2#usize
+  step_by_range_sum_loop a iter acc
 
 end iter_adapters
 

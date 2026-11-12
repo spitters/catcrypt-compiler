@@ -268,22 +268,22 @@ theorem aeExpr_callE2 {Γ : Ctxt nfDialect} {ty ty' : UScalarTy} [Le64 ty] [Le64
   rw [hx, hy, enc_embW, enc_embW, aeCallV, h]
   simp only [hd]
 
-/-- The checked operations at a width of the table read their tagged name. -/
-theorem aeCall2_checked {ty : UScalarTy} [h : TableTy ty] (o : AOp) (ho : taggedOp o = true)
+/-- The checked operations at a width of `checkedTy` read their tagged name. -/
+theorem aeCall2_checked {ty : UScalarTy} [h : CheckedTy ty] (o : AOp) (ho : taggedOp o = true)
     (x y : UScalar ty) :
     aeCall2 (checkedName o ty) (wordV x) (wordV y) =
       (o.aen x y >>= fun z => .ok (wordV z)) := by
   have hw : wordOpAt? (checkedName o ty) = none := by
-    have := h.table
+    have := h.checked
     cases o <;> simp [taggedOp] at ho <;> cases ty <;>
       first | exact absurd this (by decide) | decide +kernel
   have hc : checkedAt? (checkedName o ty) = some (ty, o) := by
-    have := h.table
+    have := h.checked
     cases o <;> simp [taggedOp] at ho <;> cases ty <;>
       first | exact absurd this (by decide) | decide +kernel
   unfold aeCall2
   rw [hw, hc]
-  simp only [checkedTy_of_tableTy h.table, ho, Bool.and_self, ite_true, readW_wordV, bind_tc_ok]
+  simp only [h.checked, ho, Bool.and_self, ite_true, readW_wordV, bind_tc_ok]
 
 /-- The word operations of `wordAt` read their tagged name. -/
 theorem aeCall2_word {ty : UScalarTy} {o : WordOp} (hw : wordAt ty o = true)
@@ -327,19 +327,19 @@ theorem reifyE_call2 {ty : UScalarTy} [Le64 ty] {Γ : Ctxt nfDialect} (f : Strin
     ReifyE (op x y) V (callE2 f (.word 64) va vb) where
   sound z hz := aeExpr_callE2 f _ va vb V x y hx hy (by rw [hf, hz]; rfl) (dec_wordV z)
 
-instance reifyE_add {ty : UScalarTy} [TableTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
+instance reifyE_add {ty : UScalarTy} [CheckedTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
     (x y : UScalar ty) (V : Valuation Γ) {va vb : Var Γ (.word 64)}
     [hx : Lookup V (embW x) va] [hy : Lookup V (embW y) vb] :
     ReifyE (x + y) V (callE2 (checkedName .add ty) (.word 64) va vb) :=
   reifyE_call2 _ (AOp.aen .add) (aeCall2_checked .add rfl) x y V va vb hx.eq hy.eq
 
-instance reifyE_sub {ty : UScalarTy} [TableTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
+instance reifyE_sub {ty : UScalarTy} [CheckedTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
     (x y : UScalar ty) (V : Valuation Γ) {va vb : Var Γ (.word 64)}
     [hx : Lookup V (embW x) va] [hy : Lookup V (embW y) vb] :
     ReifyE (x - y) V (callE2 (checkedName .sub ty) (.word 64) va vb) :=
   reifyE_call2 _ (AOp.aen .sub) (aeCall2_checked .sub rfl) x y V va vb hx.eq hy.eq
 
-instance reifyE_mul {ty : UScalarTy} [TableTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
+instance reifyE_mul {ty : UScalarTy} [CheckedTy ty] [Le64 ty] {Γ : Ctxt nfDialect}
     (x y : UScalar ty) (V : Valuation Γ) {va vb : Var Γ (.word 64)}
     [hx : Lookup V (embW x) va] [hy : Lookup V (embW y) vb] :
     ReifyE (x * y) V (callE2 (checkedName .mul ty) (.word 64) va vb) :=
