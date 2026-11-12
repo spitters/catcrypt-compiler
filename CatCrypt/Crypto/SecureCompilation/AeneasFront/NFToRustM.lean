@@ -250,7 +250,7 @@ theorem aeCall2_sound {f : String} {a b v : Value} (h : aeCall2 f a b = .ok v) :
         have hf : f = checkedName o ty := by
           rcases checkedAt?_spec hc with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> rfl
         rw [hf]
-        exact checked_square hto.1 hto.2 x y z hz
+        exact checked_square (checkedTy_of_tableTy hto.1) hto.2 x y z hz
       · cases h
   · rw [hw] at h
     simp only at h

@@ -257,9 +257,21 @@ def taggedOp : AOp → Bool
   | .add | .sub | .mul => true
   | _ => false
 
-/-- **Checked arithmetic.** At a width of the table, a value of the checked Aeneas
+/-- The widths `8`, `16`, `32`, `64` and `usize` of the checked operations, as a class for
+    instance resolution. -/
+class CheckedTy (ty : UScalarTy) : Prop where
+  /-- The width is one of `checkedTy`. -/
+  checked : checkedTy ty = true
+
+instance : CheckedTy .U8 := ⟨rfl⟩
+instance : CheckedTy .U16 := ⟨rfl⟩
+instance : CheckedTy .U32 := ⟨rfl⟩
+instance : CheckedTy .U64 := ⟨rfl⟩
+instance : CheckedTy .Usize := ⟨rfl⟩
+
+/-- **Checked arithmetic.** At a width of `checkedTy`, a value of the checked Aeneas
     operation `+`, `-` or `*` is, encoded, the value of the table at the tagged name. -/
-theorem checked_square {ty : UScalarTy} (hty : tableTy ty = true) {o : AOp}
+theorem checked_square {ty : UScalarTy} (hty : checkedTy ty = true) {o : AOp}
     (ho : taggedOp o = true) (x y z : UScalar ty) (h : o.aen x y = .ok z) :
     hax64WExit (checkedName o ty) [wordV x, wordV y] = some (wordV z) := by
   have hf : checkedAt? (checkedName o ty) = some (ty, o) := by
@@ -267,7 +279,7 @@ theorem checked_square {ty : UScalarTy} (hty : tableTy ty = true) {o : AOp}
   have hr : appChecked ty o (.w ty x) (.w ty y) = .ok (.w ty z) := by
     rw [appChecked, asW_w, asW_w]
     simp only [bind_tc_ok, h]
-  have h' := hax64WExit_appChecked (checkedTy_of_tableTy hty) hf hr
+  have h' := hax64WExit_appChecked hty hf hr
   rwa [toValue_w, toValue_w, toValue_w] at h'
 
 /-! ## Rotations by a `u32` amount -/
@@ -494,10 +506,11 @@ instance shiftRelated {ty : UScalarTy} [h : TableTy ty] (o : WordOp) :
   relatedBinOpOn_of (word_square (by simp [wordAt, h.table]))
 
 /-- **The checked operations as guarded squares.** -/
-instance checkedRelated {ty : UScalarTy} [h : TableTy ty] (o : AOp) [ho : Fact (taggedOp o = true)] :
+instance checkedRelated {ty : UScalarTy} [h : CheckedTy ty] (o : AOp)
+    [ho : Fact (taggedOp o = true)] :
     RelatedBinOpOn (encU ty) (fun a b => OkR (bindR2 o.aen a b)) (bindR2 o.aen)
       (call2 (checkedName o ty)) :=
-  relatedBinOpOn_of (checked_square h.table ho.out)
+  relatedBinOpOn_of (checked_square h.checked ho.out)
 
 instance : Fact (taggedOp .add = true) := ⟨rfl⟩
 instance : Fact (taggedOp .sub = true) := ⟨rfl⟩
