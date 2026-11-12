@@ -847,7 +847,6 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoadOpForms
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
-CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
 CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnifiedMem
 CatCrypt.Crypto.SecureCompilation.X86Backend.LprogGpReallocRv

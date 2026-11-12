@@ -113,9 +113,8 @@ declares into `X86Backend.Jasmin`; `Model.lean`, `Lowering.lean` and
 
 `LowCTToJInstrCT.lean`, `LowCTSelectCT.lean`, `LowCTMulx.lean`,
 `LowCTForCT.lean`, `LowCTMemCT.lean`, `LowCTMemDenote.lean`, `LowCTUnified.lean`,
-`LowCTUnifiedMem.lean`, `LowCTCallCompose.lean`, `LowCTMvcgen.lean`
-(`compile_correct_triple`), `LowCTITree.lean`, `LowCTITreePRHL.lean`,
-`LowCTSecPreserve.lean`, `ImpFrontWiden.lean`.
+`LowCTUnifiedMem.lean`, `LowCTMvcgen.lean`
+(`compile_correct_triple`), `ImpFrontWiden.lean`.
 
 ## Kernel emitters
 

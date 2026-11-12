@@ -31,7 +31,7 @@ one over machine states `JState 64` — no relational/product program is built.
 
 This is the deterministic counterpart to the probabilistic security layer, where
 the source≈target relation is instead carried by a **relational** Hoare
-logic, the pRHL `rHoare` judgement (used in `LowCTITreePRHL`/`LowCTSecPreserve`).  Here, because the backend
+logic, the pRHL `rHoare` judgement.  Here, because the backend
 is deterministic, the relation collapses into a unary triple whose assertions are
 `StateMatch`.
 

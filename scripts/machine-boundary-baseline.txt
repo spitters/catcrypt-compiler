@@ -324,8 +324,6 @@ edge CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdReloadElim -> CatCrypt.Cry
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdToOwnedCF -> CatCrypt.Crypto.SecureCompilation.X86Backend.SpeculativeCTControlFlow
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee -> CatCrypt.Crypto.Hax.Module
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll -> CatCrypt.Crypto.SecureCompilation.X86Backend.X86Dialect
-edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL -> CatCrypt.Relational.Rules
-edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve -> CatCrypt.Crypto.SDist
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT -> CatCrypt.Crypto.Jasmin.LowCTCTAnalysis
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.LowerLegal -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.Proofs
 edge CatCrypt.Crypto.SecureCompilation.X86Backend.Lowering -> CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
@@ -853,15 +851,11 @@ escape CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdToOwnedCF
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LoopUnroll
-escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTCallCompose
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTForCT
-escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITree
-escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTITreePRHL
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemCT
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMemDenote
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMulx
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTMvcgen
-escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSecPreserve
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTSelectCT
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTToJInstrCT
 escape CatCrypt.Crypto.SecureCompilation.X86Backend.LowCTUnified
