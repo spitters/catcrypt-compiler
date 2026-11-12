@@ -267,7 +267,7 @@ theorem checked_square {ty : UScalarTy} (hty : tableTy ty = true) {o : AOp}
   have hr : appChecked ty o (.w ty x) (.w ty y) = .ok (.w ty z) := by
     rw [appChecked, asW_w, asW_w]
     simp only [bind_tc_ok, h]
-  have h' := hax64WExit_appChecked hty hf hr
+  have h' := hax64WExit_appChecked (checkedTy_of_tableTy hty) hf hr
   rwa [toValue_w, toValue_w, toValue_w] at h'
 
 /-! ## Rotations by a `u32` amount -/

@@ -621,6 +621,49 @@ theorem hax64WExit_appUpdate {a i v r : AVal} (h : appUpdate a i v = .ok r) :
 theorem usize_numBits_le : UScalarTy.Usize.numBits ≤ 64 := by
   rcases System.Platform.numBits_eq with h | h <;> simp [UScalarTy.numBits, h]
 
+/-- The widths of the checked operations `Add#t`, `Sub#t`, `Mul#t` that `hax64WExit` answers
+    wherever the reading returns a value: the widths of `tableTy` and `usize`. The table reads
+    the tag `size` at `64` bits; a checked value at the `usize` width is a checked value at
+    `64` bits (`AOp.checkedRt_mono`). -/
+def checkedTy (ty : UScalarTy) : Bool := tableTy ty || ty == .Usize
+
+theorem checkedTy_of_tableTy {ty : UScalarTy} (h : tableTy ty = true) : checkedTy ty = true := by
+  simp [checkedTy, h]
+
+/-- A width of `checkedTy` is at most `64`. -/
+theorem checkedTy_numBits_le {ty : UScalarTy} (h : checkedTy ty = true) : ty.numBits ≤ 64 := by
+  cases ty <;> first
+    | exact absurd h (by decide)
+    | exact usize_numBits_le
+    | decide
+
+/-- **Checked addition, subtraction and multiplication are monotone in the width.** A value of
+    the checked operation at the width `w` is its value at every width `W ≥ w`. -/
+theorem AOp.checkedRt_mono {w W : Nat} (hw : w ≤ W) {o : AOp}
+    (ho : o = .add ∨ o = .sub ∨ o = .mul) {a b : Int} {v : Value}
+    (h : o.checkedRt w a b = some v) : o.checkedRt W a b = some v := by
+  have hp : (2 : Int) ^ w ≤ 2 ^ W := pow_le_pow_right₀ (by norm_num) hw
+  rcases ho with rfl | rfl | rfl
+  · simp only [AOp.checkedRt, _root_.Hax.uintAddOp] at h ⊢
+    split at h
+    · rename_i h1
+      rw [ite_eq_left ⟨h1.1, h1.2.1, lt_of_lt_of_le h1.2.2 hp⟩]
+      exact h
+    · cases h
+  · simp only [AOp.checkedRt, _root_.Hax.uintSubOp] at h ⊢
+    split at h
+    · rename_i h1
+      rw [ite_eq_left ⟨h1.1, h1.2.1, lt_of_lt_of_le h1.2.2 hp⟩]
+      exact h
+    · cases h
+  · simp only [AOp.checkedRt, _root_.Hax.uintMulOp] at h ⊢
+    split at h
+    · rename_i h1
+      obtain ⟨h1, h2, h3, h4, h5⟩ := h1
+      rw [ite_eq_left ⟨h1, lt_of_lt_of_le h2 hp, h3, lt_of_lt_of_le h4 hp, lt_of_lt_of_le h5 hp⟩]
+      exact h
+    · cases h
+
 /-- A scalar call that is none of the array names nor the Boolean `Not`, whose result is a
     scalar and whose call tower type holds a word, returns under `hax64WExit` the value of
     `Hax.hax64Builtins` on integer words below `2 ^ 64` when that value is a word below
@@ -657,10 +700,10 @@ theorem hax64WExit_int_of_builtins {f : String}
   rw [h5', Bool.true_and, decide_eq_true_eq]
   exact_mod_cast hr
 
-/-- A checked width-tagged name `Add#t`, `Sub#t` or `Mul#t` at a width of `tableTy` is
+/-- A checked width-tagged name `Add#t`, `Sub#t` or `Mul#t` at a width of `checkedTy` is
     admitted by `hax64WExit` as a scalar call: it is none of the array names nor the Boolean
     `Not`, its result is a scalar, and its call tower type holds a word. -/
-theorem checked_admit {ty : UScalarTy} {o : AOp} {f : String} (hty : tableTy ty = true)
+theorem checked_admit {ty : UScalarTy} {o : AOp} {f : String} (hty : checkedTy ty = true)
     (hf : checkedAt? f = some (ty, o)) :
     (f ≠ "array_lit" ∧ f ≠ "repeat" ∧ f ≠ "eq#arr" ∧ f ≠ "ne#arr" ∧ f ≠ "len" ∧
         f ≠ "Not") ∧
@@ -671,23 +714,25 @@ theorem checked_admit {ty : UScalarTy} {o : AOp} {f : String} (hty : tableTy ty 
     | exact ⟨by decide, by simp [exitScalarRes, exitScalarCall, uTag],
         exitMarshalOk_of_arrCtorLen rfl⟩
 
-/-- The checked operations `Add#t`, `Sub#t`, `Mul#t` at a width of `tableTy` are, in
-    `Hax.hax64Builtins`, the checked operations of `u<w>` at that width, where they return a
-    value. -/
+/-- The checked operations `Add#t`, `Sub#t`, `Mul#t` at a width of `checkedTy` are, in
+    `Hax.hax64Builtins`, the checked operations of `u<w>`, where they return a value: at the
+    width of the type, and at `usize` at `64` bits, which the value at the `usize` width is
+    (`AOp.checkedRt_mono`). -/
 theorem hax64Builtins_checkedRt {ty : UScalarTy} {o : AOp} {f : String}
-    (hty : tableTy ty = true) (hf : checkedAt? f = some (ty, o)) {a b : Int} {v : Value}
+    (hty : checkedTy ty = true) (hf : checkedAt? f = some (ty, o)) {a b : Int} {v : Value}
     (h : o.checkedRt ty.numBits a b = some v) :
     hax64Builtins f [.int a, .int b] = some v := by
   rcases checkedAt?_spec hf with ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ | ⟨rfl, rfl⟩ <;> cases ty <;>
     first
     | exact absurd hty (by decide)
     | exact (congrArg (· <|> _) h).trans rfl
+    | exact (congrArg (· <|> _) (AOp.checkedRt_mono usize_numBits_le (by simp) h)).trans rfl
 
-/-- **The checked operations tagged at the widths of the table.** A value the reading of
-    `Add#t`, `Sub#t` or `Mul#t` at a width of `tableTy` returns is, encoded, the value of
-    `hax64WExit` on the encoded arguments. -/
+/-- **The checked operations tagged at the widths of the table and `usize`.** A value the
+    reading of `Add#t`, `Sub#t` or `Mul#t` at a width of `checkedTy` returns is, encoded, the
+    value of `hax64WExit` on the encoded arguments. -/
 theorem hax64WExit_appChecked {ty : UScalarTy} {o : AOp} {f : String}
-    (hty : tableTy ty = true) (hf : checkedAt? f = some (ty, o)) {a b r : AVal}
+    (hty : checkedTy ty = true) (hf : checkedAt? f = some (ty, o)) {a b r : AVal}
     (h : appChecked ty o a b = .ok r) :
     hax64WExit f [a.toValue, b.toValue] = some r.toValue := by
   obtain ⟨x, y, hx, hy, hc⟩ := appChecked_ok hf h
@@ -699,7 +744,7 @@ theorem hax64WExit_appChecked {ty : UScalarTy} {o : AOp} {f : String}
     cases h
     exact ⟨z, rfl⟩
   have h64 : 2 ^ ty.numBits ≤ 2 ^ 64 :=
-    Nat.pow_le_pow_right (by decide) (tableTy_numBits_le hty)
+    Nat.pow_le_pow_right (by decide) (checkedTy_numBits_le hty)
   have hb := hax64Builtins_checkedRt hty hf hc
   obtain ⟨hne, hres, hto⟩ := checked_admit hty hf
   rw [hx, hy]
