@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredPasses
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredFuse
 
 /-!
 # Covered instructions under register renaming and the full two-address legaliser
@@ -40,6 +40,11 @@ rewrites into `CMP:64 A, [A, S]`; both rewrites consist of gate forms.
 * `legalizeInstr_subSelf`, `scratchRoute_subSelf_gateForm`: the legaliser routes the
   subtraction from the destination through gate forms.
 * `legalizeInstr_cmp`: the legaliser rewrites the three-address compare into a gate form.
+* `threeAddrAlu_renameR`, `threeAddrSubSelf_renameR`, `threeAddrCmp_renameR`: a renaming keeps
+  the three-address forms.
+* `covered_twoAddrBody_three`: the legalised body of a body of covered instructions,
+  three-address forms and unfused high-word bindings is covered up to unfused high-word
+  bindings.
 -/
 
 @[expose] public section
@@ -61,6 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.LprogIsa (PrintedShape)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCompleteLegal (Covered UnfusedMulHi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredPasses (FrameAgree
   covered_of_frameAgree)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedCoveredFuse (ThreeAddrAlu
+  tiedOk_of_covered legalizeInstr_threeAddr)
 
 /-! ## 1. Renamings of general-purpose names -/
 
@@ -356,6 +363,13 @@ def ThreeAddrCmp (i : LinstrR) : Prop :=
   ∃ (d a s : String), gpOk a = true ∧ gpOk s = true ∧
     i = .Lopn [.reg d] "CMP:64" [.reg a, .reg s]
 
+/-- A renaming keeps a three-address operation of `PrintedCoveredFuse.ThreeAddrAlu`. -/
+theorem threeAddrAlu_renameR {ρ : String → String} (h : GpRenaming ρ) {i : LinstrR}
+    (hi : ThreeAddrAlu i) : ThreeAddrAlu (renameR ρ i) := by
+  obtain ⟨m, d, a, s, hm, hd, ha, hs, hsd, rfl⟩ := hi
+  exact ⟨m, ρ d, ρ a, ρ s, hm, h.gp d hd, h.gp a ha, h.gp s hs,
+    hsd.imp h.injective.ne id, rfl⟩
+
 /-- A renaming keeps the subtraction from the destination. -/
 theorem threeAddrSubSelf_renameR {ρ : String → String} (h : GpRenaming ρ) {i : LinstrR}
     (hi : ThreeAddrSubSelf i) : ThreeAddrSubSelf (renameR ρ i) := by
@@ -436,6 +450,66 @@ theorem legalizeInstr_cmp (b : Lcmd) (ok : Bool) (x : Linstr) (h : ThreeAddrCmp 
     simp only [h1, h2, h3, h4, Bool.and_self, ite_true, List.mem_singleton] at hy
     rw [hy]
     exact hcmp
+
+/-- The two-address precondition holds of an unfused high-word binding. -/
+theorem tiedOk_of_unfusedMulHi {i : LinstrR} (h : UnfusedMulHi i) : tiedOk i = true := by
+  obtain ⟨ds, ss, rfl⟩ := h
+  have ht : tiedBases.contains (tieBase "MULXHI:64") = false := by decide
+  have hs : (tieBase "MULXHI:64" == "SHL" || tieBase "MULXHI:64" == "SHR" ||
+      tieBase "MULXHI:64" == "SAR") = false := by decide
+  unfold tiedOk
+  split
+  · next heq =>
+    simp only [LinstrR.Lopn.injEq] at heq
+    obtain ⟨-, rfl, -⟩ := heq
+    simp only [needsTie, ht, hs, Bool.false_or, Bool.false_and, Bool.not_false, Bool.true_or]
+  · rfl
+
+/-- The two-address legaliser keeps the labels of a body. -/
+theorem labelAt_twoAddrBody (b : Lcmd) (l : LLabel) (h : (labelAt b l).isSome = true) :
+    (labelAt (twoAddrBody b) l).isSome = true := by
+  simp only [labelAt, List.findIdx?_isSome, List.any_eq_true] at h ⊢
+  obtain ⟨x, hx, hxl⟩ := h
+  refine ⟨x, ?_, hxl⟩
+  have hlx : legalizeInstr (bodyAvoids b) x = [x] := by
+    unfold legalizeInstr
+    split
+    · next hxi => rw [hxi] at hxl; simp [isLabelB] at hxl
+    · rfl
+  simp only [twoAddrBody, LegalizeShiftImm.legalizeBody, List.mem_flatMap]
+  exact ⟨x, hx, by simp [hlx]⟩
+
+/-- **Covered output of the two-address legaliser on the three-address forms**: on a body each
+    of whose instructions is covered in it, a three-address operation of `ThreeAddrAlu`, a
+    subtraction from the destination, a three-address compare or an unfused high-word
+    binding, every instruction of the legalised body is covered in it or an unfused high-word
+    binding, when the legalised body agrees with the input on its frame and, if the body holds
+    a subtraction from the destination, no instruction of the body names the scratch register
+    and the legalised body resolves its save slot for a 64-bit load. -/
+theorem covered_twoAddrBody_three {b : Lcmd}
+    (hcov : ∀ x ∈ b, Covered b x.li_i ∨ ThreeAddrAlu x.li_i ∨ ThreeAddrSubSelf x.li_i ∨
+      ThreeAddrCmp x.li_i ∨ UnfusedMulHi x.li_i)
+    (hsub : (∃ x ∈ b, ThreeAddrSubSelf x.li_i) → bodyAvoids b = true ∧
+      kOk (Params.ofBody (twoAddrBody b)) (scratchSave x86Data) = true)
+    (hf : FrameAgree b (twoAddrBody b)) :
+    ∀ y ∈ twoAddrBody b, Covered (twoAddrBody b) y.li_i ∨ UnfusedMulHi y.li_i := by
+  intro y hy
+  have hy' := hy
+  simp only [twoAddrBody, LegalizeShiftImm.legalizeBody, List.mem_flatMap] at hy'
+  obtain ⟨x, hx, hy'⟩ := hy'
+  rcases hcov x hx with h | h | h | h | h
+  · rw [legalizeInstr_of_tiedOk _ x (tiedOk_of_covered h), List.mem_singleton] at hy'
+    subst hy'
+    exact Or.inl (covered_of_frameAgree h hf (labelAt_twoAddrBody b))
+  · exact Or.inl (Or.inl (legalizeInstr_threeAddr _ _ x h y hy'))
+  · obtain ⟨hav, hk⟩ := hsub ⟨x, hx, h⟩
+    obtain ⟨d, a, hd, ha, had, hxi⟩ := h
+    rw [hav, legalizeInstr_subSelf x had hxi] at hy'
+    exact Or.inl (Or.inl (scratchRoute_subSelf_gateForm _ _ hd ha hk y hy'))
+  · exact Or.inl (Or.inl (legalizeInstr_cmp _ _ x h y hy'))
+  · rw [legalizeInstr_of_tiedOk _ x (tiedOk_of_unfusedMulHi h), List.mem_singleton] at hy'
+    subst hy'
+    exact Or.inr h
 
 end TwoAddr
 
