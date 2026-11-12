@@ -598,6 +598,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledIterAdapters,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledStepBy,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledOptAdd,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledSigned,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Reified,
