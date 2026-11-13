@@ -8664,7 +8664,7 @@ theorem regionCallee_nil {Γ : Ctxt jasminDialect} {t : JasminTy}
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak (FRun MemFCT fRun_unique
   lsemFuelMemFLeak instrLeakF instrLeakB instrLeakF_of_lopn instrLeakB_quiet
-  lsemFuelMemFLeak_step lsemFuelMemFLeak_halt lsemFuelMemFLeak_fst)
+  lsemFuelMemFLeak_step lsemFuelMemFLeak_halt lsemFuelMemFLeak_fst storeImmEv)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeakLoop (straightLeakFF_quiet
   lsemFuelMemFLeak_segF renEv)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRegAllocLeak (LeakCert

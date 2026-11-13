@@ -139,7 +139,10 @@ theorem instrLeakB_live (r r' : LstateN) (i : LinstrRM)
       split_ifs with hlea
       · rfl
       · rw [ite_eq_right hlea] at hx hb
-        rw [List.map_flatMap]
+        rw [List.map_append, List.map_flatMap]
+        congr 1
+        swap
+        · exact X86Backend.ImageAddrLeak.storeImmEv_renRM_any σ (.Lopn ds o ss, tag)
         exact List.flatMap_congr fun op hop =>
           opLeakF_ren r r' op (fun x hx' => hx x (List.mem_flatMap.mpr ⟨op, hop, hx'⟩))
             (fun b hb' => hb b (List.mem_flatMap.mpr ⟨op, hop, hb'⟩))

@@ -107,8 +107,10 @@ theorem instrLeakB_fix {i : LinstrRM} (hsh : arrShapeB i = false) (h : leakFixB 
   simp only [leakFixB, hsh, Bool.false_or] at h
   cases w with
   | Lopn ds o ss =>
+      have hs : storeImmEv (.Lopn ds o ss, tag) = [] := by
+        cases tag <;> simp_all [arrShapeB, storeImmEv]
       simp only [Bool.or_eq_true, beq_iff_eq, List.all_eq_true] at h
-      simp only [instrLeakB]
+      simp only [instrLeakB, hs, List.append_nil]
       split
       · rfl
       · next hne =>
@@ -166,8 +168,7 @@ theorem instrLeakB_renArr {i : LinstrRM} (hsh : arrShapeB i = true) (r : LstateN
       · split at hsh
         · next ho =>
           subst ho
-          have hne : stripWidthTag "STOREIMM" ≠ "LEA" := by decide +kernel
-          simp [instrLeakB, renArr, renStoreImm, hne, opLeakF, renEv]
+          simp [instrLeakB, renArr, renStoreImm, opLeakF, renEv, storeImmEv, storeImmStruct?]
         · simp at hsh
       · simp at hsh
   | _ => simp [arrShapeB] at hsh

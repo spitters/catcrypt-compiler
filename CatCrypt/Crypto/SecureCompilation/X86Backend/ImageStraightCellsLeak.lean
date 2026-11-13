@@ -107,7 +107,7 @@ theorem instrLeakB_length {i : LinstrRM} (hl : IsLopn i) (r : LstateN) :
   simp only [instrLeakB, evCountF, hf]
   split_ifs
   · rfl
-  · exact flatMap_opLeakF_length _ _
+  · rw [List.length_append, flatMap_opLeakF_length]
 
 /-- **The forms of a folded instruction.** The instruction is an `Lopn`, and its fold is the
     instruction itself, kept under `keepB`, or a copy between registers without an array

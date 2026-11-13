@@ -148,7 +148,7 @@ theorem straightLeakF_straightOps_arr (Pj : JLeakParams) {w n : Nat} {Γ : Ctxt 
         rw [exprArgs_store heq arr idx val, resolveVar_isReg arr, resolveVar_isReg idx,
           resolveVar_isReg val]
         simp [memOpB, opToLinstrR, instrLeakB, opLeakF, idxVal_of_getW hidx, siteOf,
-          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind]
+          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind, storeImmT, storeImmEv]
         exact Or.inl rfl
   | zero heq args hbody ih =>
       intro nArgs d st V hlen harg hagree
@@ -170,14 +170,13 @@ theorem straightLeakF_straightOps_arr (Pj : JLeakParams) {w n : Nat} {Γ : Ctxt 
         ((⟨JasminOp.stackStoreImm _ _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
         hlen harg hagree
       rw [straightOpsMem_storeImm, straightLeakF_cons_of_step hstep, comCtLeak_var,
-        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
-      convert List.nil_append _ using 2
-      simp only [opToLinstrR]
-      refine instrLeakB_quiet _ _ _ _ _ fun o ho => ?_
-      rcases List.mem_append.mp ho with h | h
-      · exact exprArgs_leak _ _ _ _ o h
-      · obtain rfl := List.mem_singleton.mp h
-        rfl
+        straightT_var _ _ _ _ _ _ (exprCtLeak_length Pj _ V),
+        ← ih (by simp [hlen]) (by omega) hagree']
+      congr 1
+      match args with
+      | .cons arr (.cons val .nil) =>
+        rw [exprArgs_storeImm heq arr val, resolveVar_isReg arr, resolveVar_isReg val]
+        simp [memOpB, opToLinstrR, instrLeakB, opLeakF, storeImmEv, storeImmStruct?, storeImmT]
 
 /-! ## 2. Renaming -/
 
@@ -198,6 +197,19 @@ def ArrOK : LinstrR → Prop
   | .Lopn ds _ ss => (∀ o ∈ ds, ∃ r, o = .reg r) ∧ ∀ o ∈ ss, ∀ b k, o ≠ .arr b k
   | _ => True
 
+/-- The constant-index store event of a renamed `Lopn` with register destinations is the
+    event of the original with its array base renamed. -/
+theorem storeImmEv_renRM (τ : String → String) (ds : List LOperand) (o : String)
+    (ss : List LOperand) (tag : MemTag) (hds : ∀ o ∈ ds, ∃ r, o = .reg r) :
+    storeImmEv (.Lopn (ds.map (renOperand τ)) o (ss.map (renOperand τ)), tag)
+      = (storeImmEv (.Lopn ds o ss, tag)).map (renEv τ) := by
+  unfold storeImmEv
+  cases tag <;> simp only [List.map_nil]
+  rcases ds with _ | ⟨d, _ | ⟨d2, t⟩⟩ <;> try simp [storeImmStruct?]
+  obtain ⟨q, rfl⟩ := hds d (by simp)
+  rcases ss with _ | ⟨s1, _ | ⟨s2, _ | ⟨s3, _ | ⟨s4, t⟩⟩⟩⟩ <;> try simp [storeImmStruct?]
+  cases s1 <;> cases s2 <;> cases s3 <;> simp [renOperand] <;> split_ifs <;> simp [renEv]
+
 /-- **The events of a renamed instruction.** For an `ArrOK` `Lopn` whose source names hold
     in `r'` at their images the values they hold in `r`, the renamed instruction emits at
     `r'` the events of the instruction at `r` with renamed array bases. -/
@@ -214,6 +226,9 @@ theorem instrLeakB_renRM (τ : String → String) (r r' : LstateN) (i : LinstrRM
   split_ifs
   · rfl
   simp only [List.map_append, List.map_flatMap]
+  congr 1
+  swap
+  · exact storeImmEv_renRM τ ds o ss tag hds
   congr 1
   · rw [List.flatMap_eq_nil_iff.mpr, List.flatMap_eq_nil_iff.mpr]
     · intro x hx
@@ -1235,7 +1250,7 @@ theorem instrLeakF_shiftImage (i : LinstrRM) (s : LstateMF) :
     instrLeakF (shiftImage i) s = instrLeakF i s := by
   unfold shiftImage immShiftExpand
   split
-  · split <;> simp [instrLeakF, instrLeakB, opLeakF, flagCondCC?]
+  · split <;> simp [instrLeakF, instrLeakB, opLeakF, flagCondCC?, storeImmEv]
   · rfl
 
 /-- The expansion keeps labels and their positions. -/

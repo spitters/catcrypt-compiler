@@ -20,11 +20,13 @@ array operands of an `Lopn` (`opLeakF`: the array name with the element offset) 
 branch event of a conditional (`instrLeakF`). The events of a block body are a function of
 the symbolic run of the body (`symLeak`): an array operand `b[x * sc]` emits the address
 event of `b` at `sc` times the value of the symbolic word of `x`, a compile-time element
-`b[i]` the event of `b` at `i`. Register moves, frame-word moves and labels emit nothing.
+`b[i]` the event of `b` at `i`, and a constant-index store `STOREIMM d, [b, v, #k]` the event
+of `b` at `8 * k` (`storeImmSEv`). Register moves, frame-word moves and labels emit nothing.
 
 `leakCheckWith` asks, at every block pair the checker `ownedCheckM` compares, that the
-symbolic events of the rewritten block are those of the source block, over registers (and
-flags) live at the block. Array names are not renamed by the checker (the two runs share
+symbolic events of the rewritten block are those of the source block up to the normal form
+`SEv.norm` (an event at a register index whose word is an immediate is the event at the
+compile-time offset), over registers (and flags) live at the block. Array names are not renamed by the checker (the two runs share
 their arrays), and the branch events agree because the checker already compares the
 symbolic branch conditions. Under `ownedCheckWith` and `leakCheckWith`, two halting traced
 runs of the source and of the rewritten body from one state have one trace. `ownedCheckML`
@@ -45,7 +47,8 @@ suffix `_at` are stated for an instruction set whose step the symbolic step desc
 
 * `Isa.instrLeakF`, `Isa.lsemFuelMemFLeak`, `Isa.FRun`, `Isa.MemFCT`: the events, the traced
   run and constant time of an instruction set.
-* `SEv`, `opSLeak`, `instrSLeak`, `symLeak`: symbolic events and their collection.
+* `SEv`, `opSLeak`, `storeImmSEv`, `instrSLeak`, `symLeak`: symbolic events and their
+  collection; `SEv.norm`, their normal form.
 * `leakL`: the events of a straight-line stretch.
 * `leakOk`, `leakCheckWith`, `ownedCheckML`: the checks.
 * `TVPubAt`, `TVPub`: public-equal entry states of the source that have halting checked
@@ -210,13 +213,46 @@ def opSLeak (ss : SSt) : LOperand → List SEv
   | .arrIdx b x sc => [.addr b sc (ss.regs x)]
   | _ => []
 
+/-- The symbolic event of a constant-index store `STOREIMM d, [b, v, #k]` at the tag
+    `.storeImm w n`: the array `b` at the compile-time byte offset `8 * k` (`storeImmEv`). -/
+def storeImmSEv (i : LinstrRM) : List SEv :=
+  match i.2 with
+  | .storeImm _ _ =>
+      match storeImmStruct? i.1 with
+      | some (_, b, _, k) => [.addrK b (8 * k)]
+      | none => []
+  | _ => []
+
+/-- The symbolic event of a constant-index store denotes its event. -/
+theorem storeImmSEv_ev (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (i : LinstrRM) : (storeImmSEv i).map (SEv.ev V A C O) = storeImmEv i := by
+  unfold storeImmSEv storeImmEv
+  rcases hi : i.2 <;> simp only [hi] <;> try rfl
+  rcases hs : storeImmStruct? i.1 with _ | ⟨_, b, _, k⟩ <;> simp [hs, SEv.ev]
+
 /-- The symbolic events of an instruction from the symbolic state `ss`: those of the
     operands of an `Lopn` other than a load-effective-address `LEA`, which accesses no
-    memory. -/
+    memory, followed by the event `storeImmSEv` of a constant-index store. -/
 def instrSLeak (i : LinstrRM) (ss : SSt) : List SEv :=
   match i.1 with
-  | .Lopn ds o xs => if stripWidthTag o = "LEA" then [] else (ds ++ xs).flatMap (opSLeak ss)
+  | .Lopn ds o xs =>
+      if stripWidthTag o = "LEA" then [] else (ds ++ xs).flatMap (opSLeak ss) ++ storeImmSEv i
   | _ => []
+
+/-- The normal form of a symbolic event: an address event at a register index whose word is
+    the immediate `n` at width `w` is the compile-time address event at offset
+    `sc * (n % 2 ^ w)`; every other event is unchanged. -/
+def SEv.norm : SEv → SEv
+  | .addr b sc (.immW w n) => .addrK b (sc * (n % 2 ^ w))
+  | e => e
+
+/-- The normal form denotes the event the symbolic event denotes. -/
+theorem SEv.ev_norm (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+    (e : SEv) : e.norm.ev V A C O = e.ev V A C O := by
+  unfold SEv.norm
+  split
+  · simp [SEv.ev, STerm.ev, BitVec.toNat_ofNat]
+  · rfl
 
 /-- The symbolic events of a list of instructions, collected along its symbolic run under
     the symbolic step `sym`. -/
@@ -328,7 +364,9 @@ theorem instrLeakF_holds_at (I : Isa) {V : String → Σ w, BitVec w} {A : Strin
       simp only [Isa.instrLeakF, instrLeakB, instrSLeak]
       split_ifs
       · rfl
-      simp only [List.map_flatMap]
+      simp only [List.map_append, List.map_flatMap]
+      rw [storeImmSEv_ev]
+      congr 1
       refine congrArg (fun g => List.flatMap g (ds ++ xs)) (funext fun op => ?_)
       cases op with
       | arrIdx b x sc =>
@@ -447,10 +485,10 @@ theorem haltL_at (I : Isa) {fn : String} {B : List LinstrRM} {w : LstateMF}
 
 /-! ## 4. The checks -/
 
-/-- The symbolic events of the rewritten block are those of the source block, over registers
-    and flags live at the block, unless the block ends in `Lret` or the source block always
-    fails. The source block runs from its facts `A k`, the rewritten block from its facts
-    `A' k`; both default to no fact. -/
+/-- The symbolic events of the rewritten block are those of the source block up to the
+    normal form `SEv.norm`, over registers and flags live at the block, unless the block ends
+    in `Lret` or the source block always fails. The source block runs from its facts `A k`,
+    the rewritten block from its facts `A' k`; both default to no fact. -/
 def leakOk (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List LinstrRM)
     (b b' : Block) (sym : LinstrRM → SSt → SOut := symStep)
     (A A' : Nat → List CFact := fun _ => []) : Bool :=
@@ -459,8 +497,8 @@ def leakOk (L : Nat → List String × Bool) (k : Nat) (T : Term) (B B' : List L
   | _ =>
       match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          symLeak (bodyAt B' b' T) (startC (A' k)) sym ==
-              symLeak (bodyAt B b T) (startC (A k)) sym &&
+          (symLeak (bodyAt B' b' T) (startC (A' k)) sym).map SEv.norm ==
+              (symLeak (bodyAt B b T) (startC (A k)) sym).map SEv.norm &&
             (symLeak (bodyAt B b T) (startC (A k)) sym).all fun e =>
               okIn (L k) e.vars e.readsF
       | _ => true
@@ -571,14 +609,14 @@ theorem leakOk_spec {L : Nat → List String × Bool} {k : Nat} {T : Term} {B B'
     {b b' : Block} {sym : LinstrRM → SSt → SOut} {A A' : Nat → List CFact}
     (h : leakOk L k T B B' b b' sym A A' = true) (hT : T ≠ .ret) {ss : SSt}
     {gs : List SG} (hs : symRun (bodyAt B b T) (startC (A k)) sym = .ok ss gs) :
-    symLeak (bodyAt B' b' T) (startC (A' k)) sym =
-        symLeak (bodyAt B b T) (startC (A k)) sym ∧
+    (symLeak (bodyAt B' b' T) (startC (A' k)) sym).map SEv.norm =
+        (symLeak (bodyAt B b T) (startC (A k)) sym).map SEv.norm ∧
       ∀ e ∈ symLeak (bodyAt B b T) (startC (A k)) sym,
         (∀ v ∈ e.vars, v ∈ (L k).1) ∧ (e.readsF = true → (L k).2 = true) := by
   have h2 : (match symRun (bodyAt B b T) (startC (A k)) sym with
       | .ok _ _ =>
-          symLeak (bodyAt B' b' T) (startC (A' k)) sym ==
-              symLeak (bodyAt B b T) (startC (A k)) sym &&
+          (symLeak (bodyAt B' b' T) (startC (A' k)) sym).map SEv.norm ==
+              (symLeak (bodyAt B b T) (startC (A k)) sym).map SEv.norm &&
             (symLeak (bodyAt B b T) (startC (A k)) sym).all fun e =>
               okIn (L k) e.vars e.readsF
       | _ => true) = true := by
@@ -741,7 +779,12 @@ theorem sim_stepL {I : Isa} {sym : LinstrRM → SSt → SOut} {dec : SSt → LOp
       (bstopOf (G.blk k).term (G'.blk k) - s'.prog.base.reg.lpc)) s' =
       leakL I (singletonProgM fn B) ((B.drop s.prog.base.reg.lpc).take
         (bstopOf (G.blk k).term (G.blk k) - s.prog.base.reg.lpc)) s := by
-    rw [hLI, hLS, hleq]
+    have hnorm : ∀ (V : String → Σ w, BitVec w) (A : String → ArrCell) (C O : Bool)
+        (l : List SEv), l.map (SEv.ev V A C O) = (l.map SEv.norm).map (SEv.ev V A C O) :=
+      fun V A C O l => by simp [Function.comp_def, SEv.ev_norm]
+    rw [hLI, hLS,
+      hnorm _ _ _ _ (symLeak (bodyAt B' (G'.blk k) (G.blk k).term) (startC (A' k)) sym), hleq,
+      ← hnorm]
     refine List.map_congr_left fun e he => ?_
     obtain ⟨hvars, hfl⟩ := hlv e he
     exact SEv.ev_congr _ e (fun r hr => hV r (hvars r hr)) (fun h => by

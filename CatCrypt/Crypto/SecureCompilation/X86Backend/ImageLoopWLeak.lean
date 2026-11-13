@@ -673,6 +673,7 @@ theorem instrLeakB_agree_idx {ds ss : List LOperand} {o : String} {tag : JasminL
   simp only [instrLeakB]
   split_ifs
   · rfl
+  congr 1
   refine List.flatMap_congr fun x hx => ?_
   cases x with
   | arrIdx b q sc =>

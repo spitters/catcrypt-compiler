@@ -132,6 +132,17 @@ def NoCArr : LinstrR → Prop
   | .Lopn ds _ ss => ∀ o ∈ ds ++ ss, ∀ b k, o ≠ .arr b k
   | _ => True
 
+/-- The constant-index store event of a renamed instruction is the event of the instruction
+    with its array base renamed. -/
+theorem storeImmEv_renRM_any (σ : String → String) (i : LinstrRM) :
+    storeImmEv (renRM σ i) = (storeImmEv i).map (renEv σ) := by
+  obtain ⟨w, tag⟩ := i
+  unfold storeImmEv renRM
+  cases tag <;> try rfl
+  dsimp only
+  rw [storeImmStruct?_ren]
+  cases storeImmStruct? w <;> rfl
+
 /-- **The events of a renamed instruction.** For an instruction with no compile-time array
     operand that branches on the zero flag only, whose names lie in `N`, the renamed
     instruction emits from a state related by `RelF σ N` the events of the instruction with
@@ -152,11 +163,13 @@ theorem instrLeakF_renRM {σ : String → String} {N : String → Prop} (i : Lin
       obtain ⟨w, tag⟩ := i
       cases w with
       | Lopn ds o ss =>
-          simp only [instrLeakB, renRM, renLinstrR, ← List.map_append, List.flatMap_map,
-            List.map_flatMap]
+          simp only [instrLeakB, renRM, renLinstrR, ← List.map_append, List.flatMap_map]
           split_ifs
           · rfl
-          simp only [List.map_flatMap]
+          rw [List.map_append, List.map_flatMap]
+          congr 1
+          swap
+          · exact storeImmEv_renRM_any σ (.Lopn ds o ss, tag)
           refine List.flatMap_congr fun x hx => ?_
           cases x with
           | reg q => rfl
@@ -617,6 +630,7 @@ theorem instrLeakB_agree {i : LinstrRM} (hl : IsLopn i) {r r' : LstateN}
   simp only [instrLeakB]
   split_ifs
   · rfl
+  congr 1
   refine List.flatMap_congr fun x hx => ?_
   cases x with
   | arrIdx b q sc =>
@@ -650,11 +664,14 @@ theorem fuseE_leak {E : List String} {L : List (Option String)} {c : List Linstr
       rw [straightLeakFF_quiet _ (by
         intro j hj r
         simp only [List.mem_cons, List.not_mem_nil, or_false] at hj
-        rcases hj with rfl | rfl | rfl | rfl <;> rfl)]
+        rcases hj with rfl | rfl | rfl | rfl <;>
+          simp only [instrLeakB, storeImmEv, storeImmStruct?] <;> split <;> (try split) <;>
+          simp [opLeakF])]
       obtain ⟨w, tag⟩ := i
       simp only at heq
       subst heq
-      simp [instrLeakB, opLeakF]
+      simp only [instrLeakB, storeImmEv, storeImmStruct?]
+      split <;> (try split) <;> simp [opLeakF]
     · exact hone
   · exact hone
 

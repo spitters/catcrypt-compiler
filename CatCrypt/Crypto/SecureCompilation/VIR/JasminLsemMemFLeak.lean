@@ -23,6 +23,8 @@ model. An instruction emits:
   compile-time offset of `.arr b i`, and for `.arrIdx b x sc` the scale `sc` times the value
   the index register `x` holds in the register file; a load-effective-address `LEA` computes
   its operand's address without a memory access and emits nothing;
+* for a constant-index store `STOREIMM d, [b, v, #k]` at the tag `.storeImm w n`, the address
+  event of `b` at byte offset `8 * k` (`storeImmEv`);
 * for a flag-reading conditional (`flagCondCC?`), the branch event of the decision the flag
   machine takes, `zf` against the polarity of the condition code;
 * for a register conditional, the branch event of its test `condNZ`;
@@ -36,19 +38,23 @@ The leakage transformer of a straight-line node maps the events `Com.ctLeak (jLe
 of a program of `jasminDialect` in the stack-memory fragment `ScalarMemN` to the events of
 its typed chain `straightOpsMem`. A binding `stackLoad w n` or `stackStore w n` emits the
 source event `addr "" i`, `i` the value of its index; its instruction `LOADIDX`/`STOREIDX`
-carries the operand `.arrIdx base idx (w/8)` and emits `addr base (w/8 * i)`. Every other
-binding of the fragment lowers to an instruction with register and immediate operands,
-which emits nothing; its source events (a variable-time event when `Pj` classes the
+carries the operand `.arrIdx base idx (w/8)` and emits `addr base (w/8 * i)`. A binding
+`stackStoreImm w n k` lowers to `STOREIMM`, which emits the address event of its array at
+byte offset `8 * k` (`storeImmT`), a function of the program. Every other binding of the
+fragment lowers to an instruction with register and immediate operands, which emits
+nothing; its source events (a variable-time event when `Pj` classes the
 operation so) are dropped. `straightT Pj nArgs com d` is this map, a function of the
 program and the source trace.
 
 ## Main definitions
 
-* `opLeakF`, `instrLeakB`, `instrLeakF` — the events of an operand and of an instruction.
+* `opLeakF`, `storeImmEv`, `instrLeakB`, `instrLeakF` — the events of an operand, of a
+  constant-index store and of an instruction.
 * `lsemFuelMemFLeak` — the flag machine with its leakage trace.
 * `FRun`, `MemFCT` — terminating runs with their traces and constant time over them.
 * `straightLeakF` — the events of a straight-line chain along `lsemStraightMem`.
-* `kindLen`, `memOpB`, `addrSite`, `siteOf`, `straightT` — the leakage transformer of a
+* `kindLen`, `memOpB`, `addrSite`, `siteOf`, `storeImmT`, `straightT` — the leakage
+  transformer of a
   straight-line chain.
 * `AbiEntryPub`, `AbiEntryCT` — constant time on the flag machine from ABI entries whose
   valuations agree on the public labels.
@@ -93,12 +99,44 @@ def opLeakF (r : LstateN) : LOperand → List CTLeak
   | .arrIdx b x sc => [.addr b (Int.ofNat (sc * idxVal r x))]
   | _ => []
 
+/-- The address event of a constant-index store `STOREIMM d, [b, v, #k]` (`storeImmStruct?`)
+    at the tag `.storeImm w n`, the instructions `lsemStepMem` runs as a store: the array `b`
+    at byte offset `8 * k`. Every other instruction has none. -/
+def storeImmEv (i : LinstrRM) : List CTLeak :=
+  match i.2 with
+  | .storeImm _ _ =>
+      match storeImmStruct? i.1 with
+      | some (_, b, _, k) => [.addr b (Int.ofNat (8 * k))]
+      | none => []
+  | _ => []
+
+/-! Unfolding lemmas of `storeImmEv`: an instruction at any tag other than `.storeImm` has no
+store-immediate event. -/
+
+@[simp] theorem storeImmEv_reg (x : LinstrR) (c : Option Nat) :
+    storeImmEv (x, .reg c) = [] := rfl
+
+@[simp] theorem storeImmEv_load (x : LinstrR) (w n : Nat) :
+    storeImmEv (x, .load w n) = [] := rfl
+
+@[simp] theorem storeImmEv_store (x : LinstrR) (w n : Nat) :
+    storeImmEv (x, .store w n) = [] := rfl
+
+@[simp] theorem storeImmEv_loadC (x : LinstrR) : storeImmEv (x, .loadC) = [] := rfl
+
+@[simp] theorem storeImmEv_storeC (x : LinstrR) : storeImmEv (x, .storeC) = [] := rfl
+
+@[simp] theorem storeImmEv_zero (x : LinstrR) (w n : Nat) :
+    storeImmEv (x, .zero w n) = [] := rfl
+
 /-- The events of an instruction that reads no flag: the address events of the operands of
-    an `Lopn` other than a load-effective-address `LEA`, which accesses no memory, and the
-    branch event of a register conditional. -/
+    an `Lopn` other than a load-effective-address `LEA`, which accesses no memory, followed
+    by the event `storeImmEv` of a constant-index store, and the branch event of a register
+    conditional. -/
 def instrLeakB (r : LstateN) (i : LinstrRM) : List CTLeak :=
   match i.fst with
-  | .Lopn ds o ss => if stripWidthTag o = "LEA" then [] else (ds ++ ss).flatMap (opLeakF r)
+  | .Lopn ds o ss =>
+      if stripWidthTag o = "LEA" then [] else (ds ++ ss).flatMap (opLeakF r) ++ storeImmEv i
   | .Lcond c _ => [.branch (condNZ { reg := r } c)]
   | _ => []
 
@@ -106,6 +144,9 @@ def instrLeakB (r : LstateN) (i : LinstrRM) : List CTLeak :=
   decide +kernel
 
 @[simp] theorem stripWidthTag_STOREIDX : stripWidthTag "STOREIDX" = "STOREIDX" := by
+  decide +kernel
+
+@[simp] theorem stripWidthTag_STOREIMM : stripWidthTag "STOREIMM" = "STOREIMM" := by
   decide +kernel
 
 /-- The events of an instruction on the flag machine: the branch event of the decision a
@@ -395,9 +436,21 @@ def siteOf : LinstrR → CTLeak → CTLeak
   | .Lopn _ _ (.arrIdx b _ sc :: _) => addrSite b sc
   | _ => id
 
+/-- The event of a constant-index store binding `stackStoreImm w n k` whose array operand is
+    the register `b`: the address event of `b` at byte offset `8 * k`, the event `storeImmEv`
+    of its instruction `STOREIMM`. Every other binding has none. -/
+def storeImmT (op : JasminOp) (args : List LOperand) : List CTLeak :=
+  match op with
+  | .stackStoreImm _ _ k =>
+      match args with
+      | .reg b :: _ => [.addr b (Int.ofNat (8 * k))]
+      | _ => []
+  | _ => []
+
 /-- **The leakage transformer of a straight-line chain.** At a binding of operation `op` at
     depth `d`: the `kindLen` source events of `op` are relabelled by `siteOf` at the
-    instruction of the binding when `op` is a memory operation, and dropped otherwise. -/
+    instruction of the binding when `op` is a memory operation, and dropped otherwise; a
+    constant-index store adds its address event `storeImmT`, a function of the program. -/
 def straightT (Pj : JLeakParams) (nArgs : Nat) :
     {Γ : Ctxt jasminDialect} → {t : JasminTy} → Com jasminDialect Γ t → Nat →
       List CTLeak → List CTLeak
@@ -407,18 +460,20 @@ def straightT (Pj : JLeakParams) (nArgs : Nat) :
           (ℓ.take (kindLen (jKind Pj e.op))).map
             (siteOf (opToLinstrR e.op (regName d) (exprArgs d nArgs argName (fun _ => none) e)))
         else [])
+        ++ storeImmT e.op (exprArgs d nArgs argName (fun _ => none) e)
         ++ straightT Pj nArgs body (d + 1) (ℓ.drop (kindLen (jKind Pj e.op)))
 
-/-- At a binding of an operation that is no memory operation, the transformer drops the
-    events of the binding. -/
+/-- At a binding of an operation that is neither a memory operation nor a constant-index
+    store, the transformer drops the events of the binding. -/
 theorem straightT_quiet (Pj : JLeakParams) (nArgs d : Nat) {Γ : Ctxt jasminDialect}
     {t s : JasminTy} (e : Expr jasminDialect Γ s) (body : Com jasminDialect (s :: Γ) t)
-    (V : Ctxt.Valuation Γ) (ℓ : List CTLeak) (hm : memOpB e.op = false) :
+    (V : Ctxt.Valuation Γ) (ℓ : List CTLeak) (hm : memOpB e.op = false)
+    (hs : storeImmT e.op (exprArgs d nArgs argName (fun _ => none) e) = [] := by rfl) :
     straightT Pj nArgs (.var e body) d (Expr.ctLeak (jLeakModel Pj) e V ++ ℓ)
       = straightT Pj nArgs body (d + 1) ℓ := by
   have hl : (Expr.ctLeak (jLeakModel Pj) e V).length = kindLen (jKind Pj e.op) :=
     opLeak_length _ _ _
-  simp only [straightT, hm, Bool.false_eq_true, ite_false, List.nil_append]
+  simp only [straightT, hm, hs, Bool.false_eq_true, ite_false, List.nil_append]
   rw [← hl, List.drop_left]
 
 /-- The transformer at a binding whose events `ℓ₀` number `kindLen` of its class. -/
@@ -430,6 +485,7 @@ theorem straightT_var (Pj : JLeakParams) (nArgs d : Nat) {Γ : Ctxt jasminDialec
             ℓ₀.map (siteOf (opToLinstrR e.op (regName d)
               (exprArgs d nArgs argName (fun _ => none) e)))
           else [])
+        ++ storeImmT e.op (exprArgs d nArgs argName (fun _ => none) e)
         ++ straightT Pj nArgs body (d + 1) ℓ := by
   simp only [straightT]
   rw [← hl, List.take_left, List.drop_left]
@@ -463,10 +519,13 @@ theorem exprArgs_leak (r : LstateN) (d nArgs : Nat) {Γ : Ctxt jasminDialect} {t
     ∀ o ∈ exprArgs d nArgs argName (fun _ => none) e, opLeakF r o = [] :=
   exprArgs_go_leak r d nArgs e.args
 
-/-- An `Lopn` writing a register from operands that emit nothing emits nothing. -/
+/-- An `Lopn` writing a register from operands that emit nothing, with no constant-index
+    store event, emits nothing. -/
 theorem instrLeakB_quiet (r : LstateN) (dst opn : String) (ss : List LOperand) (tag : MemTag)
-    (h : ∀ o ∈ ss, opLeakF r o = []) : instrLeakB r (.Lopn [.reg dst] opn ss, tag) = [] := by
-  simp only [instrLeakB]
+    (h : ∀ o ∈ ss, opLeakF r o = [])
+    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by simp [storeImmEv]) :
+    instrLeakB r (.Lopn [.reg dst] opn ss, tag) = [] := by
+  simp only [instrLeakB, hs, List.append_nil]
   split_ifs
   · rfl
   simp only [List.flatMap_eq_nil_iff, List.mem_append, List.mem_singleton]
@@ -478,8 +537,12 @@ theorem instrLeakB_quiet (r : LstateN) (dst opn : String) (ss : List LOperand) (
 theorem instrLeakB_shift (r : LstateN) (mnem : String) (w : Nat) (dst : String)
     (ss : List LOperand) (m : Nat) (tag : MemTag) (h : ∀ o ∈ ss, opLeakF r o = []) :
     instrLeakB r (shiftLinstr mnem w dst (ss.headD (.reg "")) m, tag) = [] := by
-  apply instrLeakB_quiet
-  intro o ho
+  refine instrLeakB_quiet _ _ _ _ _ (fun o ho => ?_) ?_
+  swap
+  · unfold storeImmEv
+    split
+    · cases ss.headD (.reg "") <;> rfl
+    · rfl
   simp only [List.mem_cons, List.not_mem_nil, or_false] at ho
   rcases ho with rfl | rfl
   · cases ss with
@@ -531,7 +594,7 @@ theorem straightLeakF_straightOps (Pj : JLeakParams) {Γ : Ctxt jasminDialect}
           rwa [evalOperandN_resolveVar] at this
         rw [exprArgs_load heq arr idx, resolveVar_isReg arr, resolveVar_isReg idx]
         simp [memOpB, opToLinstrR, instrLeakB, opLeakF, idxVal_of_getW hidx, siteOf,
-          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind]
+          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind, storeImmT, storeImmEv]
         exact Or.inl rfl
   | store heq args hbody ih =>
       intro nArgs d st V hlen harg hagree
@@ -553,7 +616,7 @@ theorem straightLeakF_straightOps (Pj : JLeakParams) {Γ : Ctxt jasminDialect}
         rw [exprArgs_store heq arr idx val, resolveVar_isReg arr, resolveVar_isReg idx,
           resolveVar_isReg val]
         simp [memOpB, opToLinstrR, instrLeakB, opLeakF, idxVal_of_getW hidx, siteOf,
-          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind]
+          addrSite, Expr.ctLeak, opLeak, jLeakModel, jKind, storeImmT, storeImmEv]
         exact Or.inl rfl
   | zero heq args hbody ih =>
       intro nArgs d st V hlen harg hagree
@@ -575,14 +638,13 @@ theorem straightLeakF_straightOps (Pj : JLeakParams) {Γ : Ctxt jasminDialect}
         ((⟨JasminOp.stackStoreImm _ _ _, heq, args⟩ : Expr jasminDialect _ _).denote V)
         hlen harg hagree
       rw [straightOpsMem_storeImm, straightLeakF_cons_of_step hstep, comCtLeak_var,
-        straightT_quiet _ _ _ _ _ _ _ rfl, ← ih (by simp [hlen]) (by omega) hagree']
-      convert List.nil_append _ using 2
-      simp only [opToLinstrR]
-      refine instrLeakB_quiet _ _ _ _ _ fun o ho => ?_
-      rcases List.mem_append.mp ho with h | h
-      · exact exprArgs_leak _ _ _ _ o h
-      · obtain rfl := List.mem_singleton.mp h
-        rfl
+        straightT_var _ _ _ _ _ _ (exprCtLeak_length Pj _ V),
+        ← ih (by simp [hlen]) (by omega) hagree']
+      congr 1
+      match args with
+      | .cons arr (.cons val .nil) =>
+        rw [exprArgs_storeImm heq arr val, resolveVar_isReg arr, resolveVar_isReg val]
+        simp [memOpB, opToLinstrR, instrLeakB, opLeakF, storeImmEv, storeImmStruct?, storeImmT]
   | const n hwn heq args hbody ih =>
       intro nArgs d st V hlen harg hagree
       have hstep := lsemStepMem_const (V := V) (st := st) (nArgs := nArgs) (curDepth := d)
@@ -818,3 +880,4 @@ theorem straight_abiEntryCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w : Na
 end Abi
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak
+

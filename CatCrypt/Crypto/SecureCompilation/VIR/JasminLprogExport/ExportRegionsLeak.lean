@@ -28,8 +28,9 @@ is the terminating run of `lsemFuelMemFLeak` with the same events.
 its results with the machine events of its export in the function `fn`:
 
 * a binding emits `bindLeak`: for a `stackLoad` or `stackStore`, the address event of its
-  source event at the array name and with the scaled index of its instruction, and
-  nothing for every other operation;
+  source event at the array name and with the scaled index of its instruction, for a
+  `stackStoreImm w n k` the address event of its array at byte offset `8 * k`
+  (`storeImmT`), and nothing for every other operation;
 * a counted loop with trip count `N` emits the events `forHeadLeak` of the seeds of its
   carried arrays, `branch (N = 0)` for the zero-trip guard, then for each trip `i` the
   events of the body, the events `forTailLeak` of the assignment of the returned arrays
@@ -349,12 +350,14 @@ theorem stepsL_of_quiet {P : LprogM} {seg pre post : List LinstrRM} {s u : Lstat
   stepsL_of_quiet_end (singletonProgM P.lfn (pre ++ seg)) seg pre s u k rfl hq hat hs hend
     P post rfl hbody
 
-/-- An `Lopn` that writes one register from registers and immediates is quiet. -/
+/-- An `Lopn` that writes one register from registers and immediates, with no
+    constant-index store event, is quiet. -/
 theorem quietLopn_regs (dst opn : String) (ss : List LOperand) (tag : MemTag)
-    (h : ∀ o ∈ ss, (∃ x, o = LOperand.reg x) ∨ ∃ c, o = LOperand.imm c) :
+    (h : ∀ o ∈ ss, (∃ x, o = LOperand.reg x) ∨ ∃ c, o = LOperand.imm c)
+    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by simp [storeImmEv]) :
     QuietLopn (.Lopn [.reg dst] opn ss, tag) :=
-  ⟨⟨_, _, _, rfl⟩, fun r => instrLeakB_quiet r dst opn ss tag fun o ho => by
-    rcases h o ho with ⟨x, rfl⟩ | ⟨c, rfl⟩ <;> rfl⟩
+  ⟨⟨_, _, _, rfl⟩, fun r => instrLeakB_quiet r dst opn ss tag (fun o ho => by
+    rcases h o ho with ⟨x, rfl⟩ | ⟨c, rfl⟩ <;> rfl) hs⟩
 
 /-- A copy of a register is quiet. -/
 theorem quietLopn_movReg (dst src : String) : QuietLopn (movI dst (.reg src)) :=
@@ -674,13 +677,14 @@ theorem stepsL_of_idx0 {P : LprogM} {z : String} {zseg qseg pre post : List Lins
 
 /-- **The machine events of a binding** at depth `d`: for a memory operation with a runtime
     index, the source events of the binding relabelled at the array name and the scale of
-    its instruction (`siteOf`); for every other operation, none. -/
+    its instruction (`siteOf`); for every other operation, none; followed by the address
+    event `storeImmT` of a constant-index store, a function of the program. -/
 def bindLeak (Pj : JLeakParams) (nArgs : Nat) {Γ : Ctxt jasminDialect} {t : JasminTy}
     (e : Expr jasminDialect Γ t) (d : Nat) (V : Ctxt.Valuation Γ) : List CTLeak :=
-  if memOpB e.op then
+  (if memOpB e.op then
     (Expr.ctLeak (jLeakModel Pj) e V).map
       (siteOf (opToLinstrR e.op (regName d) (exprArgs d nArgs argName (fun _ => none) e)))
-  else []
+  else []) ++ storeImmT e.op (exprArgs d nArgs argName (fun _ => none) e)
 
 /-- The run of trip `i` of a counted loop with trip count `N`: the run `bodyRun` of the
     body, the events `tailEv` of the assignment at the back edge, and the branch event of

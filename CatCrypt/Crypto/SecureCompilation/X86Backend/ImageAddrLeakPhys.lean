@@ -420,14 +420,16 @@ def isArrOp : LOperand → Bool
   | _ => false
 
 /-- The number of events `instrLeakF` emits at an instruction: one at a conditional, the
-    number of array operands at an `Lopn` other than a load-effective-address, none
-    otherwise. -/
+    number of array operands plus the number of constant-index store events (`storeImmEv`)
+    at an `Lopn` other than a load-effective-address, none otherwise. -/
 def evCountF (i : LinstrRM) : Nat :=
   match flagCondCC? i with
   | some _ => 1
   | none =>
       match i.fst with
-      | .Lopn ds o ss => if stripWidthTag o = "LEA" then 0 else (ds ++ ss).countP isArrOp
+      | .Lopn ds o ss =>
+          if stripWidthTag o = "LEA" then 0
+          else (ds ++ ss).countP isArrOp + (storeImmEv i).length
       | .Lcond _ _ => 1
       | _ => 0
 
@@ -456,7 +458,7 @@ theorem instrLeakF_length (i : LinstrRM) (s : LstateMF) :
           simp only [instrLeakB]
           split_ifs
           · rfl
-          · exact flatMap_opLeakF_length _ _
+          · rw [List.length_append, flatMap_opLeakF_length]
       | _ => rfl
 
 /-- **The physical trace of the image simulation** along the instructions `xs` of `body`
