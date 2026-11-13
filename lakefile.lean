@@ -3391,6 +3391,8 @@ def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySoundL2,
     Lake.Glob.one `CatCrypt.Quantum.Optimization.UnitarySoundL3,
     Lake.Glob.one `CatCrypt.Quantum.PiLin,
+    Lake.Glob.one `CatCrypt.Quantum.Programs.BellCHSH,
+    Lake.Glob.one `CatCrypt.Quantum.Programs.CHSH,
     Lake.Glob.one `CatCrypt.Quantum.Programs.EntanglementDistillation,
     Lake.Glob.one `CatCrypt.Quantum.Programs.NoCloning,
     Lake.Glob.one `CatCrypt.Quantum.Programs.Qubit,
