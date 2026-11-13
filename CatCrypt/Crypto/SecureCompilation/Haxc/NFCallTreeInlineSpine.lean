@@ -16,14 +16,14 @@ tgt src` relates, from environments related by `Pre`, the call tree of `src` to 
 `tgt` by `RuttS` at equal events and answers, a leaf of `src` whose result is `bad` being a failed
 leaf and the other leaves being matched by leaves with the same result and final environments
 related by `Post`. The combinators follow those of `RefR`, and the loop readings at tree tables
-are related when their bodies are. An expression without calls (`noCalls`) reads as a leaf at
-every tree table and fuel.
+are related when their bodies are. An expression without calls (`noCalls` of
+`InlineLocalClosures`) reads as a leaf at every tree table and fuel.
 
 ## Main definitions
 
 * `RelT`: the relation of two stateful tree computations from related environments.
-* `noCalls`: a literal, a variable, `unitVal`, or a tuple or projection of such expressions.
-* `argsFree f e`: every call of `f` in `e` passes arguments without calls.
+* `argsFree f e`: every call of `f` in `e` passes arguments without calls; it agrees with
+  `callsOk` of `InlineLocalClosures` (`argsFree_eq_callsOk`).
 
 ## Main results
 
@@ -352,27 +352,6 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeWhileTrue (lift_bind_run)
 
 /-! ## Expressions without calls -/
 
-/-- An expression without calls: a literal, a variable, `unitVal`, or a tuple or projection of
-    such expressions. -/
-def noCalls : ImpExpr → Bool
-  | .lit _ => true
-  | .var _ => true
-  | .unitVal => true
-  | .tuple es => allNo es
-  | .proj e _ => noCalls e
-  | _ => false
-where
-  /-- `noCalls` of every expression of a list. -/
-  allNo : List ImpExpr → Bool
-    | [] => true
-    | e :: es => noCalls e && allNo es
-
-/-- `noCalls.allNo` is `List.all noCalls`. -/
-theorem noCalls.allNo_eq (es : List ImpExpr) : noCalls.allNo es = es.all noCalls := by
-  induction es with
-  | nil => rfl
-  | cons e es ih => simp [noCalls.allNo, ih]
-
 /-- Every call of `f` in `e` passes arguments without calls. -/
 def argsFree (f : String) : ImpExpr → Bool
   | .app g args => (g != f || noCalls.allNo args) && argsFreeList f args
@@ -426,6 +405,22 @@ theorem argsFree.argsFreeArms_eq (g : String) (arms : List (ImpPat × ImpExpr)) 
   induction arms with
   | nil => rfl
   | cons pa arms ih => obtain ⟨p, e⟩ := pa; simp [argsFree.argsFreeArms, ih]
+
+/-- `argsFree` and `callsOk` agree. -/
+theorem argsFree_eq_callsOk (f : String) (e : ImpExpr) : argsFree f e = callsOk f e := by
+  induction e using ImpExpr.ind with
+  | app g args ih =>
+    simp only [argsFree, callsOk, argsFree.argsFreeList_eq, callsOk.callsOkList_eq]
+    congr 1
+    induction args with | nil => rfl | cons a as iha => simp_all
+  | tuple es ih =>
+    simp only [argsFree, callsOk, argsFree.argsFreeList_eq, callsOk.callsOkList_eq]
+    induction es with | nil => rfl | cons a as iha => simp_all
+  | match_ scrut arms ihs iha =>
+    simp only [argsFree, callsOk, argsFree.argsFreeArms_eq, callsOk.callsOkArms_eq, ihs]
+    congr 1
+    induction arms with | nil => rfl | cons a as ih' => simp_all
+  | _ => simp_all [argsFree, callsOk]
 
 /-- `inlineCalls` keeps an expression without calls. -/
 theorem inlineCalls_noCalls (f : String) (ps : List String) (body : ImpExpr) (a : ImpExpr)

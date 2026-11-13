@@ -256,75 +256,261 @@ end Body
 
 /-! ## Statement closures -/
 
-/-- Binding the literal arguments over `b` reads as `b` from the environment extended by them. -/
-theorem bindArgs_runT (bt : TreeTable E) (fuel : Nat) (b : ImpExpr) :
-    ∀ (ps : List String) (args : List ImpExpr) (e : Env),
-      denoteT bt fuel (bindArgs ps args b) e = denoteT bt fuel b (bindLits ps args e)
-  | [], _, _ => by simp only [bindArgs, bindLits]
-  | _ :: _, [], _ => by simp only [bindArgs, bindLits]
-  | p :: ps, a :: as, e => by
-    cases a
-    case lit l =>
-      simp only [bindArgs, bindLits]
-      rw [NFCallTreeAnfPick.denoteT_letBind_run', denoteT_lit_run]
-      cases l <;> exact bindArgs_runT bt fuel b ps as _
-    all_goals (simp only [bindArgs, bindLits]; exact bindArgs_runT bt fuel b ps as e)
+/-- A pure expression reads as one tree of outcomes with every leaf at the environment it starts
+    from. -/
+theorem denoteT_pure_atEnv (bt : TreeTable E) (a : ImpExpr) (ha : isPure a = true) (e : Env) :
+    ∃ t : CallTree E Outcome, ∀ fuel, denoteT bt fuel a e = atEnv t e := by
+  obtain ⟨t, h1, -⟩ := subst_runT bt [] [] e e a ha fun x _ =>
+    ⟨_, fun fuel => denoteT_var_eq bt fuel x e, fun fuel => denoteT_var_eq bt fuel x e⟩
+  exact ⟨t, h1⟩
+
+/-- A continuation of a tree at an environment reads every leaf at that environment. -/
+theorem atEnv_bind_fst {α β : Type} (t : CallTree E α) (env : Env)
+    (g : α × Env → CallTree E β) :
+    (atEnv t env).bind g = (atEnv t env).bind fun p => g (p.1, env) := by
+  rw [atEnv, bind_assoc, bind_assoc]
+  rfl
+
+/-- The argument readings over related arguments, followed by continuations related at every list
+    of values of the length of the arguments, the source continuation at no list ending in a bad
+    leaf. -/
+theorem argsT_relK {R S : Env → Env → Prop} {bt₁ bt₂ : TreeTable E} {β : Type} {bad : β → Prop}
+    (fuel : Nat) (args : List ImpExpr)
+    (ih : ∀ a, a ∈ args → RelT h₁ R R IsErr (denoteT bt₁ fuel a) (denoteT bt₂ fuel a))
+    (k₁ k₂ : Option (List Value) → TM E β)
+    (hk : ∀ vals, vals.length = args.length → RelT h₁ R S bad (k₁ (some vals)) (k₂ (some vals)))
+    (hb : ∀ s, ∃ b s', k₂ none s = .ret (b, s') ∧ bad b) :
+    RelT h₁ R S bad (denoteArgsT bt₁ fuel args >>= k₁) (denoteArgsT bt₂ fuel args >>= k₂) := by
+  induction args generalizing k₁ k₂ with
+  | nil =>
+    intro e₁ e₂ hR
+    rw [tm_bind_run, tm_bind_run, argsT_nil_run, argsT_nil_run]
+    exact hk [] rfl e₁ e₂ hR
+  | cons a as iha =>
+    intro e₁ e₂ hR
+    rw [tm_bind_run, tm_bind_run, argsT_cons_run, argsT_cons_run, bind_assoc, bind_assoc]
+    have fl : ∀ s (t : CallTree E (β × Env)), RuttS h₁ (fun e₁ e₂ => e₁ = e₂)
+        (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂.1 = r₁.1 ∧ S r₂.2 r₁.2) (fun r => bad r.1)
+        (k₂ none s) t := by
+      intro s t
+      obtain ⟨b, s', hs, hbb⟩ := hb s
+      rw [hs]
+      exact .fail hbb
+    refine NFProgCallTree.RuttS.bind
+      (RR' := fun (r₁ r₂ : Outcome × Env) => r₂.1 = r₁.1 ∧ R r₂.2 r₁.2)
+      (Fail' := fun (r : Outcome × Env) => IsErr r.1) (ih a List.mem_cons_self e₁ e₂ hR)
+      (fun r₁ r₂ hr => ?_) (fun r₁ hf t => ?_)
+    · obtain ⟨o, s₂⟩ := r₁
+      obtain ⟨o', s₁⟩ := r₂
+      obtain ⟨ho, hR'⟩ := hr
+      dsimp only at ho hR'
+      subst ho
+      have key : ∀ v : Value, RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+          (fun r₁ r₂ => r₂.1 = r₁.1 ∧ S r₂.2 r₁.2) (fun r => bad r.1)
+          (((denoteArgsT bt₂ fuel as s₂).bind fun q => .ret (q.1.map (v :: ·), q.2)).bind
+            fun p => k₂ p.1 p.2)
+          (((denoteArgsT bt₁ fuel as s₁).bind fun q => .ret (q.1.map (v :: ·), q.2)).bind
+            fun p => k₁ p.1 p.2) := fun v => by
+        have := iha (fun b hb => ih b (List.mem_cons_of_mem a hb))
+          (fun ov => k₁ (ov.map (v :: ·))) (fun ov => k₂ (ov.map (v :: ·)))
+          (fun vals hl => hk (v :: vals) (by simp [hl])) (fun s => hb s) s₁ s₂ hR'
+        rw [tm_bind_run, tm_bind_run] at this
+        rw [bind_assoc, bind_assoc]
+        exact this
+      rcases o' with v | _ | _ | _ | _
+      · cases v
+        case controlFlow => exact fl _ _
+        all_goals exact key _
+      all_goals exact fl _ _
+    · obtain ⟨o, s₂⟩ := r₁
+      obtain ⟨m, hm⟩ := hf
+      dsimp only at hm
+      subst hm
+      exact fl _ _
+
+/-- **The argument bindings of a call block.** Let `bt` and `bt₂` agree off `f`, the parameters lie
+    in `W`, and the arguments be pure, read no variable of `W` and call no `f`. From environments
+    agreeing off `W`, the arguments read at `bt₂` followed by `k` are related to
+    `bindArgs ps args b` read at `bt`, when `k` at no list is a failed leaf and `k` at the values
+    of the arguments is related to `b` read from the environment `bindVals` gives: each argument
+    tree is performed once on both sides, in the same order. -/
+theorem bindArgsT_rel (bt bt₂ : TreeTable E) (f : String) {W K : List String} (fuel : Nat)
+    (hok : ∀ g, (g != f) = true → bt g = bt₂ g) (b : ImpExpr)
+    {RR : Outcome × Env → Outcome × Env → Prop} {Fail : Outcome × Env → Prop} :
+    ∀ (ps : List String) (args : List ImpExpr) (e₁ e₂ : Env)
+      (k : Option (List Value) → TM E Outcome),
+      (∀ p, p ∈ ps → W.contains p = true) → args.length = ps.length →
+      (∀ a, a ∈ args → isPure a = true ∧
+        frameOk (fun x => !W.contains x) (fun n => !K.contains n) (fun g => g != f) a = true) →
+      (∀ x, W.contains x = false → e₁ x = e₂ x) →
+      (∀ s, ∃ r, k none s = .ret r ∧ Fail r) →
+      (∀ vals, vals.length = ps.length →
+        (∀ av, av ∈ args.zip vals → ∀ y, av.1 = .var y → e₂ y = some av.2) →
+        RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail (k (some vals) e₂)
+          (denoteT bt fuel b (bindVals ps args vals e₁))) →
+      RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail
+        ((denoteArgsT bt₂ fuel args >>= k) e₂) (denoteT bt fuel (bindArgs ps args b) e₁)
+  | [], args, e₁, e₂, k, _, hl, _, _, _, hK => by
+    obtain rfl : args = [] := List.eq_nil_of_length_eq_zero (by simpa using hl)
+    rw [tm_bind_run, argsT_nil_run]
+    exact hK [] rfl (by simp)
+  | _ :: _, [], _, _, _, _, hl, _, _, _, _ => by simp at hl
+  | p :: ps, a :: as, e₁, e₂, k, hW, hl, hat, he, hnone, hK => by
+    have hW' : ∀ q, q ∈ ps → W.contains q = true := fun q hq => hW q (List.mem_cons_of_mem p hq)
+    have hat' := fun c hc => hat c (List.mem_cons_of_mem a hc)
+    have hl' : as.length = ps.length := by simpa using hl
+    have fl : ∀ s t, RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail
+        (k none s) t := by
+      intro s t
+      obtain ⟨r, hr, hf⟩ := hnone s
+      rw [hr]
+      exact .fail hf
+    have key : ∀ (v : Value) (e₁' : Env), (∀ x, W.contains x = false → e₁' x = e₂ x) →
+        (∀ vals, vals.length = ps.length →
+          (∀ av, av ∈ as.zip vals → ∀ y, av.1 = .var y → e₂ y = some av.2) →
+          RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail
+            (k (some (v :: vals)) e₂) (denoteT bt fuel b (bindVals ps as vals e₁'))) →
+        RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail
+          (((denoteArgsT bt₂ fuel as e₂).bind fun q => .ret (q.1.map (v :: ·), q.2)).bind
+            fun p => k p.1 p.2)
+          (denoteT bt fuel (bindArgs ps as b) e₁') := by
+      intro v e₁' he' hK'
+      have := bindArgsT_rel bt bt₂ f fuel hok b ps as e₁' e₂ (fun ov => k (ov.map (v :: ·)))
+        hW' hl' hat' he' (fun s => hnone s) hK'
+      rw [tm_bind_run] at this
+      rw [bind_assoc]
+      exact this
+    rw [tm_bind_run, argsT_cons_run, bind_assoc]
+    by_cases hav : ∃ y, a = .var y
+    · obtain ⟨y, rfl⟩ := hav
+      rw [denoteT_var_eq]
+      rcases h : e₂ y with _ | v
+      · exact fl _ _
+      · have hv := key v e₁ he fun vals hvl hz =>
+          hK (v :: vals) (by simp [hvl]) fun av hav y' hy' => by
+            simp only [List.zip_cons_cons, List.mem_cons] at hav
+            rcases hav with rfl | hav
+            · obtain rfl : y = y' := by simpa using hy'
+              exact h
+            · exact hz av hav y' hy'
+        cases v
+        case controlFlow => exact fl _ _
+        all_goals exact hv
+    · have hnv : ∀ y, a ≠ .var y := fun y h => hav ⟨y, h⟩
+      obtain ⟨hpa, hfa⟩ := hat a List.mem_cons_self
+      rw [bindArgs_cons_nonvar p ps a as b hnv, NFCallTreeAnfPick.denoteT_letBind_run']
+      obtain ⟨t₁, ht₁⟩ := denoteT_pure_atEnv bt a hpa e₁
+      obtain ⟨t₂, ht₂⟩ := denoteT_pure_atEnv bt₂ a hpa e₂
+      have hfr := denoteT_frame (h₁ := h₁)
+        (R := fun s₁ s₂ => ∀ x, W.contains x = false → s₁ x = s₂ x) (bt₁ := bt) (bt₂ := bt₂) id
+        (fun x => !W.contains x) (fun n => !K.contains n) (fun g => g != f)
+        (fun _ _ x h hx => h x (by simpa using hx))
+        (fun _ _ n _ h _ z hz => by
+          by_cases hzn : z = n
+          · subst hzn; simp
+          · rw [Env.extend_other _ _ _ _ hzn, Env.extend_other _ _ _ _ hzn]; exact h z hz)
+        hok a hfa fuel e₁ e₂ he
+      rw [renameReads_id a (frameOk_mono (fun _ _ => rfl) (fun _ _ => rfl) (fun _ _ => rfl) a hfa),
+        ht₁, ht₂] at hfr
+      rw [ht₁, ht₂, atEnv_bind_fst t₂ e₂, atEnv_bind_fst t₁ e₁]
+      refine NFProgCallTree.RuttS.bind hfr (fun r₁ r₂ hr => ?_) (fun r₁ hf t => ?_)
+      · obtain ⟨o, s₂⟩ := r₁
+        obtain ⟨o', s₁⟩ := r₂
+        obtain ⟨ho, -⟩ := hr
+        dsimp only at ho
+        subst ho
+        rcases o' with v | _ | _ | _ | _
+        · have he' : ∀ x, W.contains x = false → (e₁.extend p v) x = e₂ x := fun x hx => by
+            have hxp : x ≠ p := fun h => by rw [h, hW p List.mem_cons_self] at hx; cases hx
+            rw [Env.extend_other _ _ _ _ hxp]
+            exact he x hx
+          have hv := key v (e₁.extend p v) he' fun vals hvl hz => by
+            rw [← bindVals_cons_nonvar p ps a as v vals e₁ hnv]
+            refine hK (v :: vals) (by simp [hvl]) fun av hav y hy => ?_
+            simp only [List.zip_cons_cons, List.mem_cons] at hav
+            rcases hav with rfl | hav
+            · exact absurd hy (hnv y)
+            · exact hz av hav y hy
+          cases v
+          case controlFlow => exact fl _ _
+          all_goals exact hv
+        all_goals exact fl _ _
+      · obtain ⟨o, s₂⟩ := r₁
+        obtain ⟨m, hm⟩ := hf
+        dsimp only at hm
+        subst hm
+        exact fl _ _
 
 section Blocks
 
 variable (bt : TreeTable E) (fuel₀ : Nat) (f : String) (ps : List String) (body : ImpExpr)
   (ρ : Env) {W K : List String}
 
+/-- An expression reading no variable of `W`, binding no name of `K` and calling no `f` has
+    related call trees at `bt` and at the closure table of `f`, from environments related by
+    `ContRel W K ρ`. -/
+theorem denoteT_contRel (e : ImpExpr)
+    (h : frameOk (fun x => !W.contains x) (fun n => !K.contains n) (fun g => g != f) e = true) :
+    RelT h₁ (ContRel W K ρ) (ContRel W K ρ) IsErr (denoteT bt fuel₀ e)
+      (denoteT (closureTableT bt fuel₀ f ps body ρ) fuel₀ e) := by
+  have := denoteT_frame (h₁ := h₁) (R := ContRel W K ρ) (bt₁ := bt)
+    (bt₂ := closureTableT bt fuel₀ f ps body ρ) id
+    (fun x => !W.contains x) (fun n => !K.contains n) (fun g => g != f)
+    (fun _ _ x hR hx => hR.1 x (by simpa using hx))
+    (fun _ _ n w hR hn => ⟨fun x hx => by
+      by_cases hxn : x = n
+      · subst hxn; simp
+      · rw [Env.extend_other _ _ _ _ hxn, Env.extend_other _ _ _ _ hxn]; exact hR.1 x hx,
+      Agree.extend hR.2 (by simpa using hn) w⟩)
+    (fun g hg => by
+      have hgf : g ≠ f := by simpa using hg
+      funext vals; simp [closureTableT, hgf]) e h fuel₀
+  rwa [renameReads_id e (frameOk_mono (fun _ _ => rfl) (fun _ _ => rfl) (fun _ _ => rfl) e h)]
+    at this
+
 /-- **A call of a statement closure.** From environments related by `ContRel`, the call tree of
-    a call of `f` on atoms reading no variable of `W` under the closure table is related to the
-    call tree of the call block, a leaf that is an error being a failed leaf and the final
-    environments related by `ContRel`. -/
+    a call of `f` on pure arguments without a call of `f` reading no variable of `W` under the
+    closure table is related to the call tree of the call block, which performs each argument
+    tree once, a leaf that is an error being a failed leaf and the final environments related by
+    `ContRel`. -/
 theorem callBlockT_rel (hW : ∀ p, p ∈ ps → W.contains p = true)
     (hKW : ∀ x, x ∈ K → W.contains x = false) (hnd : ps.Nodup)
     (hbody : bodyOk W ps (ps ++ K) body = true) (args : List ImpExpr)
-    (hat : ∀ a, a ∈ args → isAtom a = true ∧
-      frameOk (fun x => !W.contains x) (fun n => !K.contains n) (fun _ => true) a = true) :
+    (hat : ∀ a, a ∈ args → isPure a = true ∧
+      frameOk (fun x => !W.contains x) (fun n => !K.contains n) (fun g => g != f) a = true) :
     RelT h₁ (ContRel W K ρ) (ContRel W K ρ) IsErr
       (denoteT bt fuel₀ (inlineBlocks f ps body (.app f args)))
       (denoteT (closureTableT bt fuel₀ f ps body ρ) fuel₀ (.app f args)) := by
-  have hnc : ∀ a, a ∈ args → noCalls a = true := fun a ha => by
-    have := (hat a ha).1
-    cases a <;> simp_all [isAtom, noCalls]
+  have hok : ∀ g, (g != f) = true → bt g = closureTableT bt fuel₀ f ps body ρ g := fun g hg => by
+    have hgf : g ≠ f := by simpa using hg
+    funext vals; simp [closureTableT, hgf]
   by_cases hl : args.length = ps.length
   case neg =>
-    simp only [inlineBlocks, hl, and_false, ite_false]
-    exact RelT.of_bad (callT_arity_err bt fuel₀ f ps body ρ args hnc hl fuel₀)
+    have hmap : args.map (inlineBlocks f ps body) = args :=
+      (List.map_congr_left fun a ha => inlineBlocks_free f ps body a
+        (frameOk_mono (fun _ _ => rfl) (fun _ _ => rfl) (fun _ h => h) a (hat a ha).2)).trans
+        (by simp)
+    simp only [inlineBlocks, hl, and_false, ite_false, inlineBlocks.mapExpr_eq, hmap, denoteT]
+    unfold denoteAppT
+    refine argsT_relK fuel₀ args
+      (fun a ha => denoteT_contRel bt fuel₀ f ps body ρ a (hat a ha).2) _ _
+      (fun vals hvl => RelT.of_bad fun env => ?_) (fun s => ⟨_, _, rfl, _, rfl⟩)
+    have hvl' : vals.length ≠ ps.length := hvl ▸ hl
+    dsimp only
+    rw [lift_bind_run]
+    simp only [closureTableT, ite_true, hvl', ite_false]
+    exact ⟨_, _, rfl, _, rfl⟩
   simp only [inlineBlocks, hl, and_self, ite_true, callBlock]
   intro e₁ e₂ hR
-  obtain ⟨ov, hov⟩ := noCallsArgs_aux e₂ args (fun a ha => noCalls_runT a (hnc a ha) e₂)
-  rw [denoteT, denoteAppT, tm_bind_run, hov]
-  rcases ov with _ | vals
-  · exact .fail ⟨_, rfl⟩
-  obtain ⟨-, hvlen, hz⟩ := noCallsArgs_vals bt fuel₀ e₂ args vals e₂ hnc (hov bt fuel₀)
-  have hvl : vals.length = ps.length := hvlen.trans hl
+  rw [denoteT, denoteAppT]
   have hy : ∀ y, ImpExpr.var y ∈ args → W.contains y = false := fun y hy' => by
     simpa [frameOk] using (hat _ hy').2
-  have hzv : ∀ av, av ∈ args.zip vals → atomVal e₁ av.1 = some av.2 := by
-    intro av hav
-    have hmem := (List.of_mem_zip hav).1
-    have hrun := hz av hav bt fuel₀
-    have ha := (hat _ hmem).1
-    obtain ⟨a, v⟩ := av
-    cases a with
-    | var y =>
-      rw [denoteT_var_eq] at hrun
-      simp only [atomVal]
-      rw [hR.1 y (hy y hmem)]
-      cases h : e₂ y with
-      | none => simp only [h, Option.elim] at hrun; cases hrun
-      | some u =>
-        simp only [h, Option.elim, CallTree.ret.injEq, Prod.mk.injEq, Outcome.val.injEq] at hrun
-        rw [hrun.1]
-    | lit l =>
-      rw [denoteT_lit_run] at hrun
-      simp only [CallTree.ret.injEq, Prod.mk.injEq, Outcome.val.injEq] at hrun
-      simp only [atomVal, hrun.1]
-    | _ => simp [isAtom] at ha
+  refine bindArgsT_rel bt _ f fuel₀ hok _ ps args e₁ e₂ _ hW hl hat hR.1
+    (fun s => ⟨_, rfl, _, rfl⟩) fun vals hvl hz => ?_
+  have hzv : ∀ av, av ∈ args.zip vals → ∀ y, av.1 = .var y → e₁ y = some av.2 := by
+    intro av hav y hay
+    rw [hR.1 y (hy y (hay ▸ (List.of_mem_zip hav).1))]
+    exact hz av hav y hay
   have hσps : ∀ x, ps.contains x = false → argRen ps args x = x := fun x hx => by
     simp only [argRen, argFor_none x ps args (by simpa using hx)]
   have hσ : ∀ x, argRen ps args x = x ∨ W.contains (argRen ps args x) = false := by
@@ -334,27 +520,27 @@ theorem callBlockT_rel (hW : ∀ p, p ∈ ps → W.contains p = true)
     · rename_i y hy'
       exact Or.inr (hy y (argFor_mem x ps args _ hy'))
     · exact Or.inl rfl
-  have hpre : BodyRel (argRen ps args) W (ps ++ K) e₁ (bindLits ps args e₁)
+  have hpre : BodyRel (argRen ps args) W (ps ++ K) e₁ (bindVals ps args vals e₁)
       (bindAll ρ ps vals) := by
     refine ⟨fun x hx => ?_, fun x hx => ?_⟩
     · simp only [List.contains_append, Bool.or_eq_true] at hx
       rcases hx with hx | hx
-      · exact bindLits_param ρ ps args vals e₁ hnd hl hvl (fun a ha => (hat a ha).1)
+      · exact bindVals_param ρ ps args vals e₁ hnd hl hvl
           (fun y hy' hyp => by have := hW y hyp; rw [hy y hy'] at this; cases this) hzv x
           (by simpa using hx)
       · have hxK : x ∈ K := by simpa using hx
         have hxW := hKW x hxK
         have hxps : x ∉ ps := fun h => by rw [hW x h] at hxW; cases hxW
-        rw [hσps x (by simpa using hxps), bindLits_other x ps args e₁ hxps, hR.1 x hxW,
+        rw [hσps x (by simpa using hxps), bindVals_other x ps args vals e₁ hxps, hR.1 x hxW,
           hR.2 x hxK, bindAll_other ρ x ps vals hxps]
     · have hxps : x ∉ ps := fun h => by rw [hW x h] at hx; cases hx
-      exact bindLits_other x ps args e₁ hxps
+      exact bindVals_other x ps args vals e₁ hxps
   have hb := denoteT_body (h₁ := h₁) (Ev := e₁) bt hσ hσps body (ps ++ K) hbody fuel₀ _ _ hpre
-  dsimp only [CallTree.bind]
-  rw [lift_bind_run, bindArgs_runT]
-  simp only [closureTableT, ite_true, hvl, bind_assoc]
+  dsimp only
+  rw [lift_bind_run]
+  simp only [closureTableT, ite_true, hvl, NFCallTreeAnfPick.bind_assoc]
   rw [← NFCallTreeAnfPick.bind_ret (denoteT bt fuel₀ (renameReads (argRen ps args) body)
-    (bindLits ps args e₁))]
+    (bindVals ps args vals e₁))]
   refine NFProgCallTree.RuttS.bind hb (fun r₁ r₂ hr => ?_) (fun r₁ hf t => ?_)
   · obtain ⟨o, s₂⟩ := r₁
     obtain ⟨o', s₁⟩ := r₂
@@ -587,6 +773,23 @@ def spineArgsOk : ImpExpr → Bool
   | .letBind _ _ cont => spineArgsOk cont
   | .seq _ b => spineArgsOk b
   | _ => true
+
+/-- Every expression passes `spineArgsOk`: a pure closure that `inlineSpine` inlines has
+    arguments without calls at its calls (`closureOk`). -/
+theorem spineArgsOk_eq_true (e : ImpExpr) : spineArgsOk e = true := by
+  induction e using ImpExpr.ind with
+  | letBind x v cont ihv ihc =>
+    clear ihv
+    cases v
+    case lam ps body =>
+      simp only [spineArgsOk, ihc, Bool.and_true, argsFree_eq_callsOk]
+      cases h : closureOk x ps body (inlineSpine cont)
+      · rfl
+      · simp only [closureOk, Bool.and_eq_true] at h
+        simp [h.1.2]
+    all_goals simpa [spineArgsOk] using ihc
+  | seq a b _ ihb => simpa [spineArgsOk] using ihb
+  | _ => simp [spineArgsOk]
 
 /-- The reading of a binding of a closure is an error leaf. -/
 theorem denoteT_letBind_lam_run (bt : TreeTable E) (fuel : Nat) (f : String) (ps : List String)
