@@ -446,6 +446,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerInstance
+CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerSourceRun
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
