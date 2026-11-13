@@ -2302,6 +2302,7 @@ def pkgModules12 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgToMulti,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgWiden,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFProgWidenExport,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFRangeCheck,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFRegionLaws,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFRegionSig,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.VIR.NFTileSum,
