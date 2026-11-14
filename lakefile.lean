@@ -621,6 +621,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Iterators,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Loops,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.NFToRustM,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.RangeSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Reify,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyArrays,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.AeneasFront.Scalars,
