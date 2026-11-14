@@ -209,6 +209,7 @@ CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledStepBy
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledStructs
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.RangeTests
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSignedGuard
 CatCrypt.Crypto.SecureCompilation.AeneasFront.DenoteToRustM
 CatCrypt.Crypto.SecureCompilation.AeneasFront.RangeSpec
