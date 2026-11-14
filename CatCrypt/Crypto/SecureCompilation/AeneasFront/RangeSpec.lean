@@ -319,6 +319,19 @@ theorem mul_two_pow_le {a b : Int} {m k : Nat} (ha : 0 ≤ a) (hab : a ≤ b) (h
     a * 2 ^ m ≤ b * 2 ^ k :=
   mul_le_mul hab (pow_le_pow_right₀ (by norm_num) hmk) (by positivity) (by omega)
 
+/-- The exclusive or of a number below `2 ^ k` with `2 ^ k` is their sum. -/
+theorem xor_two_pow_of_lt {x k : Nat} (h : x < 2 ^ k) : x ^^^ 2 ^ k = x + 2 ^ k := by
+  have h1 := Nat.two_pow_add_eq_or_of_lt h 1
+  have h3 : x ^^^ 2 ^ k = 2 ^ k * 1 ||| x := by
+    apply Nat.eq_of_testBit_eq
+    intro i
+    simp only [Nat.testBit_xor, Nat.testBit_or, Nat.mul_one, Nat.testBit_two_pow]
+    by_cases hi : k = i
+    · subst hi
+      simp [Nat.testBit_lt_two_pow h]
+    · simp [hi]
+  omega
+
 /-- The interval `wordXfer` gives a tagged word operation at a width `b` at most the width of
     the Aeneas words holds the value of the Aeneas operation, which does not fail. -/
 theorem wordXfer_sound {ty : UScalarTy} {o : AeWordOp} {b : Nat} (hble : b ≤ ty.numBits)
@@ -355,7 +368,23 @@ theorem wordXfer_sound {ty : UScalarTy} {o : AeWordOp} {b : Nat} (hble : b ≤ t
     unfold Iv.Has
     omega
   | bxor =>
-    simp only [wordXfer, Option.some.injEq] at h
+    simp only [wordXfer] at h
+    split_ifs at h with hc
+    · obtain ⟨h1, h2, h3⟩ := hc
+      cases h
+      refine ⟨x ^^^ y, rfl, ?_⟩
+      have hyv : y.val = 2 ^ j.1.toNat.log2 := by
+        have : ((y.val : Nat) : Int) = ((2 ^ j.1.toNat.log2 : Nat) : Int) := by push_cast; omega
+        exact_mod_cast this
+      have hxk : x.val < 2 ^ j.1.toNat.log2 := by
+        have : ((x.val : Nat) : Int) < ((2 ^ j.1.toNat.log2 : Nat) : Int) := by push_cast; omega
+        exact_mod_cast this
+      simp only [UScalar.val_xor]
+      rw [hyv, xor_two_pow_of_lt hxk]
+      unfold Iv.Has
+      push_cast
+      omega
+    simp only [Option.some.injEq] at h
     subst h
     refine ⟨x ^^^ y, rfl, ?_⟩
     have hM := Nat.lt_log2_self (n := (max i.2 j.2).toNat)
@@ -371,23 +400,40 @@ theorem wordXfer_sound {ty : UScalarTy} {o : AeWordOp} {b : Nat} (hble : b ≤ t
   | wadd =>
     have hb : b = ty.numBits := by simpa [AeWordOp.atSize] using hbo
     subst hb
-    simp only [wordXfer, ivAddZ, Option.some.injEq] at h
+    simp only [wordXfer, Option.some.injEq] at h
     subst h
     refine ⟨UScalar.wrapping_add x y, rfl, ?_⟩
     have hz : (((UScalar.wrapping_add x y).val : Nat) : Int) < 2 ^ ty.numBits := by
       exact_mod_cast (UScalar.wrapping_add x y).hBounds
     have hzv : (UScalar.wrapping_add x y).val = (x.val + y.val) % 2 ^ ty.numBits := by
       simp [UScalar.size]
-    split_ifs with hs
-    · have hlt : x.val + y.val < 2 ^ ty.numBits := by
+    by_cases hs : (ivAddZ i j).2 < 2 ^ ty.numBits
+    · simp only [hs, ↓reduceIte]
+      simp only [ivAddZ] at hs ⊢
+      have hlt : x.val + y.val < 2 ^ ty.numBits := by
         have : ((x.val + y.val : Nat) : Int) < 2 ^ ty.numBits := by push_cast; omega
         exact_mod_cast this
       rw [hzv, Nat.mod_eq_of_lt hlt]
       unfold Iv.Has
       push_cast
       grind
-    · unfold Iv.Has
-      grind
+    simp only [hs, ↓reduceIte]
+    by_cases hs2 : 2 ^ ty.numBits ≤ (ivAddZ i j).1
+    · simp only [hs2, ↓reduceIte]
+      simp only [ivAddZ] at hs hs2 ⊢
+      have hge : 2 ^ ty.numBits ≤ x.val + y.val := by
+        zify
+        omega
+      have hlt : x.val + y.val - 2 ^ ty.numBits < 2 ^ ty.numBits := by
+        zify [hge]
+        omega
+      rw [hzv, Nat.mod_eq_sub_mod hge, Nat.mod_eq_of_lt hlt]
+      unfold Iv.Has
+      push_cast [Nat.cast_sub hge]
+      omega
+    simp only [hs2, ↓reduceIte]
+    unfold Iv.Has
+    grind
   | wsub =>
     have hb : b = ty.numBits := by simpa [AeWordOp.atSize] using hbo
     subst hb

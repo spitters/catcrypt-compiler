@@ -6,7 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
-public import CatCrypt.Crypto.SecureCompilation.RangeDomain
+public import HaxLean.Range.Domain
 
 /-!
 # An interval checker for NF programs
@@ -668,13 +668,20 @@ def cmpVal (p : NfPred) (a b : Iv) : Option Bool :=
 
 /-- The interval of a tagged word operation at the width `b` on words of the nonnegative
     intervals `x` and `y`; `none` when a shift amount may reach the width or a rotation amount
-    `2 ^ 32`. -/
+    `2 ^ 32`. The exclusive or with the point `2 ^ k` of words below `2 ^ k` is their sum with
+    `2 ^ k`; a wrapping sum whose exact interval lies at or above `2 ^ b` is that interval less
+    `2 ^ b`. -/
 def wordXfer (o : AeWordOp) (b : Nat) (x y : Iv) : Option Iv :=
   let top : Iv := (0, 2 ^ b - 1)
   match o with
   | .band => some (0, min x.2 y.2)
-  | .bor | .bxor => some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
-  | .wadd => let s := ivAddZ x y; some (if s.2 < 2 ^ b then s else top)
+  | .bor => some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
+  | .bxor =>
+    if y.1 = y.2 ∧ y.1 = 2 ^ y.1.toNat.log2 ∧ x.2 < y.1 then some (x.1 + y.1, x.2 + y.1)
+    else some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
+  | .wadd =>
+    let s := ivAddZ x y
+    some (if s.2 < 2 ^ b then s else if 2 ^ b ≤ s.1 then (s.1 - 2 ^ b, s.2 - 2 ^ b) else top)
   | .wsub => let s := ivSubZ x y; some (if 0 ≤ s.1 then s else top)
   | .wmul => let s : Iv := (x.1 * y.1, x.2 * y.2); some (if s.2 < 2 ^ b then s else top)
   | .shr => if y.2 < b then some (x.1 / 2 ^ y.2.toNat, x.2 / 2 ^ y.1.toNat) else none
@@ -849,6 +856,30 @@ def sumLong (f : String) : NFProg nfDialect [.word 64] [.word 64] :=
 
 example : (check aeSpec small (sumLong "wrapping_add#64")).isSome = true := by decide
 example : (check aeSpec small (sumLong "Add#64")).isSome = false := by decide
+
+/-- The sign extension of the `i32` pattern `x` (the exclusive or with the sign bit `2 ^ 31`,
+    then the wrapping difference with it), followed by the checked `x + x` at `32` bits:
+    accepted for `x` in `[0, 100]`, where the sign extension is `x`. -/
+def sext32 : NFProg nfDialect [.word 64] [.word 64] :=
+  .var (litW (2 ^ 31)) <|
+  .var (call2 "BitXor#64" (.word 64) (.there .here) .here) <|
+  .var (call2 "wrapping_sub#64" (.word 64) .here (.there .here)) <|
+  .var (call2 "Add#32" (.word 64) .here .here) <|
+  .ret (.cons .here .nil)
+
+example : (check aeSpec small sext32).isSome = true := by decide
+
+/-- The wrapping sum `2 ^ 64 - 1 + 2 = 1` of two literals, followed by the checked `+ 1` at
+    `8` bits: accepted, since the wrapping sum is the point `1`. -/
+def wrapLits : NFProg nfDialect [] [.word 64] :=
+  .var (litW (2 ^ 64 - 1)) <|
+  .var (litW 2) <|
+  .var (call2 "wrapping_add#64" (.word 64) (.there .here) .here) <|
+  .var (litW 1) <|
+  .var (call2 "Add#8" (.word 64) (.there .here) .here) <|
+  .ret (.cons .here .nil)
+
+example : (check aeSpec .nil wrapLits).isSome = true := by decide
 
 end Examples
 

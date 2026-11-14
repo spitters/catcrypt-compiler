@@ -11,16 +11,18 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestArrays
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestLoops
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedIterAdapters
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSignedGuard
+public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSigned
 
 /-!
 # Tests of `aeneasRange%`
 
 No-panic theorems by `aeneasRange%` on Aeneas test functions: the checked `u32` addition of
 `opt_add_1_or_panic` behind its assertion, the array update of `incr_array`, and the counted
-loop of `enum_range_sum`; and the refusals, each naming the step that fails: the `i8` sum
-`x + 1` without an input bound, `opt_add_1_or_panic` with an input range that contains a panic
-(the assertion, the overflow of `x + 1` at `x = 2 ^ 32 - 1`), and a function with a `while`
-loop.
+loop of `enum_range_sum`, the checked `i32` sums of `ref_incr` and `add` read through their
+overflow guard; and the refusals, each naming the step that fails: `ref_incr` at
+`x = 2 ^ 31 - 1`, the `i8` sum `x + 1` without an input bound, `opt_add_1_or_panic` with an
+input range that contains a panic (the assertion, the overflow of `x + 1` at `x = 2 ^ 32 - 1`),
+and a function with a `while` loop.
 -/
 
 @[expose] public section
@@ -51,6 +53,21 @@ theorem enumRangeSum_noPanic : ∀ (a : Aeneas.Std.Array U32 4#usize) (acc : U32
     0 ≤ (acc.val : Int) ∧ (acc.val : Int) ≤ 1000 →
     ∃ y, iter_adapters.enum_range_sum a acc = .ok y :=
   aeneasRange% iter_adapters.enum_range_sum [(0, 1000), (0, 1000)]
+
+/-- The checked `i32` sum `ref_incr x = x + 1`, read through its overflow guard, has a value
+    for `x` in `[0, 2 ^ 31 - 2]`. -/
+theorem refIncr_noPanic : ∀ x : I32, 0 ≤ x.val ∧ x.val ≤ 2 ^ 31 - 2 →
+    ∃ y, paper.ref_incr x = .ok y :=
+  aeneasRange% paper.ref_incr [(0, 2 ^ 31 - 2)]
+
+/-- The checked `i32` sum `add a b` has a value for `a` and `b` in `[0, 1000]`. -/
+theorem constAdd_noPanic : ∀ a b : I32, 0 ≤ a.val ∧ a.val ≤ 1000 → 0 ≤ b.val ∧ b.val ≤ 1000 →
+    ∃ y, constants.add a b = .ok y :=
+  aeneasRange% constants.add [(0, 1000), (0, 1000)]
+
+/-- error: aeneasRange%: the interval check refuses: a reachable abort -/
+#guard_msgs in
+example := aeneasRange% paper.ref_incr [(0, 2 ^ 31 - 1)]
 
 /-- error: aeneasRange%: the interval check refuses: a reachable abort -/
 #guard_msgs in
