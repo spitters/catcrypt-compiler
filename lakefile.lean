@@ -3410,6 +3410,7 @@ def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Programs.Qubit,
     Lake.Glob.one `CatCrypt.Quantum.Programs.SuperdenseCoding,
     Lake.Glob.one `CatCrypt.Quantum.Programs.Teleportation,
+    Lake.Glob.one `CatCrypt.Quantum.Programs.TiltedCHSH,
     Lake.Glob.one `CatCrypt.Quantum.PurificationFreedom,
     Lake.Glob.one `CatCrypt.Quantum.QCircuit,
     Lake.Glob.one `CatCrypt.Quantum.QFT.Circuit,
