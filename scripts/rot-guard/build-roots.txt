@@ -429,6 +429,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldChainCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomArgReallocBody
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomAssemble
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldKinds
