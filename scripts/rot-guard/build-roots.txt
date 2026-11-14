@@ -684,7 +684,7 @@ CatCrypt.Crypto.SecureCompilation.VIR.MultiCom
 CatCrypt.Crypto.SecureCompilation.VIR.MultiLoweringRegionTypes
 CatCrypt.Crypto.SecureCompilation.VIR.MultiPhaseBody
 CatCrypt.Crypto.SecureCompilation.VIR.NFProgMapRel
-CatCrypt.Crypto.SecureCompilation.VIR.NFRangeSound
+CatCrypt.Crypto.SecureCompilation.VIR.NFRangeLoop
 CatCrypt.Crypto.SecureCompilation.VIR.NarrowFieldPlant64
 CatCrypt.Crypto.SecureCompilation.VIR.Ntruhrss701KaratsubaEmit
 CatCrypt.Crypto.SecureCompilation.VIR.OwnedX86RobustInstance
