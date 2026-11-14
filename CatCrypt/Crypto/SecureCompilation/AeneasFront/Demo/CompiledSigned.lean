@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.EntryCT
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Signed
+public import CatCrypt.Crypto.SecureCompilation.AeneasFront.SignedGuard
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSigned
 
 /-!

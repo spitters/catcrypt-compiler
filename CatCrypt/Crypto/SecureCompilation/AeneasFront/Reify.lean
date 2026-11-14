@@ -1910,6 +1910,9 @@ meta def guardVal (b V : Expr) : MetaM Expr := do
     namespace of the reified function) is unfolded by its equation lemma. -/
 meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
   let m := (← instantiateMVars m).headBeta
+  if let some (m', r) ← rwOf? m then
+    let eq ← mkAppOptM ``ReifyRw.eq #[none, none, none, some r]
+    return ← mkAppM ``ReifyG.of_eq #[eq, ← reify crate E m' V]
   if let some prf ← synthG E m V then return prf
   let readUnder (α : Expr) (E' k : Expr) (V' : Expr) : MetaM Expr :=
     withLocalDeclD `x α fun x => do
@@ -2156,5 +2159,17 @@ def useQuad (x : U32) : RustM U32 := do
   .ok z
 
 example := reifyAeneas% useQuad
+
+/-- A doubling outside the namespace of the reified function: the reader does not unfold it
+    and reads it only through its rewrite `dbl2_rw`. -/
+def _root_.reifyRwOther.dbl2 (x : U32) : RustM U32 := x + x
+
+/-- The rewrite of `dbl2 x` into its checked addition. -/
+@[local instance] theorem dbl2_rw (x : U32) : ReifyRw (reifyRwOther.dbl2 x) (x + x) := ⟨rfl⟩
+
+/-- A call of `dbl2` in tail position. -/
+def tailDbl (x : U32) : RustM U32 := reifyRwOther.dbl2 x
+
+example := reifyAeneas% tailDbl
 
 end reifyRwTest
