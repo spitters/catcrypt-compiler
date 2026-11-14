@@ -9,8 +9,6 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Loops
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.IterModel
 import all Init.Internal.Order.Basic
 public import HaxAscent.RustSemantics.BackendLoops
-public meta import Lean.Elab.Term
-public meta import Lean.Meta.Eqns
 
 /-!
 # `reifyAeneas%`: NF programs of Aeneas functions with proofs by construction
@@ -229,6 +227,24 @@ theorem ReifyG.of_eq {α : Type} {ts : List NfTy} {E : α → Valuation (d := nf
     {m m' : RustM α} {Γ : Ctxt nfDialect} {V : Valuation Γ} {p : NFProg nfDialect Γ ts}
     (h : m = m') (r : ReifyG E m' V p) : ReifyG E m V p :=
   ⟨fun y hy => r.sound y (h ▸ hy)⟩
+
+/-- A rewrite of the computation `m` into `m'`, which the reader reads in its place: at a bind
+    whose head `m` has an instance, the reader reads `m' >>= k` (a checked operation read through
+    its guarded form). -/
+class ReifyRw {α : Type} (m : RustM α) (m' : outParam (RustM α)) : Prop where
+  /-- The equation of the rewrite. -/
+  eq : m = m'
+
+/-- A rewrite of the head of a bind rewrites the bind. -/
+theorem ReifyRw.bind_eq {α β : Type} {m m' : RustM α} (r : ReifyRw m m') (k : α → RustM β) :
+    m >>= k = m' >>= k := by
+  rw [r.eq]
+
+/-- A bind whose head is a bind, reassociated to the right with the continuation `g`. -/
+theorem bind_assoc_congr {γ α β : Type} (a : RustM γ) (f : γ → RustM α) (k : α → RustM β)
+    (g : γ → RustM β) (h : ∀ x, f x >>= k = g x) : (a >>= f) >>= k = a >>= g := by
+  rw [bind_assoc_eq]
+  exact congrArg _ (funext h)
 
 /-- **From the reading to the compiler's semantics.** A value of an Aeneas computation read
     by `p` is, embedded, the denotation of `p` in `PDenP hax64WExit` from some fuel on. -/
@@ -1591,6 +1607,28 @@ meta def synthE (m V : Expr) : MetaM (Option (Expr × Expr)) := do
   | some r => return some (← instantiateMVars out, r)
   | none => return none
 
+/-- `ReifyRw m m'` by instance resolution: the rewrite `m'` and the instance, or `none`. -/
+meta def rwOf? (m : Expr) : MetaM (Option (Expr × Expr)) := do
+  let α ← resTy m
+  let out ← mkFreshExprMVar (some (← inferType m))
+  match ← synthInstance? (mkAppN (mkConst ``ReifyRw) #[α, m, out]) with
+  | some r => return some (← instantiateMVars out, r)
+  | none => return none
+
+/-- The chain `m >>= k` with the binds of `m` reassociated to the right, and the proof of
+    `m >>= k = M` for the chain `M`: one step `bind_assoc_congr` per bind of `m`. -/
+meta partial def bindAssoc (m k : Expr) : MetaM (Expr × Expr) := do
+  let m := (← instantiateMVars m).headBeta
+  if m.isAppOfArity ``Bind.bind 6 then
+    let a := m.getArg! 4
+    let f := m.getArg! 5
+    let (g, h) ← withLocalDeclD `x (← resTy a) fun x => do
+      let (gx, hx) ← bindAssoc (mkApp f x).headBeta k
+      return (← mkLambdaFVars #[x] gx, ← mkLambdaFVars #[x] hx)
+    return (← mkAppM ``Bind.bind #[a, g], ← mkAppM ``bind_assoc_congr #[a, f, k, g, h])
+  let mk ← mkAppM ``Bind.bind #[m, k]
+  return (mk, ← mkEqRefl mk)
+
 /-- `ReifyG E m V p` by instance resolution: the instance, or `none`. -/
 meta def synthG (E m V : Expr) : MetaM (Option Expr) := do
   let α ← resTy m
@@ -1888,6 +1926,10 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
       return ← guardWith m P V k1 (← mkAppM ``pass_massert #[P, k])
         (fun V' b => do mkAppM ``Reify.assert #[P, k, V', ← reify crate E k1 (← guardVal b V')])
         (reify crate E k1)
+    if let some (m', r) ← rwOf? m1 then
+      let (M, hM) ← bindAssoc m' k
+      let eq ← mkEqTrans (← mkAppM ``ReifyRw.bind_eq #[r, k]) hM
+      return ← mkAppM ``ReifyG.of_eq #[eq, ← reify crate E (← normBinds M) V]
     let α ← resTy m1
     if (← synthE m1 V).isSome then
       return ← mkAppM ``Reify.bind #[m1, k, V, ← readUnder α E k V]
@@ -2080,3 +2122,39 @@ elab "reifyAeneas% " f:ident : term => do
 end ReifyMeta
 
 end CatCrypt.Crypto.SecureCompilation.AeneasFront
+
+namespace reifyRwTest
+
+open Aeneas.Std
+open CatCrypt.Crypto.SecureCompilation.AeneasFront (ReifyRw)
+
+/-- A doubling, read by the reader only through its rewrite `dbl_rw`. -/
+def dbl (x : U32) : RustM U32 := x + x
+
+/-- The rewrite of `dbl x` into its checked addition. -/
+@[local instance] theorem dbl_rw (x : U32) : ReifyRw (dbl x) (x + x) := ⟨rfl⟩
+
+/-- A call of `dbl` at the head of a bind. -/
+def useDbl (x : U32) : RustM U32 := do
+  let z ← dbl x
+  .ok z
+
+example := reifyAeneas% useDbl
+
+/-- A quadrupling, read through its rewrite `quad_rw` into a chain of two binds. -/
+def quad (x : U32) : RustM U32 := do
+  let y ← x + x
+  y + y
+
+/-- The rewrite of `quad x` into its chain. -/
+@[local instance] theorem quad_rw (x : U32) : ReifyRw (quad x) (do let y ← x + x; y + y) :=
+  ⟨rfl⟩
+
+/-- A call of `quad` at the head of a bind. -/
+def useQuad (x : U32) : RustM U32 := do
+  let z ← quad x
+  .ok z
+
+example := reifyAeneas% useQuad
+
+end reifyRwTest
