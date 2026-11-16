@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFoldPos
 import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomHiFree
 import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomNop
+import CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedAddrWEncodable
 
 /-!
 # Acceptance of `compileA` on the bounded field domain from the open stage facts
@@ -15,10 +16,12 @@ of words of the operands is at most `121`, the bound under which the frame check
 (stage `G18`) holds for the sum, the difference and the product. `FieldDomOpen` collects the
 stage facts of `compileA` on `fieldDomB''` that have no proof at the field domain: the fusion
 check of the product (`G10`), the fold positions of the cell fold check (`G12`), the
-translation validation `ownedCheckMC` (`G13`), the index invariant check (`G14`), the printed
-class with the encoder and `printedAddrWB` (`G15`, `F10`, `C2`), the physical image and image
-gates (`G16`, `G17`, `C3`), the frame check (`G18`), the save-slot readers of the entry check
-(`G19`) and the leak validation `ownedCheckML` (fifth conjunct of `C1`). Every other stage is
+translation validation `ownedCheckMC` (`G13`), the class `printedAddrWB` of the printed body
+(`C2`), the physical image and image gates (`G16`, `G17`), the frame check (`G18`), the
+save-slot readers of the entry check (`G19`) and the leak validation `ownedCheckML` (fifth
+conjunct of `C1`). The printed class `G15` is `C2` (`fieldDom_regionPrintedB_open`), the
+encoder `F10` follows from `C2` (`fieldDom_encode_open`), and the constant-time image gate `C3`
+is a conjunct of the image gate of `G17` (`fieldDom_imgGateCW_open`). Every other stage is
 filled from its theorem.
 
 ## Main definitions
@@ -44,6 +47,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMem (LinstrRM)
 open CatCrypt.Crypto.SecureCompilation.Haxc.FieldRoute (fieldAbi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (imgGateCW)
@@ -113,16 +117,6 @@ structure FieldDomOpen : Prop where
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "idxInvCheckB"
-  /-- Stage `G15`: the printed body is in the class `regionPrintedB`. -/
-  regionPrintedB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
-    (hB : FieldBody e σ fname b t r cert) :
-    regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionPrintedB"
-  /-- Stage `F10`: the gated encoder accepts the printed body. -/
-  encode {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
-    (hB : FieldBody e σ fname b t r cert) :
-    (X86Backend.LprogBytes.encodeLfundefBytesChecked b).isSome = true
   /-- Stage `C2`: the printed body passes `printedAddrWB`. -/
   printedAddrWB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
@@ -156,16 +150,6 @@ structure FieldDomOpen : Prop where
         (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert))
         (X86Backend.ImageAddrCells.cellBody
           (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert)) b)) = true
-  /-- Stage `C3`: the constant-time image gate `imgGateCW`. -/
-  imgGateCW {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
-    (hB : FieldBody e σ fname b t r cert) :
-    imgGateCW (X86Backend.ImageStraightCells.frameMarkC
-        (regionCoParts σ exportReg b t r.code r.res cert).cells b)
-      (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert))
-      (X86Backend.ImageAddrCells.cellBody
-        (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert)) b)
-      = true
 
 /-! ## 3. The gates on the bounded field domain -/
 
@@ -173,6 +157,47 @@ section Gate
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
   {r : Exported} {cert : List (String × String)}
+
+/-- The gate does not refuse at `regionPrintedB` on a body of the class `printedAddrWB`. -/
+theorem regionCoStage_ne_regionPrintedB {nm : String → String} {code : List LinstrRM}
+    {res : List LOperand} {fn : String} (h : printedAddrWB b = true) :
+    regionCoStage σ nm b t code res cert none fn ≠ some "regionPrintedB" := by
+  unfold regionCoStage
+  dsimp only
+  simp only [regionPrintedB, h, Option.isSome_none, Bool.false_or, Bool.true_eq_false,
+    ite_false]
+  repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
+  exact (Option.some_ne_none _).symm
+
+/-- **The image gate of a body the gate accepts**: when `regionCoStage` names no refusing
+    stage, the body passes `regionImgB` at the slot map `regionSl`, the cell arrays and the
+    observed names of its parts (stage `G17`). -/
+theorem regionImgB_of_regionCoStage_eq_none {nm : String → String} {code : List LinstrRM}
+    {res : List LOperand} {fn : String}
+    (h : regionCoStage σ nm b t code res cert none fn = none) :
+    regionImgB (regionSl σ nm (regionCoParts σ nm b t code res cert))
+      (regionCoParts σ nm b t code res cert).cells
+      ((regionCoParts σ nm b t code res cert).outs
+        ++ (regionCoParts σ nm b t code res cert).cellOuts) b = true := by
+  dsimp only [regionCoStage] at h
+  iterate 18 obtain ⟨-, h⟩ := ite_false_eq_none h
+  obtain ⟨h19, -⟩ := ite_false_eq_none h
+  simpa only [calleeImgBT_none, calleeCodeT_none] using h19
+
+/-- Stage `G15` on the bounded field domain, from stage `C2`. -/
+theorem fieldDom_regionPrintedB_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
+    (hB : FieldBody e σ fname b t r cert) :
+    regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionPrintedB" :=
+  regionCoStage_ne_regionPrintedB (O.printedAddrWB h hB)
+
+/-- Stage `F10` on the bounded field domain, from stage `C2`: the gated encoder accepts the
+    printed body (`encodable_of_printedAddrWB`). -/
+theorem fieldDom_encode_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
+    (hB : FieldBody e σ fname b t r cert) :
+    (X86Backend.LprogBytes.encodeLfundefBytesChecked b).isSome = true := by
+  unfold X86Backend.LprogBytes.encodeLfundefBytesChecked
+  rw [if_pos (X86Backend.DecodePrintedAddrW.encodable_of_printedAddrWB (O.printedAddrWB h hB))]
+  rfl
 
 /-- Stage `G10` on the bounded field domain: the sum and the difference by
     `fieldDom_fuseOKL_addSub`, the product and the square from `O`. -/
@@ -198,10 +223,25 @@ theorem fieldDom_regionCoStage_open (O : FieldDomOpen) (h : fieldDomB'' e σ = t
     fieldDom_regionResultB h0 hB, fieldDom_regMerge h0 hB, fieldDom_regionNopB h0 hB,
     fieldDom_fuseOKL_open O h hB, fieldDom_fuseResultName h0 hB,
     fieldDom_regionFoldB_of_foldPos h0 hB (O.foldPos h hB),
-    O.ownedCheckMC h hB, O.idxInvCheckB h hB, O.regionPrintedB h hB,
+    O.ownedCheckMC h hB, O.idxInvCheckB h hB, fieldDom_regionPrintedB_open O h hB,
     O.physImgB h hB, O.regionImgB h hB, O.frameOkB h hB,
     fieldDom_entryB_of_argReaders h' hB (O.argReaders fname h),
     fieldDom_cellNamesRB' h' hB, fieldDom_cellRegions h0 hB]
+
+/-- Stage `C3` on the bounded field domain, from the gate: the cell body passes `imgGateCW`,
+    a conjunct of the image gate `regionImgB` of stage `G17`. -/
+theorem fieldDom_imgGateCW_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
+    (hB : FieldBody e σ fname b t r cert) :
+    imgGateCW (X86Backend.ImageStraightCells.frameMarkC
+        (regionCoParts σ exportReg b t r.code r.res cert).cells b)
+      (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert))
+      (X86Backend.ImageAddrCells.cellBody
+        (regionSl σ exportReg (regionCoParts σ exportReg b t r.code r.res cert)) b)
+      = true := by
+  have hI := regionImgCoreB_of_regionImgB
+    (regionImgB_of_regionCoStage_eq_none (fieldDom_regionCoStage_open O h hB))
+  unfold regionImgCoreB at hI
+  exact (Bool.and_eq_true_iff.mp (Bool.and_eq_true_iff.mp hI).1).2
 
 /-- The constant-time gate passes on the bounded field domain: stages `C1`-`C3`. -/
 theorem fieldDom_regionCtB_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
@@ -211,7 +251,8 @@ theorem fieldDom_regionCtB_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     dsimp only [regionLeakB]
     rw [fieldDom_regionLeakB_head (fieldDomB_of_fieldDomB'' h) hB, Bool.true_and]
     exact O.ownedCheckML h hB
-  simp only [regionCtB, hL, O.printedAddrWB h hB, O.imgGateCW h hB, Bool.and_self]
+  simp only [regionCtB, hL, O.printedAddrWB h hB, fieldDom_imgGateCW_open O h hB,
+    Bool.and_self]
 
 end Gate
 
@@ -219,7 +260,7 @@ end Gate
 
 /-- **`compileA` accepts every member of the bounded field domain under the open stage
     facts.** The stages in pipeline order as in `compileA_isSome_of_fieldDom`: the front
-    `F1`-`F9` from their theorems, the encoder `F10` from `O`, the gate `G1`-`G21`
+    `F1`-`F9` from their theorems, the encoder `F10` from `C2`, the gate `G1`-`G21`
     (`fieldDom_regionCoStage_open`) and the constant-time gate `C1`-`C3`
     (`fieldDom_regionCtB_open`), assembled by `compileRegion_isSome_of_stages`. -/
 theorem compileA_isSome_of_fieldDom_open (O : FieldDomOpen) {e : _root_.Hax.TExpr}
@@ -243,7 +284,8 @@ theorem compileA_isSome_of_fieldDom_open (O : FieldDomOpen) {e : _root_.Hax.TExp
       (regionWebsAt (regionWebsEx σ exportReg) none r0) cert :=
     ⟨t0, q, q', r0, P, hq, hq', hr0, rfl, hP, hb, rfl⟩
   exact compileRegion_isSome_of_stages hE (fieldDom_callFree h0 hq) hq' hL hr0 hP hb
-    (O.encode h hB) (fieldDom_regionCoStage_open O h hB) (fieldDom_regionCtB_open O h hB)
+    (fieldDom_encode_open O h hB) (fieldDom_regionCoStage_open O h hB)
+    (fieldDom_regionCtB_open O h hB)
 
 /-! ## 5. The field rows of `LeanFrontFields` -/
 
