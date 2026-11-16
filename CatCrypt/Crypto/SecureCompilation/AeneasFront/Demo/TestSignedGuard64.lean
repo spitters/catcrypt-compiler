@@ -144,4 +144,14 @@ theorem mulT_min :
     mulT ⟨BitVec.ofNat 64 (3 * 2 ^ 62)⟩ 2#i64 = .ok ⟨BitVec.ofNat 64 (2 ^ 63)⟩ :=
   rfl
 
+/-- An assertion of one comparison whose first operand `toU x ^^^ toU y` is computed from the
+    arguments and whose second operand `2 ^ 63` is closed. -/
+def xorChk (x y : I64) : RustM I64 := do
+  massert (toU x ^^^ toU y < sbit64 .I64)
+  .ok x
+
+/-- The reading of `xorChk`: the computed operand is read by the call `BitXor#64`
+    (`readWordBxor`), the closed operand as a literal. -/
+def xorChkR := reifyAeneas% xorChk
+
 end CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.signedGuard64Test

@@ -18,8 +18,8 @@ is its negation, the disjunction of the two unsigned comparisons of those words 
 bit `2 ^ 63`. It is read as the calls `wrapping_add#64` (or `wrapping_sub#64`), `BitXor#64`,
 `Lt` and `||` of the table (`readWordIWadd`, `readWordBxor`, `readBitCmp`, `readBitDecOr`).
 
-The guard is a disjunction, not one comparison: the reader binds an operand of a top-level
-comparison that no variable holds as a literal, which is sound only for closed operands.
+The reader binds a closed operand of a comparison that no variable holds as a literal; a
+computed operand such as `x ^^^ z` is read through its word reading (`readWordBxor`).
 
 The checked `*` at `i64` is read through the absolute values of the operands as `u64` words:
 the absolute value `absW x` is the lesser of the pattern of `x` and the pattern of its wrapping

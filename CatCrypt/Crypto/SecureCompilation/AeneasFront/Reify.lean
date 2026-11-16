@@ -1875,9 +1875,10 @@ meta def hasWord (V a : Expr) : MetaM Bool := do
 
 /-- The reading of a guard of `m` with the passing condition `S`, the continuation `k` and
     the proof `hm` that a value of `m` is a value of `k` under `S`. A condition read as one
-    expression (`ReadCond`), after the operands of `S` that no variable of `V` holds are bound
-    as literals (`Reify.letLit`), is read by `mk V' b` at the extended valuation `V'` and the
-    bit `b` of `S`. Any other condition is read as a prefix and a bit (`ReadBit`) by
+    expression (`ReadCond`), after the closed operands of `S` that no variable of `V` holds are
+    bound as literals (`Reify.letLit`), is read by `mk V' b` at the extended valuation `V'` and
+    the bit `b` of `S`. An operand with a free variable is computed from the variables and is
+    never bound as a literal. Any other condition is read as a prefix and a bit (`ReadBit`) by
     `Reify.guardP`, with the continuation read by `readK` at its valuation. -/
 meta def guardWith (m S V k hm : Expr) (mk : Expr → Expr → MetaM Expr)
     (readK : Expr → MetaM Expr) : MetaM Expr := do
@@ -1885,6 +1886,7 @@ meta def guardWith (m S V k hm : Expr) (mk : Expr → Expr → MetaM Expr)
   let mut lits : Array (Expr × Expr) := #[]
   let mut V' := V
   for x in ← cmpOperands S do
+    if x.hasFVar || x.hasMVar then continue
     unless ← hasWord V' (← mkAppM ``embW #[x]) do
       lits := lits.push (x, V')
       V' ← mkAppM ``vCons #[x, V']
