@@ -12,6 +12,7 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestLoops
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedIterAdapters
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSignedGuard
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSigned
+public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSignedGuard64
 
 /-!
 # Tests of `aeneasRange%`
@@ -19,10 +20,11 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.TestSigned
 No-panic theorems by `aeneasRange%` on Aeneas test functions: the checked `u32` addition of
 `opt_add_1_or_panic` behind its assertion, the array update of `incr_array`, and the counted
 loop of `enum_range_sum`, the checked `i32` sums of `ref_incr` and `add` read through their
-overflow guard; and the refusals, each naming the step that fails: `ref_incr` at
-`x = 2 ^ 31 - 1`, the `i8` sum `x + 1` without an input bound, `opt_add_1_or_panic` with an
-input range that contains a panic (the assertion, the overflow of `x + 1` at `x = 2 ^ 32 - 1`),
-and a function with a `while` loop.
+overflow guard, the checked `i64` sums of `incr` and `incrT` and the difference of `dec` read
+through their sign-bit guard; and the refusals, each naming the step that fails: `ref_incr` at
+`x = 2 ^ 31 - 1`, the `i64` sum `incr` at `x = 2 ^ 63 - 1`, the `i8` sum `x + 1` without an
+input bound, `opt_add_1_or_panic` with an input range that contains a panic (the assertion, the
+overflow of `x + 1` at `x = 2 ^ 32 - 1`), and a function with a `while` loop.
 -/
 
 @[expose] public section
@@ -64,6 +66,27 @@ theorem refIncr_noPanic : ∀ x : I32, 0 ≤ x.val ∧ x.val ≤ 2 ^ 31 - 2 →
 theorem constAdd_noPanic : ∀ a b : I32, 0 ≤ a.val ∧ a.val ≤ 1000 → 0 ≤ b.val ∧ b.val ≤ 1000 →
     ∃ y, constants.add a b = .ok y :=
   aeneasRange% constants.add [(0, 1000), (0, 1000)]
+
+/-- The checked `i64` sum `incr x = x + 1`, read through its sign-bit guard, has a value for `x`
+    in `[0, 2 ^ 63 - 2]`. -/
+theorem incr64_noPanic : ∀ x : I64, 0 ≤ x.val ∧ x.val ≤ 2 ^ 63 - 2 →
+    ∃ y, signedGuard64Test.incr x = .ok y :=
+  aeneasRange% signedGuard64Test.incr [(0, 2 ^ 63 - 2)]
+
+/-- The checked `i64` sum `x + 1` in tail position has a value for `x` in `[0, 2 ^ 62]`. -/
+theorem incrT64_noPanic : ∀ x : I64, 0 ≤ x.val ∧ x.val ≤ 2 ^ 62 →
+    ∃ y, signedGuard64Test.incrT x = .ok y :=
+  aeneasRange% signedGuard64Test.incrT [(0, 2 ^ 62)]
+
+/-- The checked `i64` difference `dec x y = x - y` has a value for `x` and `y` in
+    `[0, 2 ^ 62]`. -/
+theorem dec64_noPanic : ∀ x y : I64, 0 ≤ x.val ∧ x.val ≤ 2 ^ 62 → 0 ≤ y.val ∧ y.val ≤ 2 ^ 62 →
+    ∃ z, signedGuard64Test.dec x y = .ok z :=
+  aeneasRange% signedGuard64Test.dec [(0, 2 ^ 62), (0, 2 ^ 62)]
+
+/-- error: aeneasRange%: the interval check refuses: a reachable abort -/
+#guard_msgs in
+example := aeneasRange% signedGuard64Test.incr [(0, 2 ^ 63 - 1)]
 
 /-- error: aeneasRange%: the interval check refuses: a reachable abort -/
 #guard_msgs in
