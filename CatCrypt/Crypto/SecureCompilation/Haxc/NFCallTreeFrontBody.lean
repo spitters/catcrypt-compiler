@@ -31,8 +31,7 @@ matched by a leaf whose outcome is related by `RetRel`, the other leaves failed.
 * `BodyRel.trans`: the relation of the composed stages is transitive.
 * `prepBody_relT`: the call tree of `inlineSpine e` and that of `haxFrontBodyP O e`.
 * `body_relT`: the call tree of `e`, its closures read as internal table entries, and that of
-  `haxFrontBodyP O e`, when the arguments of the calls of inlined closures are call-free
-  (`spineArgsOk`).
+  `haxFrontBodyP O e`.
 * `nfBody_relT`: the same for the body `nfBody te` of the front.
 -/
 
@@ -166,27 +165,24 @@ theorem prepBody_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fue
     exact BodyRel.trans_eqOut (fun _ hf => hf.elim) h5
       (NFCallTreeWhileTrue.wtFn_relT_same h₁ bt hroute.1 fuel env)
 
-/-- **The body of the front from the source reading.** Under the side conditions
-    `haxFrontOkP O e` and call-free arguments at the calls of inlined closures
-    (`spineArgsOk e`), from every environment the call tree of `e`, its let-bound closures read
+/-- **The body of the front from the source reading.** Under the side condition
+    `haxFrontOkP O e`, from every environment the call tree of `e`, its let-bound closures read
     as internal table entries, and the call tree of the body `haxFrontBodyP O e` are related by
     `BodyRel`. -/
 theorem body_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat)
-    (O : FrontOracle) (e : ImpExpr) (hok : haxFrontOkP O e = true)
-    (hs : NFCallTreeInlineSpine.spineArgsOk e = true) (env : Env) :
+    (O : FrontOracle) (e : ImpExpr) (hok : haxFrontOkP O e = true) (env : Env) :
     BodyRel h₁ (nfTree bt fuel e env) (denoteT bt fuel (haxFrontBodyP O e) env) :=
   BodyRel.of_eqOut_retRel
     (RuttS.mono_fail (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv)
       (NFProgCallTreeExt.RuttS.mono (fun _ _ h => h.1)
-        (NFCallTreeInlineSpine.inlineSpine_relT h₁ bt e fuel env hs)))
+        (NFCallTreeInlineSpine.inlineSpine_relT h₁ bt e fuel env)))
     (prepBody_relT h₁ bt fuel O e hok env)
 
 /-- **The body `nfBody te` of the front from the source reading of the extraction `te`**,
-    under the shape conditions `haxFrontShapeOk te` and `spineArgsOk` of the extraction. -/
+    under the shape condition `haxFrontShapeOk te` of the extraction. -/
 theorem nfBody_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat) (te : TExpr)
-    (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk te = true)
-    (hs : NFCallTreeInlineSpine.spineArgsOk te.erase = true) (env : Env) :
+    (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk te = true) (env : Env) :
     BodyRel h₁ (nfTree bt fuel te.erase env) (denoteT bt fuel (nfBody te) env) :=
-  body_relT h₁ bt fuel _ te.erase (CatCrypt.Crypto.Hax.haxFrontOkP_of_shapeOk hok) hs env
+  body_relT h₁ bt fuel _ te.erase (CatCrypt.Crypto.Hax.haxFrontOkP_of_shapeOk hok) env
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeFrontBody

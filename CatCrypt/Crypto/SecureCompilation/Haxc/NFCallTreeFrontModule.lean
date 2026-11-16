@@ -426,7 +426,7 @@ open Ctxt (Valuation)
     failed. -/
 theorem callee_relT (fs : List CrateFn) (base : String → List NfTy → Option NfTy) (f : ModFn)
     (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk f.texpr = true)
-    (hs : NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
+    (_hs : NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
     (h₁ : ∀ e : linkSig.Event, linkSig.Resp e) (hR : RepeatCalls fun g vals => h₁ ⟨g, vals⟩)
     (tE : TreeCallEnv leafSig nfDialect) {as : Ctxt nfDialect} {r : NfTy}
     {b : NFProg nfDialect as [r]} (hb : crateBody fs (f.prep nfBody) as r base = some b)
@@ -443,7 +443,7 @@ theorem callee_relT (fs : List CrateFn) (base : String → List NfTy → Option 
       cases hb
       subst h1 h2
       simp only [cast_eq]
-      have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel f.texpr hok hs
+      have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel f.texpr hok
         (paramsEnv (f.params.map (·.1)) (encAll (entryCtx f.params) a))
       have hI := NFCallTreeImpToNF.impToNF_relT _ h₁ hR tE (nfBody f.texpr) none _ ho fuel tf hft
         _ a (CatCrypt.Crypto.Hax.NFInline.entryEnv_rel_paramsEnv f.params a)

@@ -263,9 +263,8 @@ theorem scalarSem_sound {Δ : Ctxt catCryptDialect} {f : String}
     simp [scalarSem, BitVec.toNat_add]
   · rw [_root_.Hax.hax64WordOps_wrapping_sub, _root_.Hax.u64BinOp_natCast hx hy] at hv
     obtain rfl : _ = v := Option.some.inj hv
-    simp only [scalarSem, BitVec.toNat_sub, Nat.mod_eq_of_lt hx, Nat.mod_eq_of_lt hy]
-    congr 2
-    omega
+    simp only [scalarSem]
+    grind
   · rw [_root_.Hax.hax64WordOps_wrapping_mul, _root_.Hax.u64BinOp_natCast hx hy] at hv
     obtain rfl : _ = v := Option.some.inj hv
     simp [scalarSem, BitVec.toNat_mul]
@@ -273,8 +272,7 @@ theorem scalarSem_sound {Δ : Ctxt catCryptDialect} {f : String}
     obtain rfl : _ = v := Option.some.inj hv
     have hlt : x.toNat * y.toNat / 2 ^ 64 < 2 ^ 64 := by
       rw [Nat.div_lt_iff_lt_mul (by positivity)]
-      calc x.toNat * y.toNat < 2 ^ 64 * 2 ^ 64 := Nat.mul_lt_mul'' hx hy
-        _ = 2 ^ 64 * 2 ^ 64 := rfl
+      exact Nat.mul_lt_mul'' hx hy
     show _root_.Hax.Value.int (((x.toNat * y.toNat) >>> 64 : Nat) : Int) =
       _root_.Hax.Value.int (((BitVec.ofNat 64 (x.toNat * y.toNat / 2 ^ 64)).toNat : Nat) : Int)
     rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hlt, Nat.shiftRight_eq_div_pow]
@@ -1533,7 +1531,7 @@ theorem litVar_rel {Δ : Ctxt catCryptDialect} (W : Valuation Δ) {t : NfTy}
   · change some x = some (k : Int) at hx
     obtain rfl := Option.some.inj hx
     change ((k : Int)) = (((BitVec.ofNat 64 k).toNat : Nat) : Int)
-    rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk]
+    grind
   · change some (x.toNat : Int) = some (k : Int) at hx
     have hx' : x.toNat = k := by exact_mod_cast Option.some.inj hx
     change x = BitVec.ofNat 64 k
@@ -1686,7 +1684,7 @@ theorem shiftImm_sound {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
         have hk2 : k < 2 ^ 64 := by omega
         have hk3 : k < 18446744073709551616 := hk2
         have hk' : ((BitVec.ofNat 64 k).toNat : Int) = (k : Int) := by
-          rw [BitVec.toNat_ofNat, Nat.mod_eq_of_lt hk2]
+          grind
         split at h
         · rename_i hf
           subst hf
@@ -1809,7 +1807,7 @@ theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w
   case sub =>
     obtain rfl := Option.some.inj h
     simp only [binBV, BitVec.toNat_sub]
-    rcases hw with rfl | rfl | rfl | rfl <;> omega
+    grind
   case mul =>
     obtain rfl := Option.some.inj h
     simp only [binBV, BitVec.toNat_mul, mod64_mod _ hw64]
@@ -1858,7 +1856,7 @@ theorem binBV_mod (o : ImpToNF.ScalarBin) {w : Nat} (hw : w = 8 ∨ w = 16 ∨ w
     · rename_i hs
       obtain rfl := Option.some.inj h
       simp only [binBV, BitVec.toNat_sub]
-      rcases hw with rfl | rfl | rfl | rfl <;> omega
+      grind
     · cases h
   case mulc =>
     split at h

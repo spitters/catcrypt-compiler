@@ -523,7 +523,8 @@ theorem exprArgs_leak (r : LstateN) (d nArgs : Nat) {Γ : Ctxt jasminDialect} {t
     store event, emits nothing. -/
 theorem instrLeakB_quiet (r : LstateN) (dst opn : String) (ss : List LOperand) (tag : MemTag)
     (h : ∀ o ∈ ss, opLeakF r o = [])
-    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by simp [storeImmEv]) :
+    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by
+      simp [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak.storeImmEv]) :
     instrLeakB r (.Lopn [.reg dst] opn ss, tag) = [] := by
   simp only [instrLeakB, hs, List.append_nil]
   split_ifs
@@ -880,4 +881,3 @@ theorem straight_abiEntryCT (Pj : JLeakParams) {Γ : Ctxt jasminDialect} {w : Na
 end Abi
 
 end CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak
-

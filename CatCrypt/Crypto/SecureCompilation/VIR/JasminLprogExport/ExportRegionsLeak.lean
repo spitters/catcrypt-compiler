@@ -354,7 +354,8 @@ theorem stepsL_of_quiet {P : LprogM} {seg pre post : List LinstrRM} {s u : Lstat
     constant-index store event, is quiet. -/
 theorem quietLopn_regs (dst opn : String) (ss : List LOperand) (tag : MemTag)
     (h : ∀ o ∈ ss, (∃ x, o = LOperand.reg x) ∨ ∃ c, o = LOperand.imm c)
-    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by simp [storeImmEv]) :
+    (hs : storeImmEv (.Lopn [.reg dst] opn ss, tag) = [] := by
+      simp [CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFLeak.storeImmEv]) :
     QuietLopn (.Lopn [.reg dst] opn ss, tag) :=
   ⟨⟨_, _, _, rfl⟩, fun r => instrLeakB_quiet r dst opn ss tag (fun o ho => by
     rcases h o ho with ⟨x, rfl⟩ | ⟨c, rfl⟩ <;> rfl) hs⟩

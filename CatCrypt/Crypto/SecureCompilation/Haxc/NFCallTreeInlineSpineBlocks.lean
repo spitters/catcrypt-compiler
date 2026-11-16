@@ -799,12 +799,11 @@ theorem denoteT_letBind_lam_run (bt : TreeTable E) (fuel : Nat) (f : String) (ps
   rw [NFCallTreeAnfPick.denoteT_letBind_run', denoteT]
   rfl
 
-/-- **The spine, from related environments.** For `e` whose inlined pure closures have calls
-    with arguments without calls (`spineArgsOk`), from equal environments, the call tree of the
-    reference reading `denoteSpineT bt fuel e` is related to the call tree of `inlineSpine e` read
-    with `bt`: a leaf that is an error is a failed leaf, and every other leaf is matched by a leaf
-    with the same outcome whose environment agrees off `spineW e`. -/
-theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
+/-- **The spine, from related environments.** For every `e`, from equal environments, the call
+    tree of the reference reading `denoteSpineT bt fuel e` is related to the call tree of
+    `inlineSpine e` read with `bt`: a leaf that is an error is a failed leaf, and every other leaf
+    is matched by a leaf with the same outcome whose environment agrees off `spineW e`. -/
+theorem inlineSpine_relT_gen (e : ImpExpr) :
     ∀ (bt : TreeTable E) (fuel : Nat),
       RelT h₁ (fun e₁ e₂ => e₁ = e₂) (EqOff (spineW e)) IsErr
         (denoteT bt fuel (inlineSpine e)) (denoteSpineT bt fuel e) := by
@@ -814,6 +813,7 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
     clear ihv
     cases v
     case lam ps body =>
+      have hs := spineArgsOk_eq_true (.letBind x (.lam ps body) cont)
       simp only [spineArgsOk, Bool.and_eq_true, Bool.or_eq_true, Bool.not_eq_true'] at hs
       simp only [inlineSpine, denoteSpineT, spineW]
       cases hp : closureOk x ps body (inlineSpine cont)
@@ -822,7 +822,7 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
         have hargs : argsFree x (inlineSpine cont) = true := hs.1.resolve_left (by simp [hp])
         intro env _ heq
         subst heq
-        have h01 := ihc hs.2 (closureTableT bt fuel x ps body env) fuel env env rfl
+        have h01 := ihc (closureTableT bt fuel x ps body env) fuel env env rfl
         simp only [closureOk, Bool.and_eq_true] at hp
         have h12 := denoteT_inlineCalls (h₁ := h₁) bt fuel x ps body env hp.1.1 (inlineSpine cont)
           hp.2 hargs fuel env env ⟨rfl, fun _ _ => rfl⟩
@@ -838,8 +838,8 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
       simp only [Bool.false_or, Bool.false_eq_true, ite_false, ite_true]
       intro env _ heq
       subst heq
-      have h01 := ihc hs.2 (closureTableT bt fuel x ps body env) fuel env env rfl
-      simp only [blockOk, Bool.and_eq_true, decide_eq_true_eq] at hb
+      have h01 := ihc (closureTableT bt fuel x ps body env) fuel env env rfl
+      simp only [blockOk,Bool.and_eq_true, decide_eq_true_eq] at hb
       have h12 := denoteT_inlineBlocks (h₁ := h₁) bt fuel x ps body env
         (fun p hp' => by simp [blockW, hp'])
         (fun y hy => by simp only [blockK, List.mem_filter] at hy; simpa using hy.2)
@@ -851,7 +851,6 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
       simp only [List.contains_append, Bool.or_eq_false_iff] at hy
       exact (hR.1 y hy.1).trans (hQ y hy.2)
     all_goals
-      simp only [spineArgsOk] at hs
       simp only [inlineSpine, spineW]
       rw [denoteT]
       simp only [denoteSpineT]
@@ -861,11 +860,10 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
       · cases w <;> dsimp only <;> first
           | exact RelT.pure_mono _ (fun _ _ h => EqOff.of_eq _ _ _ h)
           | exact RelT.modify_mono (P := fun e₁ e₂ => e₁ = e₂) (Q := fun e₁ e₂ => e₁ = e₂)
-              (fun _ _ h => by rw [h]) (fun _ => ihc hs bt fuel)
+              (fun _ _ h => by rw [h]) (fun _ => ihc bt fuel)
       all_goals (dsimp only; exact RelT.pure_mono _ (fun _ _ h => EqOff.of_eq _ _ _ h))
   | seq a b _ ihb =>
     intro bt fuel
-    simp only [spineArgsOk] at hs
     simp only [inlineSpine, spineW]
     rw [denoteT]
     simp only [denoteSpineT]
@@ -874,25 +872,24 @@ theorem inlineSpine_relT_gen (e : ImpExpr) (hs : spineArgsOk e = true) :
     rcases o with w | _ | _ | _ | _
     · cases w <;> dsimp only <;> first
         | exact RelT.pure_mono _ (fun _ _ h => EqOff.of_eq _ _ _ h)
-        | exact ihb hs bt fuel
+        | exact ihb bt fuel
     all_goals (dsimp only; exact RelT.pure_mono _ (fun _ _ h => EqOff.of_eq _ _ _ h))
   | _ =>
     intro bt fuel
     simp only [inlineSpine, denoteSpineT, spineW]
     exact (RelT.refl _).mono (fun _ _ h => h) (fun _ _ h => EqOff.of_eq _ _ _ h)
 
-/-- **Inlining the closures of the statement spine at the level of call trees.** For `e` whose
-    inlined pure closures have calls with arguments without calls, from one environment, the call
-    tree of the reference reading `denoteSpineT bt fuel e` is related to the call tree of
-    `inlineSpine e` read with `bt` by `RuttS` at equal events and answers: a leaf that is an error
-    is a failed leaf, and every other leaf is matched by a leaf with the same outcome whose
-    environment agrees off `spineW e`. -/
+/-- **Inlining the closures of the statement spine at the level of call trees.** For every `e`,
+    from one environment, the call tree of the reference reading `denoteSpineT bt fuel e` is
+    related to the call tree of `inlineSpine e` read with `bt` by `RuttS` at equal events and
+    answers: a leaf that is an error is a failed leaf, and every other leaf is matched by a leaf
+    with the same outcome whose environment agrees off `spineW e`. -/
 theorem inlineSpine_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (e : ImpExpr)
-    (fuel : Nat) (env : Env) (hs : spineArgsOk e = true) :
+    (fuel : Nat) (env : Env) :
     RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.1 = r₁.1 ∧ EqOff (spineW e) r₂.2 r₁.2)
       (fun r => IsErr r.1)
       (denoteSpineT bt fuel e env) (denoteT bt fuel (inlineSpine e) env) :=
-  inlineSpine_relT_gen (h₁ := h₁) e hs bt fuel env env rfl
+  inlineSpine_relT_gen (h₁ := h₁) e bt fuel env env rfl
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeInlineSpine

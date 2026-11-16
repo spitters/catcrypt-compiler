@@ -257,9 +257,10 @@ theorem scalarOpsSound_noOverflow64_width : ScalarOpsSound (noOverflow64 widthSc
   · simp only [valueToScalar, Option.some.injEq] at hna hnb
     subst hna hnb
     split at hop
-    all_goals simp [noOverflow64, widthScalarOps, Hax.widthCmpOps, Hax.widthArithOps,
-      Hax.wrapUint, Hax.IntWidth.modulus, Hax.IntWidth.bits] at hbi hop
-    all_goals obtain ⟨_, rfl⟩ := hbi
+    all_goals simp [noOverflow64, widthScalarOps, Hax.widthCmpOps, Hax.widthArithOps] at hbi hop
+    all_goals first
+      | obtain ⟨_, rfl⟩ := hbi
+      | obtain ⟨_, _, rfl⟩ := hbi
     all_goals simp only [ScalarVal, scalarOpNat, valueToScalar_bool, valueToScalar_uint,
       true_and, Option.some.injEq]
     all_goals first

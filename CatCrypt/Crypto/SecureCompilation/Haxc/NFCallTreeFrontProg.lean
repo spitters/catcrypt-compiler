@@ -92,7 +92,7 @@ def ProgOut (t : NfTy) (r : Outcome × Env) (o : Option (HVector NfTy.denote [t]
 theorem srcProg_relT (fs : List CrateFn) (σ : AbiLayout) (te : TExpr)
     {q : Σ t : NfTy, NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]}
     (hq : nfSrcProgC fs σ te = some q)
-    (hs : NFCallTreeInlineSpine.spineArgsOk te.erase = true)
+    (_hs : NFCallTreeInlineSpine.spineArgsOk te.erase = true)
     (h₁ : ∀ e : linkSig.Event, linkSig.Resp e)
     (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (tE : TreeCallEnv leafSig nfDialect)
     (fuel tf : Nat) (hft : fuel ≤ tf) (env : Env)
@@ -104,7 +104,7 @@ theorem srcProg_relT (fs : List CrateFn) (σ : AbiLayout) (te : TExpr)
   split at hq
   · rename_i hok
     obtain ⟨o, ho, rfl⟩ := Option.map_eq_some_iff.mp hq
-    have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel te hok hs env
+    have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel te hok env
     have hI := impToNF_relT _ h₁ hR tE (nfBody te) none _ ho fuel tf hft env V (entryEnv_rel hV)
     have hI' : RuttS h₁ ImpRE ImpRA (ProgOut o.t) SrcFail
         (denoteT evTable fuel (nfBody te) env) (treeAt linkReader tE tf o.prog V) := by
