@@ -11,27 +11,41 @@ import CatCrypt.Crypto.SecureCompilation.X86Backend.PrintedAddrWEncodable
 /-!
 # Acceptance of `compileA` on the bounded field domain from the open stage facts
 
-`fieldDomB''` is the field domain `fieldDomB'` restricted by the frame bound: the number `n`
-of words of the operands is at most `121`, the bound under which the frame check `frameOkB`
-(stage `G18`) holds for the sum, the difference and the product. `FieldDomOpen` collects the
-stage facts of `compileA` on `fieldDomB''` that have no proof at the field domain: the fusion
-check of the product (`G10`), the fold positions of the cell fold check (`G12`), the
-translation validation `ownedCheckMC` (`G13`), the class `printedAddrWB` of the printed body
-(`C2`), the physical image and image gates (`G16`, `G17`), the frame check (`G18`), the
-save-slot readers of the entry check (`G19`) and the leak validation `ownedCheckML` (fifth
-conjunct of `C1`). The printed class `G15` is `C2` (`fieldDom_regionPrintedB_open`), the
-encoder `F10` follows from `C2` (`fieldDom_encode_open`), and the constant-time image gate `C3`
-is a conjunct of the image gate of `G17` (`fieldDom_imgGateCW_open`). Every other stage is
-filled from its theorem.
+`fieldDomB''` is the field domain `fieldDomB'` restricted by three decidable conjuncts: the
+number `n` of words of the operands is at most `121` (`fieldFrameBoundB`), the printed body of
+the field pipeline passes the frame check `frameOkB` (`fieldFrameFitB`), and the allocated
+body reads the save slot of the register of each parameter (`fieldArgReadersB`). The two
+pipeline conjuncts compute the allocated function `fieldAllocFn?` of `e` under `σ` at the
+symbol `""`; the allocation depends on the symbol only through the name of its one function
+(`regionAllocC_fname`), so the function is the one of every symbol (`fieldAllocFn?_eq`). On
+`fieldDomB''` the frame check `G18` (`fieldDom_frameOkB`) and the save-slot readers of the
+entry check `G19` (`argReaders_of_fieldArgReadersB`) are theorems.
+
+`FieldDomOpen` collects the stage facts of `compileA` on `fieldDomB''` that have no proof at
+the field domain: the fusion check of the product (`G10`), the fold positions of the cell fold
+check (`G12`), the translation validation `ownedCheckMC` (`G13`), the class `printedAddrWB` of
+the printed body (`C2`), the physical image and image gates (`G16`, `G17`) and the leak
+validation `ownedCheckML` (fifth conjunct of `C1`). The printed class `G15` is `C2`
+(`fieldDom_regionPrintedB_open`), the encoder `F10` follows from `C2`
+(`fieldDom_encode_open`), and the constant-time image gate `C3` is a conjunct of the image gate
+of `G17` (`fieldDom_imgGateCW_open`). Every other stage is filled from its theorem.
 
 ## Main definitions
 
 * `fieldFrameBoundB` — the operands of a field expression have at most `121` words.
-* `fieldDomB''` — the field domain `fieldDomB'` under the frame bound.
+* `fieldAllocFn?` — the allocated function of the field pipeline on `e` under `σ`.
+* `fieldFrameFitB` — the printed body of the field pipeline passes `frameOkB`.
+* `slotReaderB`, `fieldArgReadersB` — the allocated body reads the save slot of each parameter.
+* `fieldDomB''` — the field domain `fieldDomB'` under the three conjuncts.
 * `FieldDomOpen` — the stage facts of `compileA` on `fieldDomB''` that are not proved.
 
 ## Main results
 
+* `exportR_fn_eq`, `regionAllocC_fname` — the export and the allocation stage depend on the
+  function symbol only through the name of the allocated function.
+* `fieldDom_frameOkB` — stage `G18` on `fieldDomB''`.
+* `argReaders_of_fieldArgReadersB` — the hypothesis `ArgReaders` of stage `G19` on
+  `fieldDomB''`.
 * `fieldDom_regionCoStage_open` — the gate names no refusing stage on `fieldDomB''`.
 * `fieldDom_regionCtB_open` — the constant-time gate passes on `fieldDomB''`.
 * `compileA_isSome_of_fieldDom_open` — `compileA` accepts every member of `fieldDomB''`.
@@ -52,6 +66,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.FieldRoute (fieldAbi)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.DecodePrintedAddrW (printedAddrWB)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.ImageAddrCidx (imgGateCW)
 open CatCrypt.Crypto.Hax (HaxModule)
+open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemAddrImage (slotOfReg)
+open CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgGate (printedBody)
 
 /-! ## 1. The bounded field domain -/
 
@@ -62,28 +78,145 @@ def fieldFrameBoundB (e : _root_.Hax.TExpr) : Bool :=
   | some (_, n) => decide (n ≤ 121)
   | none => false
 
+/-- **The export does not depend on the function symbol**: the symbol enters only the frame
+    `ifFrame` of a conditional, which ignores it. -/
+theorem exportR_fn_eq (nArgs : Nat) (fn fn' : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) :
+    ∀ (d n : Nat) (I : LprogIsa.IsaData),
+      exportR nArgs fn p d n I = exportR nArgs fn' p d n I := by
+  induction p with
+  | ret vs => intro d n I; rfl
+  | var e k ih => intro d n I; simp only [exportR, ih]
+  | forLoop count inits body k ihb ihk => intro d n I; simp only [exportR, ihb, ihk]
+  | ifThenElse cond thn els k iht ihe ihk =>
+      intro d n I; simp only [exportR, iht, ihe, ihk, ifFrame]
+  | whileLoop inits body k ihb ihk => intro d n I; simp only [exportR, ihb, ihk]
+  | call f args k ih => intro d n I; simp only [exportR, ih]
+
+/-- **The allocation stage depends on the function symbol only through the name of its one
+    function.** -/
+theorem regionAllocC_fname (a : AbiNames) (fn : String) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (p : NFProg jasminDialect Γ ts) (callee : Option CalleeTab)
+    (ex : List String) :
+    regionAllocC { a with fname := fn } p callee ex =
+      (regionAllocC a p callee ex).map fun x =>
+        ({ x.1 with lp_funcs := x.1.lp_funcs.map fun g => (fn, g.2) }, x.2) := by
+  unfold regionAllocC exportRLfundef
+  rw [exportR_fn_eq _ fn a.fname]
+  cases exportR Γ.length a.fname p Γ.length 0 <;> rfl
+
+/-- **The allocated function of the field pipeline** on `e` under `σ`: the function of the
+    allocation stage `regionAllocC` on the legalised narrowed output of the chain, at the
+    symbol `""`. -/
+def fieldAllocFn? (e : _root_.Hax.TExpr) (σ : AbiLayout) : Option Lfundef :=
+  (haxEntry.chainNF (HaxModule.single e) σ).bind fun x =>
+    (NarrowWords.narrowPrep x.2).bind fun q' =>
+      (regionAllocC (nfAbiNames "" σ) (legalizeRegion q') none (regionWebsEx σ exportReg)).bind
+        fun y => y.1.lp_funcs.head?.map (·.2)
+
+/-- The allocated function of `regionAllocC` at every symbol is `fieldAllocFn?`. -/
+theorem fieldAllocFn?_eq {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String}
+    {t0 : JasminTy} {q : NFProg jasminDialect (nfCtx σ) [t0]}
+    {q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]}
+    {P0 : Lprog} {c : List (String × String)} {f : Lfundef}
+    (hq : haxEntry.chainNF (HaxModule.single e) σ = some ⟨t0, q⟩)
+    (hq' : NarrowWords.narrowPrep q = some q')
+    (hx : regionAllocC (nfAbiNames fname σ) (legalizeRegion q') none (regionWebsEx σ exportReg)
+      = some (P0, c))
+    (hf : P0.lp_funcs = [(fname, f)]) : fieldAllocFn? e σ = some f := by
+  have h1 : nfAbiNames "" σ = { nfAbiNames fname σ with fname := "" } := rfl
+  simp only [fieldAllocFn?, hq, hq', Option.bind_some]
+  rw [h1, regionAllocC_fname, hx]
+  simp [hf]
+
+/-- **The frame fit of an allocated function**: its printed body after the frame trim passes
+    the frame check `frameOkB` of `σ`. -/
+def fnFrameFitB (σ : AbiLayout) (f : Lfundef) : Bool :=
+  X86Backend.ImageAddrFrame.frameOkB σ (frameTrim (printedBody f.lfd_res f.lfd_body))
+
+/-- **The frame fit of the field pipeline**: the printed body of the allocated function
+    `fieldAllocFn?` passes the frame check `frameOkB`. -/
+def fieldFrameFitB (e : _root_.Hax.TExpr) (σ : AbiLayout) : Bool :=
+  (fieldAllocFn? e σ).any (fnFrameFitB σ)
+
+/-- **A reader of the save slot of `R`, decided**: a move `MOVQ` or `MOV:64` of `qsave.R`
+    into a name other than `qsave.R`. -/
+def slotReaderB (R : String) : LinstrR → Bool
+  | .Lopn [.reg d] o [.reg s] =>
+      s == slotOfReg R && (o == "MOVQ" || o == "MOV:64") && d != slotOfReg R
+  | _ => false
+
+/-- An instruction `slotReaderB` accepts is a `SlotReader`. -/
+theorem slotReader_of_slotReaderB {R : String} {x : LinstrR} (h : slotReaderB R x = true) :
+    SlotReader R x := by
+  unfold slotReaderB at h
+  split at h
+  · simp only [Bool.and_eq_true, beq_iff_eq, Bool.or_eq_true, bne_iff_ne, ne_eq] at h
+    obtain ⟨⟨rfl, ho⟩, hd⟩ := h
+    exact ⟨_, _, rfl, ho, hd⟩
+  · cases h
+
+/-- **The save-slot readers of an allocated function**: its printed body, before the frame
+    trim, reads the save slot of the register of each parameter of `σ`. -/
+def fnArgReadersB (σ : AbiLayout) (f : Lfundef) : Bool :=
+  σ.args.all fun a =>
+    (printedBody f.lfd_res f.lfd_body).any fun i => slotReaderB (exportReg a.reg) i.li_i
+
+/-- **The save-slot readers of the field pipeline**: the printed body of the allocated
+    function `fieldAllocFn?`, before the frame trim, reads the save slot of the register of
+    each parameter. -/
+def fieldArgReadersB (e : _root_.Hax.TExpr) (σ : AbiLayout) : Bool :=
+  (fieldAllocFn? e σ).any (fnArgReadersB σ)
+
+/-- **`ArgReaders` from `fieldArgReadersB`**, at every symbol. -/
+theorem argReaders_of_fieldArgReadersB {e : _root_.Hax.TExpr} {σ : AbiLayout}
+    (h : fieldArgReadersB e σ = true) (fname : String) : ArgReaders e σ fname := by
+  intro t0 q q' P0 c f hq hq' hx hf a ha
+  simp only [fieldArgReadersB, fnArgReadersB, fieldAllocFn?_eq hq hq' hx hf, Option.any_some,
+    List.all_eq_true, List.any_eq_true] at h
+  obtain ⟨i, hi, hr⟩ := h a ha
+  exact ⟨i, hi, slotReader_of_slotReaderB hr⟩
+
 /-- **The bounded field domain**: a member of `fieldDomB'` whose operands have at most `121`
-    words (`fieldFrameBoundB`). -/
+    words (`fieldFrameBoundB`), whose printed body passes the frame check (`fieldFrameFitB`)
+    and whose allocated body reads the save slot of each parameter (`fieldArgReadersB`). -/
 def fieldDomB'' (e : _root_.Hax.TExpr) (σ : AbiLayout) : Bool :=
-  fieldDomB' e σ && fieldFrameBoundB e
+  fieldDomB' e σ && fieldFrameBoundB e && fieldFrameFitB e σ && fieldArgReadersB e σ
 
 /-- A member of `fieldDomB''` is a member of `fieldDomB'`. -/
 theorem fieldDomB'_of_fieldDomB'' {e : _root_.Hax.TExpr} {σ : AbiLayout}
     (h : fieldDomB'' e σ = true) : fieldDomB' e σ = true := by
   simp only [fieldDomB'', Bool.and_eq_true] at h
-  exact h.1
+  exact h.1.1.1
+
+/-- A member of `fieldDomB''` passes `fieldFrameFitB`. -/
+theorem fieldFrameFitB_of_fieldDomB'' {e : _root_.Hax.TExpr} {σ : AbiLayout}
+    (h : fieldDomB'' e σ = true) : fieldFrameFitB e σ = true := by
+  simp only [fieldDomB'', Bool.and_eq_true] at h
+  exact h.1.2
+
+/-- A member of `fieldDomB''` passes `fieldArgReadersB`. -/
+theorem fieldArgReadersB_of_fieldDomB'' {e : _root_.Hax.TExpr} {σ : AbiLayout}
+    (h : fieldDomB'' e σ = true) : fieldArgReadersB e σ = true := by
+  simp only [fieldDomB'', Bool.and_eq_true] at h
+  exact h.2
 
 /-- A member of `fieldDomB''` is a member of `fieldDomB`. -/
 theorem fieldDomB_of_fieldDomB'' {e : _root_.Hax.TExpr} {σ : AbiLayout}
     (h : fieldDomB'' e σ = true) : fieldDomB e σ = true :=
   fieldDomB_of_fieldDomB' (fieldDomB'_of_fieldDomB'' h)
 
-/-- A field expression with `k` operands of `n ≤ 121` words is in `fieldDomB''` under
-    `fieldAbi k n`. -/
+/-- A field expression with `k` operands of `n ≤ 121` words whose allocated function under
+    `fieldAbi k n` passes `fnFrameFitB` and `fnArgReadersB` is in `fieldDomB''` under
+    `fieldAbi k n`. The hypothesis computes the pipeline once. -/
 theorem fieldDomB''_fieldAbi {e : _root_.Hax.TExpr} {k n : Nat} (h : fieldDomE e = some (k, n))
-    (hn : n ≤ 121) : fieldDomB'' e (fieldAbi k n) = true := by
+    (hn : n ≤ 121)
+    (hP : (fieldAllocFn? e (fieldAbi k n)).any
+      (fun f => fnFrameFitB (fieldAbi k n) f && fnArgReadersB (fieldAbi k n) f) = true) :
+    fieldDomB'' e (fieldAbi k n) = true := by
   simp only [fieldDomB'', fieldDomB'_fieldAbi h (by omega), fieldFrameBoundB, h,
-    decide_eq_true hn, Bool.and_self]
+    decide_eq_true hn, Bool.and_self, Bool.true_and, fieldFrameFitB, fieldArgReadersB]
+  cases hA : fieldAllocFn? e (fieldAbi k n) <;> simp_all
 
 /-! ## 2. The open stage facts -/
 
@@ -131,15 +264,6 @@ structure FieldDomOpen : Prop where
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionImgB"
-  /-- Stage `G18`: the frame check `frameOkB`. -/
-  frameOkB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
-    {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
-    (hB : FieldBody e σ fname b t r cert) :
-    regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "frameOkB"
-  /-- Stage `G19`: the printed body reads the save slot of each parameter register, the
-      hypothesis of `fieldDom_entryB_of_argReaders`. -/
-  argReaders {e : _root_.Hax.TExpr} {σ : AbiLayout} (fname : String)
-    (h : fieldDomB'' e σ = true) : ArgReaders e σ fname
   /-- The fifth conjunct of stage `C1`: the leak validation `ownedCheckML`. -/
   ownedCheckML {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
@@ -169,6 +293,26 @@ theorem regionCoStage_ne_regionPrintedB {nm : String → String} {code : List Li
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
+/-- The gate does not refuse at `frameOkB` on a body that passes the frame check. -/
+theorem regionCoStage_ne_frameOkB {nm : String → String} {code : List LinstrRM}
+    {res : List LOperand} {fn : String} (h : X86Backend.ImageAddrFrame.frameOkB σ b = true) :
+    regionCoStage σ nm b t code res cert none fn ≠ some "frameOkB" := by
+  unfold regionCoStage
+  dsimp only
+  simp only [h, Bool.true_eq_false, ite_false]
+  repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
+  exact (Option.some_ne_none _).symm
+
+/-- **Stage `G18` on the bounded field domain**: the printed body of a member is the body of
+    `fieldAllocFn?` after the frame trim, which passes `frameOkB` by `fieldFrameFitB`. -/
+theorem fieldDom_frameOkB (h : fieldDomB'' e σ = true) (hB : FieldBody e σ fname b t r cert) :
+    regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "frameOkB" := by
+  obtain ⟨t0, q, q', P0, f, hq, hq', hx, hf, hb⟩ := fieldBody_printedBody hB
+  have hF := fieldFrameFitB_of_fieldDomB'' h
+  simp only [fieldFrameFitB, fnFrameFitB, fieldAllocFn?_eq hq hq' hx hf, Option.any_some,
+    ← hb] at hF
+  exact regionCoStage_ne_frameOkB hF
+
 /-- **The image gate of a body the gate accepts**: when `regionCoStage` names no refusing
     stage, the body passes `regionImgB` at the slot map `regionSl`, the cell arrays and the
     observed names of its parts (stage `G17`). -/
@@ -196,7 +340,8 @@ theorem fieldDom_encode_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     (X86Backend.LprogBytes.encodeLfundefBytesChecked b).isSome = true := by
   unfold X86Backend.LprogBytes.encodeLfundefBytesChecked
-  rw [if_pos (X86Backend.DecodePrintedAddrW.encodable_of_printedAddrWB (O.printedAddrWB h hB))]
+  rw [ite_eq_left (X86Backend.DecodePrintedAddrW.encodable_of_printedAddrWB
+    (O.printedAddrWB h hB))]
   rfl
 
 /-- Stage `G10` on the bounded field domain: the sum and the difference by
@@ -224,8 +369,9 @@ theorem fieldDom_regionCoStage_open (O : FieldDomOpen) (h : fieldDomB'' e σ = t
     fieldDom_fuseOKL_open O h hB, fieldDom_fuseResultName h0 hB,
     fieldDom_regionFoldB_of_foldPos h0 hB (O.foldPos h hB),
     O.ownedCheckMC h hB, O.idxInvCheckB h hB, fieldDom_regionPrintedB_open O h hB,
-    O.physImgB h hB, O.regionImgB h hB, O.frameOkB h hB,
-    fieldDom_entryB_of_argReaders h' hB (O.argReaders fname h),
+    O.physImgB h hB, O.regionImgB h hB, fieldDom_frameOkB h hB,
+    fieldDom_entryB_of_argReaders h' hB
+      (argReaders_of_fieldArgReadersB (fieldArgReadersB_of_fieldDomB'' h) fname),
     fieldDom_cellNamesRB' h' hB, fieldDom_cellRegions h0 hB]
 
 /-- Stage `C3` on the bounded field domain, from the gate: the cell body passes `imgGateCW`,
@@ -293,85 +439,87 @@ section Rows
 
 open CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontFields
 
+set_option linter.style.native false
+
 /-- The product at the P-256 base prime is in the bounded field domain. -/
 theorem p256Mul_fieldDomB'' : fieldDomB'' p256MulTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The square at the P-256 base prime is in the bounded field domain. -/
 theorem p256Sqr_fieldDomB'' : fieldDomB'' p256SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The sum at the P-256 base prime is in the bounded field domain. -/
 theorem p256Add_fieldDomB'' : fieldDomB'' p256AddTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The difference at the P-256 base prime is in the bounded field domain. -/
 theorem p256Sub_fieldDomB'' : fieldDomB'' p256SubTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The product at the secp256k1 base prime is in the bounded field domain. -/
 theorem secp256k1Mul_fieldDomB'' : fieldDomB'' secp256k1MulTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The square at the secp256k1 base prime is in the bounded field domain. -/
 theorem secp256k1Sqr_fieldDomB'' : fieldDomB'' secp256k1SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The sum at the secp256k1 base prime is in the bounded field domain. -/
 theorem secp256k1Add_fieldDomB'' : fieldDomB'' secp256k1AddTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The difference at the secp256k1 base prime is in the bounded field domain. -/
 theorem secp256k1Sub_fieldDomB'' : fieldDomB'' secp256k1SubTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The product at the P-384 base prime is in the bounded field domain. -/
 theorem p384Mul_fieldDomB'' : fieldDomB'' p384MulTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The square at the P-384 base prime is in the bounded field domain. -/
 theorem p384Sqr_fieldDomB'' : fieldDomB'' p384SqrTE (fieldAbi 1 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The sum at the P-384 base prime is in the bounded field domain. -/
 theorem p384Add_fieldDomB'' : fieldDomB'' p384AddTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The difference at the P-384 base prime is in the bounded field domain. -/
 theorem p384Sub_fieldDomB'' : fieldDomB'' p384SubTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The product at the BN254 base prime is in the bounded field domain. -/
 theorem bn254Mul_fieldDomB'' : fieldDomB'' bn254MulTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The square at the BN254 base prime is in the bounded field domain. -/
 theorem bn254Sqr_fieldDomB'' : fieldDomB'' bn254SqrTE (fieldAbi 1 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The sum at the BN254 base prime is in the bounded field domain. -/
 theorem bn254Add_fieldDomB'' : fieldDomB'' bn254AddTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The difference at the BN254 base prime is in the bounded field domain. -/
 theorem bn254Sub_fieldDomB'' : fieldDomB'' bn254SubTE (fieldAbi 2 4) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The product at the BLS12-381 base prime is in the bounded field domain. -/
 theorem bls12381Mul_fieldDomB'' : fieldDomB'' bls12381MulTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The square at the BLS12-381 base prime is in the bounded field domain. -/
 theorem bls12381Sqr_fieldDomB'' : fieldDomB'' bls12381SqrTE (fieldAbi 1 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The sum at the BLS12-381 base prime is in the bounded field domain. -/
 theorem bls12381Add_fieldDomB'' : fieldDomB'' bls12381AddTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 /-- The difference at the BLS12-381 base prime is in the bounded field domain. -/
 theorem bls12381Sub_fieldDomB'' : fieldDomB'' bls12381SubTE (fieldAbi 2 6) = true :=
-  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num)
+  fieldDomB''_fieldAbi (by decide +kernel) (by norm_num) (by native_decide)
 
 end Rows
 
