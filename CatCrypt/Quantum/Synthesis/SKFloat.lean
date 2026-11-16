@@ -26,7 +26,8 @@ normalised to `SU(2)` (`su2`) and handled as `2 × 2` complex `Float` matrices (
 * One recursion step approximates `U` by `Ũ` at the previous level, writes the residual
   `Δ = U Ũ†` as a balanced group commutator `V W V† W†` of two rotations by the same angle
   `φ` with `sin(θ/2) = 2 sin²(φ/2) √(1 - sin⁴(φ/2))` (`balancedCommutator`), conjugated to
-  the axis of `Δ`, and approximates `V` and `W` at the previous level (`sk`).
+  the axis of `Δ`, and approximates `V` and `W` at the previous level (`sk`). The step is kept
+  only when it brings the approximation closer to `U`.
 * The global phase is `arg tr(U† M(w))` for the matrix `M(w)` of the word `w`, rounded to a
   dyadic rational (`skGenWith`).
 
@@ -37,6 +38,7 @@ have fixed words (`S = T T`, `Z = T⁴`, `X = H Z H`, `Y = -i X Z` up to the pha
 
 * `Net`, `buildNet` — the deduplicated table of short words.
 * `balancedCommutator` — the pair `(V', W')` with `V' W' V'† W'† = Δ` up to sign.
+* `distUpToPhase` — the `Float` operator distance of two unitaries up to global phase.
 * `sk` — the recursion to a given depth.
 * `skGenFloat` — the generator, of type `Gate 1 → Option (List (Gate 1) × PiLin)`.
 -/
@@ -237,6 +239,11 @@ def overlap (A B : M2) : Float :=
     + A.a11.re * B.a11.re + A.a11.im * B.a11.im
   Float.abs t
 
+/-- The operator-norm distance `min_φ ‖A − e^{iφ} B‖` of two unitary matrices up to global
+phase, `√(2 − |Re tr(A'† B')|)` for their `SU(2)` normalisations `A'`, `B'`. -/
+def distUpToPhase (A B : M2) : Float :=
+  Float.sqrt (max 0 (2 - overlap (su2 A) (su2 B)))
+
 /-- The entry of the net with the largest overlap with `U`. -/
 def nearest (net : Net) (U : M2) : List Nat × M2 :=
   let init : List Nat × M2 × Float := ([], M2.id, -1)
@@ -248,7 +255,9 @@ def nearest (net : Net) (U : M2) : List Nat × M2 :=
 /-! ## The recursion -/
 
 /-- The Dawson–Nielsen recursion to depth `n` for `U` in `SU(2)`: the word, in application
-order, and its `SU(2)` matrix. Depth `0` is the nearest entry of the net. -/
+order, and its `SU(2)` matrix. Depth `0` is the nearest entry of the net. A step whose
+commutator correction has no larger overlap with `U` than the approximation of the previous
+level returns that approximation, so the distance to `U` does not increase with the depth. -/
 def sk (net : Net) : Nat → M2 → List Nat × M2
   | 0, U => nearest net U
   | n + 1, U =>
@@ -258,7 +267,10 @@ def sk (net : Net) : Nat → M2 → List Nat × M2
     | some (V', W') =>
       let (wV, MV) := sk net n V'
       let (wW, MW) := sk net n W'
-      (wU ++ invWord wW ++ invWord wV ++ wW ++ wV, MV * MW * dag MV * dag MW * MU)
+      let M := MV * MW * dag MV * dag MW * MU
+      if overlap M U > overlap MU U then
+        (wU ++ invWord wW ++ invWord wV ++ wW ++ wV, M)
+      else (wU, MU)
 
 /-! ## The generator -/
 

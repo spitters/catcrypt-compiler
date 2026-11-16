@@ -18,9 +18,11 @@ certified by `SK.checkGate` (and so by `checkRun`) against the precision bound
 as `--only e<idx>-L<L0>-d<depth>`, the form `scripts/run-exe-rows.sh` passes.
 
 The first output line is a `#` header with the net size and the net construction time. Each
-further line is tab-separated: the angle as `k/32`, the word length, the certified bound as a
-decimal (`-` when refused), `accepted` or `refused`, the generator time in ms and the check
-time in ms. The exit code is `0` when every angle is accepted and `3` otherwise.
+further line is tab-separated: the angle as `k/32`, the word length, the `Float` operator
+distance up to phase of the word's matrix to the target (`SK.distUpToPhase`, `-` without a
+proposal), the certified bound as a decimal (`-` when refused), `accepted` or `refused`, the
+generator time in ms and the check time in ms. The exit code is `0` when every angle is
+accepted and `3` otherwise.
 -/
 
 @[expose] public section
@@ -30,6 +32,7 @@ set_option autoImplicit false
 namespace CatCrypt.Quantum.Benchmark.SKMeasure
 
 open CatCrypt.Quantum CatCrypt.Quantum.QCircuit CatCrypt.Quantum.Synthesis.SK
+  CatCrypt.Quantum.Synthesis.KAKFloat
 
 /-- The precision bounds `1e-2, …, 1e-6`, indexed by `0, …, 4`. -/
 def epsilons : List ℚ := [1 / 100, 1 / 1000, 1 / 10000, 1 / 100000, 1 / 1000000]
@@ -51,17 +54,21 @@ def measureAngle (net : Net) (depth : Nat) (bound : ℚ) (k : ℕ) : IO Bool := 
   let (prop, genMs) ← timed fun _ => (skGenWith net depth g).map fun p => (p, p.1.length)
   match prop with
   | none =>
-    IO.println s!"{k}/32\t0\t-\trefused\t{genMs}\t0"
+    IO.println s!"{k}/32\t0\t-\t-\trefused\t{genMs}\t0"
     pure false
   | some (p, len) =>
+    let d : String :=
+      match gateMatF g, p.1.mapM fun x => gateMatF x with
+      | some U, some ms => (distUpToPhase (ms.foldl (fun acc m => m * acc) M2.id) U).toString
+      | _, _ => "-"
     let (res, chkMs) ← timed fun _ =>
       (checkGate (n := 1) (fun _ => some p) bound g).map fun r => r.2.2
     match res with
     | some e =>
-      IO.println s!"{k}/32\t{len}\t{(ratToFloat e).toString}\taccepted\t{genMs}\t{chkMs}"
+      IO.println s!"{k}/32\t{len}\t{d}\t{(ratToFloat e).toString}\taccepted\t{genMs}\t{chkMs}"
       pure true
     | none =>
-      IO.println s!"{k}/32\t{len}\t-\trefused\t{genMs}\t{chkMs}"
+      IO.println s!"{k}/32\t{len}\t{d}\t-\trefused\t{genMs}\t{chkMs}"
       pure false
 
 /-- Run the row `(idx, L₀, depth)`. -/
