@@ -3452,6 +3452,7 @@ def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.MultiControlledX,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ParMap,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.QrunchFit,
+    Lake.Glob.one `CatCrypt.Quantum.Synthesis.SolovayKitaev,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.SynthesisError,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ToffoliBarenco,
     Lake.Glob.one `CatCrypt.Quantum.Synthesis.ZYZ,
