@@ -120,6 +120,12 @@ theorem fstepF_movImm64 (d : String) (k : Nat) (s : LstateM) (zf : Bool) :
       = some ((s.setReg d (BitVec.ofNat 64 k)).nextPc, zf) := by
   rfl
 
+/-- The extended step of the self move `MOV:64 d, d`: the unfolding of `fstepF` at it. -/
+theorem fstepF_selfMove (d : String) (s : LstateM) (zf : Bool) :
+    fstepF (.Lopn [.reg d] "MOV:64" [.reg d], .reg none) s zf
+      = some ((s.setReg d (s.reg.lvm d).2).nextPc, zf) := by
+  rfl
+
 theorem fstepF_load64 (d c : String) {s : LstateM} (zf : Bool) {w : Nat} {v : BitVec w}
     (hc : s.reg.lvm c = ⟨w, v⟩) :
     fstepF (.Lopn [.reg d] "LOAD:64" [.reg c], .reg none) s zf
@@ -192,13 +198,19 @@ def foldOne (R : Slots) (env : KEnv) (i : LinstrRM) : Option LinstrRM :=
   | _, _ => if keepB R i then some i else none
 
 /-- The known constants after an instruction: an immediate `MOV:64 d, $k` records `k` at
-    `d`; every name the instruction writes is forgotten, and the constants of the names it
-    only reads are kept. -/
+    `d`, a self move `MOV:64 d, d` keeps every constant; every name any other instruction
+    writes is forgotten, and the constants of the names it only reads are kept. -/
 def kstep (env : KEnv) (i : LinstrRM) : KEnv :=
   let env' := env.filter fun p => !(dstNames i.1).contains p.1
   match i.2, i.1 with
   | .reg none, .Lopn [.reg d] o [.imm k] => if o = "MOV:64" then (d, k) :: env' else env'
+  | .reg none, .Lopn [.reg d] o [.reg r] => if o = "MOV:64" ∧ r = d then env else env'
   | _, _ => env'
+
+/-- A self move `MOV:64 d, d` keeps the known constants. -/
+theorem kstep_selfMove (env : KEnv) (d : String) :
+    kstep env (.Lopn [.reg d] "MOV:64" [.reg d], .reg none) = env := by
+  simp [kstep]
 
 /-- **The cell fold of a chain** from the known constants `env`. -/
 def cellFold (R : Slots) : KEnv → List LinstrRM → Option (List LinstrRM)
@@ -207,6 +219,30 @@ def cellFold (R : Slots) : KEnv → List LinstrRM → Option (List LinstrRM)
       match foldOne R env i, cellFold R (kstep env i) is with
       | some i', some is' => some (i' :: is')
       | _, _ => none
+
+/-- `keepB` at a self move `MOV:64 d, d`: its register is no slot array and no cell. -/
+theorem keepB_selfMove (R : Slots) (d : String) :
+    keepB R (.Lopn [.reg d] "MOV:64" [.reg d], .reg none)
+      = (!isArrB R d && !isCellB R d) := by
+  simp [keepB, isLopnB, mulxFree, instrNames, opNames, wideArgs?]
+
+/-- **The fold keeps a self move** `MOV:64 d, d` whose register is no slot array and no
+    cell. -/
+theorem foldOne_selfMove {R : Slots} (env : KEnv) {d : String} (ha : isArrB R d = false)
+    (hc : isCellB R d = false) :
+    foldOne R env (.Lopn [.reg d] "MOV:64" [.reg d], .reg none)
+      = some (.Lopn [.reg d] "MOV:64" [.reg d], .reg none) := by
+  grind [foldOne, keepB_selfMove]
+
+/-- **Completeness of the fold at a self move**: a chain with a self move `MOV:64 d, d` in
+    front, at a register that is no slot array and no cell, is folded exactly when the
+    chain without it is, to the folded chain with the self move in front. -/
+theorem cellFold_selfMove_cons {R : Slots} (env : KEnv) {d : String}
+    (ha : isArrB R d = false) (hc : isCellB R d = false) (is : List LinstrRM) :
+    cellFold R env ((.Lopn [.reg d] "MOV:64" [.reg d], .reg none) :: is)
+      = (cellFold R env is).map ((.Lopn [.reg d] "MOV:64" [.reg d], .reg none) :: ·) := by
+  rw [cellFold, foldOne_selfMove env ha hc, kstep_selfMove]
+  cases cellFold R env is <;> rfl
 
 /-- The well-formedness of the slot arrays: the empty name is no array and no cell, the
     array names are distinct and every array is shorter than `2 ^ 60`. -/
@@ -307,7 +343,8 @@ theorem kval_filter {env : KEnv} {P : String → Bool} {x : String} {k : Nat}
 theorem kstep_env {env : KEnv} {i : LinstrRM} {x : String} {k : Nat}
     (h : kval (kstep env i) x = some k) :
     (kval env x = some k ∧ x ∉ dstNames i.1)
-      ∨ (∃ d, i = (.Lopn [.reg d] "MOV:64" [.imm k], .reg none) ∧ x = d) := by
+      ∨ (∃ d, i = (.Lopn [.reg d] "MOV:64" [.imm k], .reg none) ∧ x = d)
+      ∨ (kval env x = some k ∧ ∃ d, i = (.Lopn [.reg d] "MOV:64" [.reg d], .reg none)) := by
   obtain ⟨w, tg⟩ := i
   have hf : ∀ {k'}, kval (env.filter fun p => !(dstNames w).contains p.1) x = some k' →
       kval env x = some k' ∧ x ∉ dstNames w := fun hk => by
@@ -323,9 +360,15 @@ theorem kstep_env {env : KEnv} {i : LinstrRM} {x : String} {k : Nat}
       · subst hx
         rw [kval_cons_self] at h
         cases h
-        exact Or.inr ⟨x, by rw [ho], rfl⟩
+        exact Or.inr (Or.inl ⟨x, by rw [ho], rfl⟩)
       · rw [kval_cons_ne hx] at h
         exact Or.inl (hf h)
+    · exact Or.inl (hf h)
+  · rename_i d o r
+    split at h
+    · rename_i ho
+      obtain ⟨rfl, rfl⟩ := ho
+      exact Or.inr (Or.inr ⟨h, _, rfl⟩)
     · exact Or.inl (hf h)
   · exact Or.inl (hf h)
 
@@ -334,7 +377,7 @@ theorem stepEnv {env : KEnv} {i : LinstrRM} {s t : LstateM} {zf z : Bool}
     (hE : ∀ x k, kval env x = some k → s.reg.getW x 64 = some (BitVec.ofNat 64 k)) :
     ∀ x k, kval (kstep env i) x = some k → t.reg.getW x 64 = some (BitVec.ofNat 64 k) := by
   intro x k hk
-  rcases kstep_env hk with ⟨h1, h2⟩ | ⟨d, rfl, rfl⟩
+  rcases kstep_env hk with ⟨h1, h2⟩ | ⟨d, rfl, rfl⟩ | ⟨h1, d, rfl⟩
   · have hfr := (fstepF_frame_dst h h2).1
     unfold JasminLsemWidthN.LstateN.getW
     rw [hfr]
@@ -345,6 +388,13 @@ theorem stepEnv {env : KEnv} {i : LinstrRM} {s t : LstateM} {zf z : Bool}
     exact JasminLsemWidthN.getW_eq_some_iff.mpr (by
       simp [LstateM.setReg, LstateM.nextPc, JasminLsemWidthN.LstateN.setReg,
         JasminLsemWidthN.LstateN.nextPc])
+  · rw [fstepF_selfMove] at h
+    simp only [Option.some.injEq, Prod.mk.injEq] at h
+    obtain ⟨rfl, -⟩ := h
+    have hx := hE x k h1
+    unfold JasminLsemWidthN.LstateN.getW at hx ⊢
+    grind [LstateM.setReg, LstateM.nextPc, JasminLsemWidthN.LstateN.setReg,
+        JasminLsemWidthN.LstateN.nextPc]
 
 theorem getArr_congr {s t : LstateM} {A : String} (h : t.larr A = s.larr A) (w n : Nat) :
     t.getArr A w n = s.getArr A w n := by

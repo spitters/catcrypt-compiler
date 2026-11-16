@@ -75,17 +75,21 @@ theorem kval_filter {env : KEnv} {x : String} {p : String × Nat → Bool}
       · simp [hp a ha, ha]
       · cases hpa : p a <;> simp [hpa, ha, ih]
 
-/-- The step of the constants forgets the names an instruction writes, and records at most
-    one written name. -/
+/-- The step of the constants forgets the names an instruction writes and records at most
+    one written name, or (at a self move) keeps every constant. -/
 theorem kstep_cases (env : KEnv) (i : LinstrRM) :
     kstep env i = env.filter (fun p => !(dstNames i.1).contains p.1) ∨
-      ∃ d kk, d ∈ dstNames i.1 ∧
-        kstep env i = (d, kk) :: env.filter (fun p => !(dstNames i.1).contains p.1) := by
+      (∃ d kk, d ∈ dstNames i.1 ∧
+        kstep env i = (d, kk) :: env.filter (fun p => !(dstNames i.1).contains p.1)) ∨
+      kstep env i = env := by
   unfold kstep
   split
   · split
-    · right
+    · right; left
       exact ⟨_, _, by simp_all [dstNames, JasminLsemExportRewrites.opNames], rfl⟩
+    · exact .inl rfl
+  · split
+    · exact .inr (.inr rfl)
     · exact .inl rfl
   · exact .inl rfl
 
@@ -100,7 +104,7 @@ theorem kval_kstepL {env : KEnv} {i : LinstrRM} {x : String}
     unfold kstepL
     rw [he]
   rw [hk]
-  rcases kstep_cases env i with h | ⟨d, kk, hd, h⟩ <;> rw [h]
+  rcases kstep_cases env i with h | ⟨d, kk, hd, h⟩ | h <;> rw [h]
   · exact hf
   · have hdx : d ≠ x := fun e => hx (e ▸ hd)
     have hb : (d == x) = false := by simpa using hdx
