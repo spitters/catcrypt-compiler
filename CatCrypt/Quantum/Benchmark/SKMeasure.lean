@@ -68,7 +68,11 @@ def measureAngle (net : Net) (depth : Nat) (bound : ℚ) (k : ℕ) : IO Bool := 
       IO.println s!"{k}/32\t{len}\t{d}\t{(ratToFloat e).toString}\taccepted\t{genMs}\t{chkMs}"
       pure true
     | none =>
-      IO.println s!"{k}/32\t{len}\t{d}\t-\trefused\t{genMs}\t{chkMs}"
+      -- The certified bound the checker reaches, read with a bound it always accepts.
+      let cert := match checkGate (n := 1) (fun _ => some p) 10 g with
+        | some r => s!"({(ratToFloat r.2.2).toString})"
+        | none => "-"
+      IO.println s!"{k}/32\t{len}\t{d}\t{cert}\trefused\t{genMs}\t{chkMs}"
       pure false
 
 /-- Run the row `(idx, L₀, depth)`. -/
