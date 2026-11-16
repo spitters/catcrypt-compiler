@@ -332,6 +332,81 @@ theorem xor_two_pow_of_lt {x k : Nat} (h : x < 2 ^ k) : x ^^^ 2 ^ k = x + 2 ^ k 
     · simp [hi]
   omega
 
+/-- The exclusive or of `a` and `b` divided by `2 ^ k` is the exclusive or of the quotients. -/
+theorem xor_div_two_pow (a b k : Nat) : (a ^^^ b) / 2 ^ k = a / 2 ^ k ^^^ b / 2 ^ k := by
+  apply Nat.eq_of_testBit_eq
+  intro i
+  simp only [Nat.testBit_div_two_pow, Nat.testBit_xor]
+
+/-- **The exclusive or keeps the agreeing high bits**: for `a` in `[x₁, x₂]` and `b` in
+    `[y₁, y₂]`, where the bounds of each agree above the bit `k`, the exclusive or of `a` and `b`
+    has above `k` the exclusive or of the high bits of the bounds. -/
+theorem xor_mem_prefix {k a b x₁ x₂ y₁ y₂ : Nat} (ha : x₁ ≤ a ∧ a ≤ x₂) (hb : y₁ ≤ b ∧ b ≤ y₂)
+    (hx : x₁ / 2 ^ k = x₂ / 2 ^ k) (hy : y₁ / 2 ^ k = y₂ / 2 ^ k) :
+    (x₁ / 2 ^ k ^^^ y₁ / 2 ^ k) * 2 ^ k ≤ a ^^^ b ∧
+      a ^^^ b < (x₁ / 2 ^ k ^^^ y₁ / 2 ^ k) * 2 ^ k + 2 ^ k := by
+  have hak : a / 2 ^ k = x₁ / 2 ^ k :=
+    Nat.le_antisymm (hx ▸ Nat.div_le_div_right ha.2) (Nat.div_le_div_right ha.1)
+  have hbk : b / 2 ^ k = y₁ / 2 ^ k :=
+    Nat.le_antisymm (hy ▸ Nat.div_le_div_right hb.2) (Nat.div_le_div_right hb.1)
+  have hq : (a ^^^ b) / 2 ^ k = x₁ / 2 ^ k ^^^ y₁ / 2 ^ k := by
+    rw [xor_div_two_pow, hak, hbk]
+  have hd := Nat.div_add_mod (a ^^^ b) (2 ^ k)
+  have hm := Nat.mod_lt (a ^^^ b) (Nat.two_pow_pos k)
+  rw [hq] at hd
+  generalize x₁ / 2 ^ k ^^^ y₁ / 2 ^ k = Q at hd ⊢
+  generalize (a ^^^ b) % 2 ^ k = r at hd hm
+  rw [Nat.mul_comm] at hd
+  omega
+
+/-- The interval of `xorPrefix` holds the exclusive or of the values of nonnegative intervals
+    whose bounds agree above the bit `k`. -/
+theorem has_xor_prefix {k : Nat} {i j : Iv} {x y : Nat} (hx : i.Has x) (hy : j.Has y)
+    (hc : i.1.toNat / 2 ^ k = i.2.toNat / 2 ^ k ∧ j.1.toNat / 2 ^ k = j.2.toNat / 2 ^ k) :
+    Iv.Has ((((i.1.toNat / 2 ^ k ^^^ j.1.toNat / 2 ^ k) * 2 ^ k : Nat) : Int),
+      (((i.1.toNat / 2 ^ k ^^^ j.1.toNat / 2 ^ k) * 2 ^ k : Nat) : Int) + 2 ^ k - 1)
+      ((x ^^^ y : Nat) : Int) := by
+  unfold Iv.Has at hx hy ⊢
+  have h := xor_mem_prefix (k := k) (a := x) (b := y) (x₁ := i.1.toNat) (x₂ := i.2.toNat)
+    (y₁ := j.1.toNat) (y₂ := j.2.toNat) (by omega) (by omega) hc.1 hc.2
+  have hk : ((2 : Int) ^ k) = ((2 ^ k : Nat) : Int) := by push_cast; rfl
+  rw [hk]
+  generalize (i.1.toNat / 2 ^ k ^^^ j.1.toNat / 2 ^ k) * 2 ^ k = P at h ⊢
+  generalize 2 ^ k = K at h ⊢
+  omega
+
+/-- The interval of the exclusive or of words of nonnegative intervals that `wordXfer` gives
+    when the second is not a power of two above the first: the agreeing high bits of the bounds
+    (`xorPrefix`), below the power of two above both upper bounds and below `2 ^ b`. -/
+theorem has_xor_rest {b : Nat} {i j I : Iv} {x y : Nat}
+    (hx : i.Has x) (hy : j.Has y) (hxb : x < 2 ^ b) (hyb : y < 2 ^ b)
+    (h : (match xorPrefix (xorPrefixBit i j) i j with
+      | some I => some (I.1, min I.2 (min (2 ^ b - 1)
+          (2 ^ (Nat.log2 (max i.2 j.2).toNat + 1) - 1)))
+      | none => some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max i.2 j.2).toNat + 1) - 1))) =
+      some I) :
+    I.Has ((x ^^^ y : Nat) : Int) := by
+  have hM := Nat.lt_log2_self (n := (max i.2 j.2).toNat)
+  unfold Iv.Has at hx hy
+  have hxM : x < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by omega
+  have hyM : y < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by omega
+  have h1 : ((x ^^^ y : Nat) : Int) < 2 ^ b := by
+    exact_mod_cast Nat.xor_lt_two_pow hxb hyb
+  have h2 : ((x ^^^ y : Nat) : Int) < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by
+    exact_mod_cast Nat.xor_lt_two_pow hxM hyM
+  split at h
+  · rename_i J hJ
+    cases h
+    unfold xorPrefix at hJ
+    split_ifs at hJ with hc
+    cases hJ
+    have hp := has_xor_prefix (x := x) (y := y) hx hy hc
+    unfold Iv.Has at hp ⊢
+    omega
+  · cases h
+    unfold Iv.Has
+    omega
+
 /-- The interval `wordXfer` gives a tagged word operation at a width `b` at most the width of
     the Aeneas words holds the value of the Aeneas operation, which does not fail. -/
 theorem wordXfer_sound {ty : UScalarTy} {o : AeWordOp} {b : Nat} (hble : b ≤ ty.numBits)
@@ -384,19 +459,9 @@ theorem wordXfer_sound {ty : UScalarTy} {o : AeWordOp} {b : Nat} (hble : b ≤ t
       unfold Iv.Has
       push_cast
       omega
-    simp only [Option.some.injEq] at h
-    subst h
     refine ⟨x ^^^ y, rfl, ?_⟩
-    have hM := Nat.lt_log2_self (n := (max i.2 j.2).toNat)
-    have hxM : x.val < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by omega
-    have hyM : y.val < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by omega
-    have h1 : ((x.val ^^^ y.val : Nat) : Int) < 2 ^ b := by
-      exact_mod_cast Nat.xor_lt_two_pow hxb hyb
-    have h2 : ((x.val ^^^ y.val : Nat) : Int) < 2 ^ ((max i.2 j.2).toNat.log2 + 1) := by
-      exact_mod_cast Nat.xor_lt_two_pow hxM hyM
-    simp only [UScalar.val_xor]
-    unfold Iv.Has
-    omega
+    rw [UScalar.val_xor]
+    exact has_xor_rest hx hy hxb hyb h
   | wadd =>
     have hb : b = ty.numBits := by simpa [AeWordOp.atSize] using hbo
     subst hb

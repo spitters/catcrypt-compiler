@@ -10,8 +10,10 @@ public import CatCrypt.Crypto.SecureCompilation.AeneasFront.DenoteToRustM
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyComplete
 public import CatCrypt.Crypto.SecureCompilation.AeneasFront.SignedGuard
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFRangeLoop
+public import CatCrypt.Crypto.SecureCompilation.VIR.NFRangeCover
 public meta import CatCrypt.Crypto.SecureCompilation.AeneasFront.SignedGuard
 public meta import CatCrypt.Crypto.SecureCompilation.AeneasFront.RangeSpec
+public meta import CatCrypt.Crypto.SecureCompilation.VIR.NFRangeCover
 
 /-!
 # Absence of panics of an Aeneas function on an input range
@@ -23,10 +25,17 @@ of `R.prog` with the leaf table `aeTable` (`NFRange.check_sound'`, `aeSpec_sound
 denotation gives the value of the reading (`nfToRustM_of_denote`), and completeness gives a value
 of `f`.
 
+The entry checks the input ranges by `NFRange.checkCover`: a range the checker refuses is
+bisected at its widest interval, within `coverBudget` checks. A signed argument is read through
+the pattern of its word: an interval `[lo, hi]` of nonnegative values is the interval of the
+patterns, one of negative values is shifted by `2 ^ n`, and one with values of both signs is the
+case split into the two (`memI_cases`), each checked on its own.
+
 ## Main results
 
-* `noPanic_of_complete`: the argument at one valuation
+* `noPanic_of_complete`, `noPanic_of_cover`: the argument at one valuation
 * `aeneas_noPanic`: the argument for every argument of the function
+* `memI`, `memI_neg`, `memI_cases`: the patterns of a signed argument in an interval
 * `aeneasRange% f [I₁, …]`: the proof of
   `∀ xs, lo₁ ≤ x₁ ∧ x₁ ≤ hi₁ → … → ∃ y, f xs = .ok y` for the intervals `Iᵢ = (loᵢ, hiᵢ)`, or
   `_` for an argument without hypothesis; a refusal names the step that fails
@@ -68,6 +77,19 @@ theorem noPanic_of_isSome {α : Type} {ts : List NfTy} {E : α → Valuation (d 
     (hc : (check aeSpec A p).isSome = true) (hV : A.Sat V) : ∃ y, m = .ok y :=
   noPanic_of_complete C hw (Option.some_get hc).symm hV
 
+/-- The number of checks of the interval checker on a subdivided range in the entry. -/
+def coverBudget : Nat := 256
+
+/-- No panic at one valuation, with the acceptance of the checker on the range of `A`
+    subdivided within `n` checks (`checkCover`). -/
+theorem noPanic_of_cover {α : Type} {ts : List NfTy} {E : α → Valuation (d := nfDialect) ts}
+    {m : RustM α} {Γ : Ctxt nfDialect} {V : Valuation Γ} {p : NFProg nfDialect Γ ts}
+    {A : AEnv Γ} {n : Nat} (C : CompleteG E m V p) (hw : p.whileFree = true)
+    (hc : checkCover aeSpec p n [A] = true) (hV : A.Sat V) : ∃ y, m = .ok y := by
+  obtain ⟨W, hW⟩ := checkCover_sound aeSpec_sound n [A] hc A (List.mem_singleton_self A) hV
+  obtain ⟨y, hy, -⟩ := C W (nfToRustM_of_denote p hw (hW 0))
+  exact ⟨y, hy⟩
+
 end RangeEntry
 
 /-- **No panic of an Aeneas function on an input range.** For a reading `R` of `f` whose
@@ -104,6 +126,40 @@ theorem memI {ity : IScalarTy} [Le64 (uOf ity)] (x : IScalar ity) (lo hi : Int) 
     split <;> grind
   simp only [AVal.Mem, Iv.Has, embW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb]
   omega
+
+/-- The pattern of a signed word: its value, and its value plus `2 ^ n` when negative, at the
+    width `n` of the type. -/
+theorem toU_val_int {ity : IScalarTy} (x : IScalar ity) :
+    ((toU x).val : Int) = if x.val < 0 then x.val + 2 ^ ity.numBits else x.val := by
+  have h1 : (toU x).val = x.bv.toNat := rfl
+  have h2 : x.val = x.bv.toInt := rfl
+  have hl := x.bv.isLt
+  rw [h1, h2, BitVec.toInt_eq_toNat_cond]
+  split <;> split <;> grind
+
+/-- **A signed word in `[lo, hi]` has its pattern in one of two intervals**: the nonnegative
+    values `[max lo 0, hi]`, or the negative values shifted by `2 ^ n`,
+    `[lo + 2 ^ n, min hi (-1) + 2 ^ n]`, at the width `n` of the type. -/
+theorem memI_cases {ity : IScalarTy} [Le64 (uOf ity)] (x : IScalar ity) (lo hi : Int)
+    (h : lo ≤ x.val ∧ x.val ≤ hi) :
+    AVal.Mem (.word 64) ((max lo 0, hi) : Iv) (embW (toU x)) ∨
+      AVal.Mem (.word 64) ((lo + 2 ^ ity.numBits, min hi (-1) + 2 ^ ity.numBits) : Iv)
+        (embW (toU x)) := by
+  have hb := lt64 (toU x)
+  have e := toU_val_int x
+  simp only [AVal.Mem, Iv.Has, embW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb]
+  split at e <;> omega
+
+/-- A negative signed word in `[lo, hi]` has its pattern in `[lo + 2 ^ n, hi + 2 ^ n]`, at the
+    width `n` of the type. -/
+theorem memI_neg {ity : IScalarTy} [Le64 (uOf ity)] (x : IScalar ity) (lo hi : Int)
+    (h1 : hi < 0) (h : lo ≤ x.val ∧ x.val ≤ hi) :
+    AVal.Mem (.word 64) ((lo + 2 ^ ity.numBits, hi + 2 ^ ity.numBits) : Iv)
+      (embW (toU x)) := by
+  have hb := lt64 (toU x)
+  have e := toU_val_int x
+  simp only [AVal.Mem, Iv.Has, embW, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hb]
+  split at e <;> omega
 
 /-- A Boolean whose bit is in `[lo, hi]` has its word in the interval `(lo, hi)`. -/
 theorem memB (b : Bool) (lo hi : Int) (h : lo ≤ (b.toNat : Int) ∧ (b.toNat : Int) ≤ hi) :
@@ -160,17 +216,43 @@ meta def decideOr (P : Expr) (msg : MessageData) : MetaM Expr := do
   unless r.isConstOf ``Bool.true do throwError msg
   mkDecideProof P
 
+/-- Whether `P` evaluates to true. -/
+meta def decides (P : Expr) : MetaM Bool := do
+  let r ← withAtLeastTransparency .default <| whnf (← mkDecide P)
+  return r.isConstOf ``Bool.true
+
+/-- The interval of the membership `AVal.Mem t a v`. -/
+meta def ivOfMem (e : Expr) : MetaM Expr := do
+  let e ← whnfR e
+  unless e.isAppOfArity ``AVal.Mem 3 do
+    throwError "aeneasRange%: not a membership{indentExpr e}"
+  return e.getArg! 1
+
 /-- The membership lemma of an argument `x` in the interval `(lo, hi)`, by the type of `x`:
-    a proof of `∀ h : H, AVal.Mem t (lo, hi) v` for the hypothesis `H` on `x`. -/
-meta def memOf (x lo hi : Expr) : MetaM Expr := do
+    the interval `a₁` and a proof of `∀ h : H, AVal.Mem t a₁ v` for the hypothesis `H` on `x`,
+    or, for a signed `x` whose interval holds negative and nonnegative values, the intervals
+    `a₁`, `a₂` of the nonnegative and the negative patterns and a proof of
+    `∀ h : H, AVal.Mem t a₁ v ∨ AVal.Mem t a₂ v` (`memI_cases`). -/
+meta def memOf (x lo hi : Expr) : MetaM (Expr × Option Expr × Expr) := do
   let ty ← whnfR (← inferType x)
-  if ty.isConstOf ``Bool then return ← mkAppM ``memB #[x, lo, hi]
-  if ty.isAppOf ``UScalar then return ← mkAppM ``memU #[x, lo, hi]
+  let iv ← mkAppM ``Prod.mk #[lo, hi]
+  if ty.isConstOf ``Bool then return (iv, none, ← mkAppM ``memB #[x, lo, hi])
+  if ty.isAppOf ``UScalar then return (iv, none, ← mkAppM ``memU #[x, lo, hi])
   if ty.isAppOf ``IScalar then
-    let h0 ← decideOr (← mkAppM ``LE.le #[toExpr (0 : Int), lo])
-      m!"aeneasRange%: the signed argument {x} has an interval with a negative lower bound"
-    return ← mkAppM ``memI #[x, lo, hi, h0]
-  if ty.isAppOf ``Aeneas.Std.Array then return ← mkAppM ``memA #[x, lo, hi]
+    let P0 ← mkAppM ``LE.le #[toExpr (0 : Int), lo]
+    if ← decides P0 then
+      return (iv, none, ← mkAppM ``memI #[x, lo, hi, ← mkDecideProof P0])
+    let Pn ← mkAppM ``LT.lt #[hi, toExpr (0 : Int)]
+    if ← decides Pn then
+      let pf ← mkAppM ``memI_neg #[x, lo, hi, ← mkDecideProof Pn]
+      let a ← forallTelescope (← inferType pf) fun _ b => ivOfMem b
+      return (a, none, pf)
+    let pf ← mkAppM ``memI_cases #[x, lo, hi]
+    let (a₁, a₂) ← forallTelescope (← inferType pf) fun _ b => do
+      let b ← whnfR b
+      return (← ivOfMem (b.getArg! 0), ← ivOfMem (b.getArg! 1))
+    return (a₁, some a₂, pf)
+  if ty.isAppOf ``Aeneas.Std.Array then return (iv, none, ← mkAppM ``memA #[x, lo, hi])
   throwError "aeneasRange%: no interval reading of the argument {x} of type{indentExpr ty}"
 
 /-- The entries of a valuation `vCons x₁ (… vNil)`: the type and the value of each. -/
@@ -215,6 +297,17 @@ meta def refusalOf (A prog : Expr) : TermElabM String := do
     ofExcept <| unsafe (← getEnv).evalConst String (← getOptions) n (checkMeta := false)
   catch e => return s!"range check refused {← e.toMessageData.toString}"
 
+/-- The value of the closed Boolean term `e`, by compiled evaluation; `false` when it does not
+    compile. -/
+meta def evalBool (e : Expr) : TermElabM Bool := do
+  try
+    let n ← mkAuxDeclName `aeneasRangeCover
+    let d := mkDefinitionValEx n [] (mkConst ``Bool) e ReducibilityHints.opaque
+      DefinitionSafety.safe []
+    addAndCompile (Declaration.defnDecl d)
+    ofExcept <| unsafe (← getEnv).evalConst Bool (← getOptions) n (checkMeta := false)
+  catch _ => return false
+
 /-- `aeneasRange% f [I₁, …]`: for the Aeneas function `f` with one interval `Iᵢ = (loᵢ, hiᵢ)`,
     or `_`, per argument, the proof of `∀ xs, H₁ → … → ∃ y, f xs = .ok y`, where `Hᵢ` states
     `loᵢ ≤ xᵢ ≤ hiᵢ` (of the value of a word, of the bit of a Boolean, of each element of an
@@ -239,33 +332,44 @@ elab "aeneasRange% " f:ident " [" Is:term,* "]" : term => do
       throwError "aeneasRange%: an argument is not one entry of the valuation (a structure)"
     let hw ← decideOr (← mkEq (← mkAppM ``NFProg.whileFree #[prog]) (toExpr true))
       m!"aeneasRange%: the program has an exit-flag loop (whileLoop)"
-    -- per argument: its abstract value, and its membership proof (`.inl`) or the lemma that
-    -- gives it from the hypothesis on the argument (`.inr`)
-    let mut as : Array Expr := #[]
-    let mut mems : Array (Expr ⊕ Expr) := #[]
+    -- per argument: its abstract value `a₁`, a second one `a₂` when its hypothesis gives one
+    -- of two memberships, the membership proof or the lemma that gives it from the hypothesis,
+    -- and whether there is a hypothesis
+    let mut mems : Array (Expr × Option Expr × Expr × Bool) := #[]
     for x in xs, I in Is, (t, v) in es do
       if I.raw.isOfKind ``Lean.Parser.Term.hole then
-        as := as.push (← mkAppM ``AVal.top #[t])
-        mems := mems.push (.inl (← mkAppM ``AVal.mem_top #[t, v]))
+        mems := mems.push (← mkAppM ``AVal.top #[t], none, ← mkAppM ``AVal.mem_top #[t, v],
+          false)
       else
         let (lo, hi) ← boundsOf I
-        as := as.push (← mkAppM ``Prod.mk #[lo, hi])
-        mems := mems.push (.inr (← memOf x lo hi))
-    let rec go (rest : List (Expr ⊕ Expr)) (ms : List Expr) : TermElabM Expr := do
+        let (a₁, a₂, pf) ← memOf x lo hi
+        mems := mems.push (a₁, a₂, pf, true)
+    let rec go (rest : List (Expr × Option Expr × Expr × Bool)) (as ms : List Expr) :
+        TermElabM Expr := do
       match rest with
-      | .inl m :: rest => go rest (ms ++ [m])
-      | .inr pf :: rest =>
+      | (a, _, m, false) :: rest => go rest (as ++ [a]) (ms ++ [m])
+      | (a, none, pf, true) :: rest =>
         let H := (← whnfR (← inferType pf)).bindingDomain!
         withLocalDeclD `h H fun h => do
-          mkLambdaFVars #[h] (← go rest (ms ++ [mkApp pf h]))
+          mkLambdaFVars #[h] (← go rest (as ++ [a]) (ms ++ [mkApp pf h]))
+      | (a₁, some a₂, pf, true) :: rest =>
+        let H := (← whnfR (← inferType pf)).bindingDomain!
+        withLocalDeclD `h H fun h => do
+          let hor := mkApp pf h
+          let orTy ← whnfR (← inferType hor)
+          let l ← withLocalDeclD `m (orTy.getArg! 0) fun m => do
+            mkLambdaFVars #[m] (← go rest (as ++ [a₁]) (ms ++ [m]))
+          let r ← withLocalDeclD `m (orTy.getArg! 1) fun m => do
+            mkLambdaFVars #[m] (← go rest (as ++ [a₂]) (ms ++ [m]))
+          mkLambdaFVars #[h] (← mkAppM ``Or.elim #[hor, l, r])
       | [] =>
-        let (A, _, sat) ← envSat es.toList as.toList ms
-        let P ← mkEq (← mkAppM ``Option.isSome
-          #[← mkAppM ``NFRange.check #[mkConst ``NFRange.aeSpec, A, prog]]) (toExpr true)
-        let hc ← try decideOr P m!"" catch _ => do
+        let (A, _, sat) ← envSat es.toList as ms
+        let P ← mkEq (← mkAppM ``NFRange.checkCover #[mkConst ``NFRange.aeSpec, prog,
+          mkConst ``coverBudget, ← mkListLit (← inferType A) [A]]) (toExpr true)
+        unless ← evalBool P.appFn!.appArg! do
           throwError "aeneasRange%: the interval check refuses: {← refusalOf A prog}"
-        mkAppM ``noPanic_of_isSome #[mkAppN C xs, hw, hc, sat]
-    let prf ← go mems.toList []
+        mkAppM ``noPanic_of_cover #[mkAppN C xs, hw, ← mkDecideProof P, sat]
+    let prf ← go mems.toList [] []
     mkLambdaFVars xs prf
 
 end RangeMeta

@@ -21,10 +21,12 @@ No-panic theorems by `aeneasRange%` on Aeneas test functions: the checked `u32` 
 `opt_add_1_or_panic` behind its assertion, the array update of `incr_array`, and the counted
 loop of `enum_range_sum`, the checked `i32` sums of `ref_incr` and `add` read through their
 overflow guard, the checked `i64` sums of `incr` and `incrT` and the difference of `dec` read
-through their sign-bit guard; and the refusals, each naming the step that fails: `ref_incr` at
-`x = 2 ^ 31 - 1`, the `i64` sum `incr` at `x = 2 ^ 63 - 1`, the `i8` sum `x + 1` without an
-input bound, `opt_add_1_or_panic` with an input range that contains a panic (the assertion, the
-overflow of `x + 1` at `x = 2 ^ 32 - 1`), and a function with a `while` loop.
+through their sign-bit guard, `incr` and `x - 1` by `dec` on ranges with negative values; and
+the refusals, each naming the step that fails: `ref_incr` at `x = 2 ^ 31 - 1`, the `i64` sum
+`incr` at `x = 2 ^ 63 - 1`, the `i64` difference `x - 1` at `x = -2 ^ 63`, the `i8` sum
+`x + 1` without an input bound, `opt_add_1_or_panic` with an input range that contains a panic
+(the assertion, the overflow of `x + 1` at `x = 2 ^ 32 - 1`), and a function with a `while`
+loop.
 -/
 
 @[expose] public section
@@ -84,9 +86,31 @@ theorem dec64_noPanic : ∀ x y : I64, 0 ≤ x.val ∧ x.val ≤ 2 ^ 62 → 0 �
     ∃ z, signedGuard64Test.dec x y = .ok z :=
   aeneasRange% signedGuard64Test.dec [(0, 2 ^ 62), (0, 2 ^ 62)]
 
+/-- The checked `i64` sum `incr x = x + 1` has a value for `x` in `[-2 ^ 62, 2 ^ 62]`: the
+    nonnegative and the negative values are checked apart, the negative ones on a subdivided
+    range. -/
+theorem incr64Signed_noPanic : ∀ x : I64, -2 ^ 62 ≤ x.val ∧ x.val ≤ 2 ^ 62 →
+    ∃ y, signedGuard64Test.incr x = .ok y :=
+  aeneasRange% signedGuard64Test.incr [(-2 ^ 62, 2 ^ 62)]
+
+/-- The checked `i64` sum `incr x = x + 1` has a value at every negative `x`. -/
+theorem incr64Neg_noPanic : ∀ x : I64, -2 ^ 63 ≤ x.val ∧ x.val ≤ -1 →
+    ∃ y, signedGuard64Test.incr x = .ok y :=
+  aeneasRange% signedGuard64Test.incr [(-2 ^ 63, -1)]
+
+/-- The checked `i64` difference `dec x 1 = x - 1` has a value for `x` in
+    `[-2 ^ 62, 2 ^ 62]`. -/
+theorem dec64Signed_noPanic : ∀ x y : I64, -2 ^ 62 ≤ x.val ∧ x.val ≤ 2 ^ 62 →
+    1 ≤ y.val ∧ y.val ≤ 1 → ∃ z, signedGuard64Test.dec x y = .ok z :=
+  aeneasRange% signedGuard64Test.dec [(-2 ^ 62, 2 ^ 62), (1, 1)]
+
 /-- error: aeneasRange%: the interval check refuses: a reachable abort -/
 #guard_msgs in
 example := aeneasRange% signedGuard64Test.incr [(0, 2 ^ 63 - 1)]
+
+/-- error: aeneasRange%: the interval check refuses: a reachable abort -/
+#guard_msgs in
+example := aeneasRange% signedGuard64Test.dec [(-2 ^ 63, 0), (1, 1)]
 
 /-- error: aeneasRange%: the interval check refuses: a reachable abort -/
 #guard_msgs in

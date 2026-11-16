@@ -666,11 +666,26 @@ def cmpVal (p : NfPred) (a b : Iv) : Option Bool :=
     else if a.2 < b.1 ∨ b.2 < a.1 then some true else none
   | _ => none
 
+/-- The bit above the highest bit at which the bounds of `x` differ or the bounds of `y`
+    differ. -/
+def xorPrefixBit (x y : Iv) : Nat :=
+  Nat.log2 ((x.1.toNat ^^^ x.2.toNat) ||| (y.1.toNat ^^^ y.2.toNat)) + 1
+
+/-- The interval of the exclusive or of words of the nonnegative intervals `x` and `y` whose
+    bounds agree above the bit `k`: the bits above `k` are the exclusive or of those of the
+    bounds, the `k` low bits are free. `none` when the bounds differ above `k`. -/
+def xorPrefix (k : Nat) (x y : Iv) : Option Iv :=
+  if x.1.toNat / 2 ^ k = x.2.toNat / 2 ^ k ∧ y.1.toNat / 2 ^ k = y.2.toNat / 2 ^ k then
+    let P : Nat := (x.1.toNat / 2 ^ k ^^^ y.1.toNat / 2 ^ k) * 2 ^ k
+    some ((P : Int), (P : Int) + 2 ^ k - 1)
+  else none
+
 /-- The interval of a tagged word operation at the width `b` on words of the nonnegative
     intervals `x` and `y`; `none` when a shift amount may reach the width or a rotation amount
     `2 ^ 32`. The exclusive or with the point `2 ^ k` of words below `2 ^ k` is their sum with
-    `2 ^ k`; a wrapping sum whose exact interval lies at or above `2 ^ b` is that interval less
-    `2 ^ b`. -/
+    `2 ^ k`; otherwise the exclusive or has the bits on which the bounds of both intervals
+    agree (`xorPrefix`), below the power of two above both upper bounds. A wrapping sum whose
+    exact interval lies at or above `2 ^ b` is that interval less `2 ^ b`. -/
 def wordXfer (o : AeWordOp) (b : Nat) (x y : Iv) : Option Iv :=
   let top : Iv := (0, 2 ^ b - 1)
   match o with
@@ -678,7 +693,10 @@ def wordXfer (o : AeWordOp) (b : Nat) (x y : Iv) : Option Iv :=
   | .bor => some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
   | .bxor =>
     if y.1 = y.2 ∧ y.1 = 2 ^ y.1.toNat.log2 ∧ x.2 < y.1 then some (x.1 + y.1, x.2 + y.1)
-    else some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
+    else match xorPrefix (xorPrefixBit x y) x y with
+      | some I => some (I.1, min I.2 (min (2 ^ b - 1)
+          (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1)))
+      | none => some (0, min (2 ^ b - 1) (2 ^ (Nat.log2 (max x.2 y.2).toNat + 1) - 1))
   | .wadd =>
     let s := ivAddZ x y
     some (if s.2 < 2 ^ b then s else if 2 ^ b ≤ s.1 then (s.1 - 2 ^ b, s.2 - 2 ^ b) else top)
