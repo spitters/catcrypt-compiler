@@ -3352,6 +3352,7 @@ def pkgModules17 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Quantum.AngleSnap,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchCompile,
     Lake.Glob.one `CatCrypt.Quantum.Benchmark.QrunchExportMain,
+    Lake.Glob.one `CatCrypt.Quantum.Benchmark.SKMeasure,
     Lake.Glob.one `CatCrypt.Quantum.ControlledGates,
     Lake.Glob.one `CatCrypt.Quantum.ControlledProjections,
     Lake.Glob.one `CatCrypt.Quantum.GateUnitarity,
@@ -3798,6 +3799,11 @@ lean_exe «catq-export» where
   -- The OpenQASM 2 export over {rx, ry, cx, p} of the QFT, phase estimation and amplitude
   -- amplification gate lists, one file each, with the exact global phases.
   root := `CatCrypt.Quantum.Benchmark.QrunchExportMain
+
+lean_exe «catq-sk-measure» where
+  -- Solovay-Kitaev measurement: one row (precision, net length, depth) per process; word
+  -- lengths, certified bounds and times of the Float generator under the checked pass.
+  root := `CatCrypt.Quantum.Benchmark.SKMeasure
 
 lean_exe «algebraic-census» where
   -- Per-kernel counts of the algebraic `Com` rewrites under `KEnv.unknown`, and the
