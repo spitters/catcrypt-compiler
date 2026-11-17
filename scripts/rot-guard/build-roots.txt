@@ -444,6 +444,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeCallsSiteAns
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOracle
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSAComp
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeStatements
