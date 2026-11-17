@@ -2880,6 +2880,7 @@ def pkgModules15 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkOfEncodable,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkShapeComplete,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnCallee,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnComputes,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnFrame,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc,

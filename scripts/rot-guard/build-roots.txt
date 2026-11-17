@@ -857,6 +857,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.LadderStepFrontOkProof
 CatCrypt.Crypto.SecureCompilation.X86Backend.LcmdLea
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeaRoundThirEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.LeafFFIViaMachineModel
+CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnComputes
 CatCrypt.Crypto.SecureCompilation.X86Backend.LinkerReloc
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoadOpForms
 CatCrypt.Crypto.SecureCompilation.X86Backend.LoopReduceX86Demo
