@@ -22,7 +22,7 @@ under the decided level check of the NF program.
 with a proof that its denotation is the Lean function's value. Each construct of the printed
 Lean has one congruence lemma in
 [`Reify`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Reify.lean)
-(binds, literals, conditionals, loops over a range and `loop`, guards); the elaborator
+(binds, literals, conditionals, loops over a range and over iterator adapters, `loop`, guards); the elaborator
 unfolds only the defining equation of the function and applies these lemmas. No reified
 program is checked by `rfl` or `decide` on the whole term.
 
@@ -43,10 +43,81 @@ of at most 64 bits, as ParamTransfer `Related`, `RelatedBinOp` and `RelatedUnOp`
 over [`AeneasTableReads`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/Hax/AeneasTableReads.lean)).
 Unsigned division and remainder go through the chain's `divChain` with no machine `DIV`.
 
-**The converse reading.** `nfToRustM` reads an NF program back into the Aeneas monad, and
+**Signed scalars.** An `IScalar` of `i8` to `i64` is the word of its bit pattern, zero-extended
+to 64 bits; a signed comparison is the unsigned comparison of the patterns offset by the sign
+bit (`slt_iff_flip`, `sle_iff_flip`, `seq_iff_flip`), and the squares against `hax64WExit` are
+`iadd_square`, `isub_square`, `slt_square`
+([`Signed`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Signed.lean)).
+The checked `+`, `-`, `*` of Aeneas fail exactly when the exact result leaves the range of the
+width, and the reader reads them under that guard. At `i8`, `i16` and `i32` the guard compares
+the 64-bit wrapping operation of the sign extensions with the bounds `lo64`, `hi64`
+(`iadd_guarded`, `isub_guarded`, `imul_guarded`,
+[`SignedGuard`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/SignedGuard.lean)).
+At `i64` the guard is the absence of signed overflow of the wrapping operation: the sign bits of
+`x ^^^ z` and `y ^^^ z` for a sum, of `x ^^^ y` and `x ^^^ z` for a difference, and for a
+product the bound on the product of the absolute values (`add_guard_iff`, `sub_guard_iff`,
+`mul_guard_iff`; `iadd64_guarded`, `isub64_guarded`, `imul64_guarded`,
+[`SignedGuard64`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/SignedGuard64.lean)).
+The guard is the abort of `nfDialect` and compiles as above. `signed.abs_diff` at `i32` has the
+compiler theorem `absDiff_compileR_correct`
+([`Demo/CompiledSigned`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledSigned.lean)).
+
+**Structures of scalars.** A structure argument is bound field by field, so that a projection
+`S.f s` in the body is a variable; a structure result is the array of its field words, written
+into an out-region by `storeFields` (`Reify.okStruct`, `nfToRustM_storeFields`,
+[`Structs`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Structs.lean)).
+The compiler theorems are `incrX_compileR_correct` and `pairSum_compileR_correct`
+([`Demo/CompiledStructs`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledStructs.lean)).
+
+**Iterator adapters.** A `for` loop over `(0..n).enumerate()`, `(0..n).step_by(k)`,
+`a.iter().enumerate()` or `a.iter().zip(b.iter())` is read as a counted loop. Each adapter has
+an `IndexedIter` whose item at the trip index `j` is what the adapter's `next` yields in the
+Aeneas model (`enumRangeIter`, `stepByRangeIter`, `enumArrayIter`, `zipArrayIter`,
+[`Iterators`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Iterators.lean)),
+and `Reify.indexedForLoop` reads the loop over such a state. The compiler theorems are
+`enumRangeSum_compileR_correct`, `enumArraySum_compileR_correct`,
+`zipArraySum_compileR_correct`
+([`Demo/CompiledIterAdapters`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledIterAdapters.lean))
+and `stepByRangeSum_compileR_correct`
+([`Demo/CompiledStepBy`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/CompiledStepBy.lean)).
+
+**Absence of panics on an input range.** `aeneasRange% f [I₁, …]` proves
+`∀ xs, lo₁ ≤ x₁ ∧ x₁ ≤ hi₁ → … → ∃ y, f xs = .ok y` for the intervals `Iᵢ = (loᵢ, hiᵢ)`, or `_`
+for an argument without hypothesis
+([`RangeEntry`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/RangeEntry.lean)).
+The interval checker `NFRange.check` runs on the program `R.prog` of `reifyAeneas% f` with the
+leaf table `aeTable` (`NFRange.check_sound'`, `aeSpec_sound`); a range it refuses is bisected
+within `coverBudget` checks (`noPanic_of_cover`). The denotation gives a value of the reading
+(`nfToRustM_of_denote`), and the converse of the reading below gives a value of `f`
+(`noPanic_of_complete`, `aeneas_noPanic`). A signed argument is read through its bit pattern:
+an interval of nonnegative values is the interval of the patterns, one of negative values is
+shifted by `2 ^ n`, and one with both signs is split into the two (`memI`, `memI_neg`,
+`memI_cases`). The theorems include `i64` with a negative lower bound (`incr64Signed_noPanic`,
+`incr64Neg_noPanic`, `dec64Signed_noPanic` in
+[`Demo/RangeTests`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/RangeTests.lean)).
+A refusal names the failing call.
+
+**The converse of the reading.** `completeAeneas% R`, for `R := reifyAeneas% f`, proves
+`∀ xs, CompleteG E (f xs) V R.prog`: a value of the reading of the program is the image of a
+value of `f`. Each congruence lemma of `Reify` outside the `while` loop has a complete twin, and
+the elaborator replaces each node of `R.sound` by its twin
+([`ReifyComplete`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/ReifyComplete.lean)).
+`nfToRustM` reads an NF program back into the Aeneas monad (`aeCallV_sound`,
+[`NFToRustM`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/NFToRustM.lean)),
+and
 [`nfToRustM_sim`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Loops.lean)
-shows that it simulates the compiler's semantics for every NF program, loops included
-(`loop_whileIter`, by fixpoint induction).
+shows that a value of this reading is a value of the compiler's denotation `PDenP hax64WExit`
+from some fuel on, for every NF program, loops included (`loop_whileIter`, by fixpoint
+induction).
+
+**The interaction-tree monad of upstream Aeneas.** Upstream types generated code against
+`Result α := ITree RustEffect α`; the certificate of this front, `fn a = .ok y`, is in the flat
+`RustM`. The map `RustM.toITree` of hax-lean
+([`HaxLean/Rust/ITreeResult.lean`](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean))
+is a monad morphism (`toITree_bind`) and injective, with `toITree x = ok y ↔ x = .ok y`
+(`toITree_eq_ok_iff`) and, for an `ok` run of the flat `loop`, an `ok` run of the upstream `loop`
+on the image of the body (`loop_toITree_of_ok`). A value of the Aeneas front is thus a leaf
+`ok y` of the upstream `Result` computation.
 
 **Bytes of Aeneas test functions.** Three functions of the Aeneas test suite (commit b08bf81,
 copied unchanged in `Demo/Test*.lean`) are compiled with both theorems instantiated:
@@ -63,8 +134,10 @@ The bytes are written by the rows `aeneas_and_bool`, `aeneas_incr_array` and
 
 ## Types the entry accepts
 
-`AeTy`: unsigned scalars of at most 64 bits (a word of 64 bits, zero-extended), Booleans (the
-word 0 or 1 in a register, as argument or result), and arrays of `n` such values.
+`AeTy`: unsigned scalars (`u`) and signed scalars (`i`) of at most 64 bits (the bit pattern as
+a word of 64 bits, zero-extended), Booleans (the word 0 or 1 in a register, as argument or
+result), and arrays of `n` such values. Structures of scalars enter through the field-wise
+reading of `Structs`.
 
 ## Adding an Aeneas function
 

@@ -189,7 +189,21 @@ tables with the accepted programs.
   entry is `aeneasEntry` (`AeneasFront/Entry.lean`), through `extChain` and `compileRegion`,
   and `NFEntry.compileR_correct` and `aeneasEntry_compileR_ct` (`AeneasFront/EntryCT.lean`)
   hold at it; `AeneasFront/README.md` lists its statements and the test functions compiled
-  to bytes. The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
+  to bytes. Its domain is unsigned and signed scalars of at most 64 bits, Booleans, arrays,
+  structures of scalars (read field by field, `Reify.okStruct`), and loops over a range, over
+  `enumerate`, `step_by` and `zip` (`enumRangeIter`, `stepByRangeIter`, `enumArrayIter`,
+  `zipArrayIter`, `AeneasFront/Iterators.lean`). A checked signed `+`, `-`, `*` is read under
+  its overflow guard (`iadd_guarded`, `isub_guarded`, `imul_guarded` at `i8` to `i32`,
+  `iadd64_guarded`, `isub64_guarded`, `imul64_guarded` at `i64`; `AeneasFront/SignedGuard.lean`,
+  `SignedGuard64.lean`). The entry `aeneasRange% f [I₁, …]` (`AeneasFront/RangeEntry.lean`)
+  proves `∃ y, f xs = .ok y` for the arguments in the intervals, by the interval checker
+  (`NFRange.check_sound'`, `aeSpec_sound`) and the converse of the reading, `completeAeneas%`
+  (`noPanic_of_cover`, `aeneas_noPanic`), with signed arguments of negative lower bound
+  (`memI_cases`, `memI_neg`). `nfToRustM` reads an NF program into the Aeneas monad and
+  `nfToRustM_sim` (`AeneasFront/Loops.lean`) shows that its values are values of the compiler's
+  denotation. The flat certificate `f xs = .ok y` is the leaf `ok y` of upstream's
+  interaction-tree monad: `RustM.toITree` with `toITree_eq_ok_iff` and `loop_toITree_of_ok`
+  (hax-lean `HaxLean/Rust/ITreeResult.lean`). The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
   hax-lean literal that enters `compileA`, with `leanFront_correct` and
   `leanFront_correct_mixed` (section "The Lean front" below). On a module with linked functions,
   `compileRegion` reads the table of their data (`CalleeTab`) and checks the calling body
