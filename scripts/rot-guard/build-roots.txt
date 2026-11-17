@@ -413,6 +413,7 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa
 CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
+CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2sLinked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedAbi
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
