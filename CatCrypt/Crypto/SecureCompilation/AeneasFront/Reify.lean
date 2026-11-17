@@ -45,7 +45,8 @@ lemma proved once:
 * an operation: the `ReifyE` instances of the checked arithmetic, the lifted bitwise
   operations, the wrapping operations, `Array.index_usize` and `Array.update`;
 * a variable: `Lookup`, the position of a value in the valuation;
-* an exit-flag loop `loop b init`: `Reify.loop`, a `whileLoop`;
+* an exit-flag loop `loop b init`: `Reify.loop`, a `whileLoop`; from a word literal `init`,
+  `Reify.loopLit`, the literal bound first;
 * a range loop `loop F (⟨0, n⟩, acc)` whose body steps the range by `IteratorRange.next`:
   `Reify.rangeForLoop`, a counted `forLoop` with the bound `n` as trip count and the range index
   as trip index. Its hypothesis on the body is `range_body` (through `next_usize`) with the
@@ -76,8 +77,8 @@ function. There is no definitional check of the whole term.
 
 ## Main results
 
-* `Reify.bind`, `Reify.bindLit`, `Reify.okLit`, `Reify.iteLt`, `Reify.loop`: the congruence
-  steps
+* `Reify.bind`, `Reify.bindLit`, `Reify.okLit`, `Reify.iteLt`, `Reify.loop`, `Reify.loopLit`:
+  the congruence steps
 * `Reify.guard`, `Reify.guardP`, `Reify.guardS`, `Reify.assert`, `Reify.iteFailElse`,
   `Reify.iteFail`: the guards
 * `nfToRustM_plug`, `preReads_append`, `preReads_wk`, `ReifyG.plug`: prefixes
@@ -1326,6 +1327,17 @@ theorem Reify.loop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeV
     rw [bind_tc_ok, nfToRustM]
     rfl
 
+/-- **A loop from a literal.** An Aeneas `loop` from the word literal `c`, whose body is read by
+    `pb` at every state, is the binding of `c` followed by the exit-flag loop of `pb` from it:
+    `Reify.letLit` and `Reify.loop`. -/
+theorem Reify.loopLit {ty : UScalarTy} [Le64 ty] {Γ : Ctxt nfDialect}
+    {pb : NFProg nfDialect (.word 64 :: .word 64 :: Γ) [.bit, .word 64]}
+    (b : UScalar ty → RustM (Aeneas.Std.ControlFlow (UScalar ty) (UScalar ty))) (c : UScalar ty)
+    (V : Valuation Γ) (hb : ∀ x, ReifyG stepVal (b x) (vCons x (vCons c V)) pb) :
+    ReifyG single (Aeneas.Std.loop b c) V
+      (.var (litE c) (.whileLoop (.cons .here .nil) pb (.ret (.cons .here .nil)))) :=
+  Reify.letLit c _ V (Reify.loop b c (vCons c V) hb)
+
 /-! ## Range loops
 
 The Aeneas backend prints a loop `for i in 0..n` as `loop F (⟨0, n⟩, acc)` with a body `F`
@@ -2021,6 +2033,10 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
             mkLambdaFVars #[i, acc] prf
         return ← mkAppM ``Reify.indexedForLoop #[itE, body, K, f, acc0, V, hF, hnone, hsome, hb]
     let Es ← mkAppOptM ``stepVal #[some σ, none]
+    if !init.hasFVar && !init.hasMVar && σw.isAppOf ``UScalar then
+      unless ← hasWord V (← mkAppM ``embW #[init]) do
+        let Vc ← mkAppM ``vCons #[init, V]
+        return ← mkAppM ``Reify.loopLit #[body, init, V, ← readUnder σ Es body Vc]
     return ← mkAppM ``Reify.loop #[body, init, V, ← readUnder σ Es body V]
   if let some c ← litOf m then
     let Vc ← mkAppM ``vCons #[c, V]
