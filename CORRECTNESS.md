@@ -456,6 +456,58 @@ of every decoding of the bytes. `compileA` compiles a structured program, and co
 time of the decoded program follows from constant time of the translation through the
 region chain (`regionChain_bytes_ct`).
 
+### Robust compilation of `haxc`
+
+Robust compilation (`RobustCompilation ε`, CatCrypt-core `CatCryptCore.Crypto.RC`) states that
+the real observation of the compiled code and the ideal observation of the source behind a
+simulator are at distance `ε` in every context. The statements below instantiate it for
+`haxc` in three forms.
+
+- Per call. `haxc_rc_proved_all` (`Haxc/RCInstance.lean`) and its form
+  `haxc_rc_proved_all_of_checkB` (`Haxc/HtermOfKinds.lean`), which replaces the termination
+  hypothesis by a run of the kind checker, relate one call of the decoded program to one run
+  of the source at distance `0`; the observation, the simulator `RCGate.simLeak` and the
+  context are those described above. `haxc_rc_proved_all_perState` (`Haxc/RCPerStateFuel.lean`)
+  states the same with the termination hypothesis taken for each entry state that has a
+  source run, at a pair of fuels chosen for that state. For modules with linked functions,
+  `HandlerRC` (`Haxc/RCHandlerInstance.lean`) states robust compilation over the class of
+  handlers that meet the separation contracts of the linked functions
+  (`RobustCompilationH`, `robustCompilationH_iff_sdist` in CatCrypt-core
+  `CatCryptCore.Crypto.RCHandler`): at bound `ε + δ`, with `ε` the failure weight of the
+  target interpretation and `δ` that of the source read-back. `haxc_rcH` (same module) gives,
+  for a result of `compileA`, the decoding of the bytes, the conclusion of
+  `haxc_rc_proved_all` and `HandlerRC`; `HandlerRC.zero` is the case of bound `0`.
+  `HandlerRC.toω` (`Haxc/CallTreeInterpSPFuelSource.lean`) removes the source fuel: the
+  source interpretations along the diagonal of the fuels form a chain whose supremum
+  `interpSrcω` is attained at some fuel, and `HandlerRCω` states robust compilation at
+  `ε + srcDiv`, with `srcDiv` the divergence mass of the source.
+- Reactive. `haxc_rrc_proved_all_of_checkB` (`Haxc/RCReactive.lean`) regards the compiled
+  module (`haxcTgtSys`) and the source (`haxcSrcSys`) as reactive systems that answer one ABI
+  call per event and keep the machine state between calls. The target system realizes the
+  source system behind the per-call leakage simulator `haxcLeakSim` at distance `0`
+  (`UCTransparent.RealizesSim`), for every environment that chooses the calls adaptively and
+  every initial kept state. A context observes per call only the ABI view: whether the entry
+  state is in the domain, the result `σ` reads back and the leakage trace; the memory of the
+  kept state, including the stack residue, is outside the view. `haxc_rrc_one_call` states
+  that one call of the two systems is the real and the ideal observation of
+  `haxc_rc_proved_all_of_checkB`. For modules with stateless linked functions,
+  `haxc_rrcH` (`Haxc/RCReactiveLinked.lean`) gives, from the conclusion of `haxc_rcH`,
+  realization at `Z.input.rounds * ε` for every handler coupled with the meanings of the
+  linked functions, where `ε` bounds the failure weight of the target interpretation;
+  `haxc_rrcH_of_handlerRC` takes `HandlerRC` and the gate conclusion as hypotheses, and
+  `haxc_rrcH_zero` is the form at `0`. These are robust-compilation statements at the ABI
+  view; the source system is not an ideal functionality, and the simulator replaces only the
+  leakage trace by one computed from public data.
+- Oracle answers. `R3StatementFA` (`Haxc/NFProgCallTreeOracle.lean`) relates the source call
+  tree of a module to the target trees of the calling body of `compileA` at an answer
+  predicate `A` of the linked functions. At the meaning predicate `SemAns` it is
+  `R3StatementFG` (`r3StatementFA_sem_iff`); at the typing predicate `TypedAns`, which
+  admits every answer that decodes at the result type of the linked function, it is the
+  statement at oracle contexts, and it implies `R3StatementFG`
+  (`r3StatementFG_of_r3StatementFA_typed`). The module states `R3StatementFA` as an
+  interface and proves the consequences above; no theorem asserts `R3StatementFA TypedAns`
+  for the results of `compileA`.
+
 ### Reference semantics of prime-ir calls
 
 The hax interpreter reads a prime-ir field call under the builtin table
