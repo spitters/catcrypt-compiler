@@ -454,6 +454,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuelBr
 CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
 CatCrypt.Crypto.SecureCompilation.Haxc.TraitLinkAccept

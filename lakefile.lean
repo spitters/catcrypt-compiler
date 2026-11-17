@@ -1524,6 +1524,7 @@ def pkgModules8 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgPost,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgSide,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgSplit,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPostFuseFuel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPostFuseLift,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuel,
