@@ -33,6 +33,8 @@ from the same names, and the renaming sends every base to a parameter.
   condition.
 * `webs_aliasRoots`: the coalescing renaming of the webs sends every array name to a
   word-array parameter with a save slot.
+* `websCopy_accCode`, `websCopy_immCode`, `websCopy_untagP`: the access form, the immediate
+  form and the untagged mnemonics of the webs of the export followed by its result copy.
 * `allocInputAcc_of_fieldDomB'`: the access form `AllocInputAcc` of the allocator input of a
   member of `fieldDomB'`.
 * `fieldDom_cellNamesRB'`: the stage `G20` on `fieldDomB'` without hypothesis.
@@ -347,7 +349,8 @@ theorem stDst_zeroDst_noAcc {i : LinstrRM} (h : NoAcc i) :
 
 /-- An operation of the class `NoAcc` has no indexed base. -/
 theorem idxIn_noAcc {i : LinstrRM} (h : NoAcc i) (T : String → Prop) : IdxIn T i :=
-  fun ds o ss he => ⟨fun b y s hb => absurd (List.mem_append_right _ hb) ((h ds o ss he).2.2.2.2 b y s),
+  fun ds o ss he => ⟨fun b y s hb =>
+      absurd (List.mem_append_right _ hb) ((h ds o ss he).2.2.2.2 b y s),
     fun ho => absurd ho (h ds o ss he).2.2.1⟩
 
 /-- **The facts of definition before use of an instruction of the access form with a plain
@@ -800,7 +803,8 @@ theorem ctxW64_nfCtx (σ : AbiLayout) : CtxW64 ((nfCtx σ).map NarrowWords.wideT
   grind
 
 /-- The word-array parameters of the field layout have save slots. -/
-theorem wordsSlotB_fieldAbi {k n : Nat} (hk : k = 1 ∨ k = 2) : wordsSlotB (fieldAbi k n) = true := by
+theorem wordsSlotB_fieldAbi {k n : Nat} (hk : k = 1 ∨ k = 2) :
+    wordsSlotB (fieldAbi k n) = true := by
   have x0 : exportReg "%rdi" = "RDI" := by decide
   have x1 : exportReg "%rsi" = "RSI" := by decide
   have x2 : exportReg "%rdx" = "RDX" := by decide
@@ -809,6 +813,51 @@ theorem wordsSlotB_fieldAbi {k n : Nat} (hk : k = 1 ∨ k = 2) : wordsSlotB (fie
   have s2 : (abiSlotOfExt "RDX").isSome = true := by decide
   rcases hk with rfl | rfl <;>
     simp [wordsSlotB, fieldAbi, List.range_succ, FieldRoute.fieldArgReg, x0, x1, x2, s0, s1, s2]
+
+/-- **The code given to the renaming has the access form `AccCode`** at the webs of the export
+    of a call-free program over `64`-bit word arrays. -/
+theorem websCopy_accCode (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (hc : p.callFree = true)
+    (hw : RegionPhysImgArg.arrW64B p = true)
+    {r0 : Exported} (hr0 : exportR Γ.length a.fname p Γ.length 0 = some r0) (ex : List String) :
+    ∀ i ∈ (regionWebs ex r0).code ++ regionLprogCopy a none ts (regionWebs ex r0).code
+      (regionWebs ex r0).res, AccCode i :=
+  RegionExp.accCode_copy a hc hw (regionExp_webs ex hr0)
+
+/-- **The code given to the renaming has the form `ImmCode`** at the webs of the export of a
+    call-free program of the shape `LoadsChainS`: the export has plain tags, so the renaming of
+    its array positions writes no zeroing and no constant-index store. -/
+theorem websCopy_immCode (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (hc : p.callFree = true) (hL : LoadsChainS p)
+    {r0 : Exported} (hr0 : exportR Γ.length a.fname p Γ.length 0 = some r0) (ex : List String) :
+    ∀ i ∈ (regionWebs ex r0).code ++ regionLprogCopy a none ts (regionWebs ex r0).code
+      (regionWebs ex r0).res, ImmCode i := by
+  obtain ⟨⟨_, hE⟩, -⟩ := loadsChainS_export_class (fn := a.fname) hL le_rfl hr0
+  have hplain : ∀ i ∈ r0.code, PlainTag i := fun i hi => by
+    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.mp hi
+    exact (hE k i hk).1
+  have hImm0 : ∀ i ∈ r0.code, ImmCode i := fun i hi =>
+    RegionPhysImgArg.exportR_immCode_copy a _ hc hr0 i (List.mem_append_left _ hi)
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi
+  · exact (forall_mem_regionWebs (P := fun i => ImmCode i ∧ PlainTag i)
+      (fun ρ i hi => ⟨immCode_of_noArrImm (noArrImm_renArr_plain ρ hi.1 hi.2),
+        by rw [PlainTag, renArr_snd]; exact hi.2⟩)
+      ex r0 _ _ (fun i hi => ⟨hImm0 i hi, hplain i hi⟩) i hi).1
+  · exact immCode_of_noArrImm (noArrImm_regionLprogCopy _ _ _ _ i hi)
+
+/-- **The code given to the renaming has untagged mnemonics** at the webs of the export of a
+    call-free program. -/
+theorem websCopy_untagP (a : AbiNames) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p : NFProg jasminDialect Γ ts} (hc : p.callFree = true)
+    {r0 : Exported} (hr0 : exportR Γ.length a.fname p Γ.length 0 = some r0) (ex : List String) :
+    ∀ i ∈ (regionWebs ex r0).code ++ regionLprogCopy a none ts (regionWebs ex r0).code
+      (regionWebs ex r0).res, UntagP i.1 := by
+  intro i hi
+  rcases List.mem_append.mp hi with hi | hi
+  · exact forall_mem_regionWebs (P := fun i => UntagP i.1) (fun ρ i hi => untagP_renArr ρ hi)
+      ex r0 _ _ (exportR_untagP _ _ _ hc _ _ r0 hr0) i hi
+  · exact untagP_regionLprogCopy _ _ _ _ i hi
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String}
 
@@ -843,38 +892,12 @@ theorem allocInputAcc_of_fieldDomB' (h : fieldDomB' e σ = true) : AllocInputAcc
       ((nfCtx (fieldAbi k n)).map NarrowWords.wideTy) := by
     rw [List.length_map]
     exact arrNamed_map_wideTy (arrNamed_nfCtx hσ)
-  have hX : RegionExp fname (legalizeRegion q') (regionWebsEx (fieldAbi k n) exportReg)
-      (regionWebs (regionWebsEx (fieldAbi k n) exportReg) r0) := regionExp_webs _ hr0
   rw [regionWebsAt_none]
   set ex := regionWebsEx (fieldAbi k n) exportReg
   set a := nfAbiNames fname (fieldAbi k n)
-  have hC := RegionExp.accCode_copy (a := a) (ts := [NarrowWords.wideTy (.stackArr 64 n)]) hcf
-    hw hX
-  have hAcc := RegionPhysImgArg.exportR_accCode _ _ _ hcf hw _ _ r0 hr0
-  obtain ⟨⟨x, hE⟩, -⟩ := loadsChainS_export_class (fn := fname) hL le_rfl hr0
-  have hplain : ∀ i ∈ r0.code, PlainTag i := fun i hi => by
-    obtain ⟨k, hk⟩ := List.mem_iff_getElem?.mp hi
-    exact (hE k i hk).1
-  have hImm0 : ∀ i ∈ r0.code, ImmCode i := fun i hi =>
-    RegionPhysImgArg.exportR_immCode_copy a _ hcf hr0 i (List.mem_append_left _ hi)
-  have hI : ∀ i ∈ (regionWebs ex r0).code ++ regionLprogCopy a none
-      [NarrowWords.wideTy (.stackArr 64 n)] (regionWebs ex r0).code (regionWebs ex r0).res,
-      ImmCode i := by
-    intro i hi
-    rcases List.mem_append.mp hi with hi | hi
-    · refine (forall_mem_regionWebs (P := fun i => ImmCode i ∧ PlainTag i)
-        (fun ρ i hi => ⟨immCode_of_noArrImm (noArrImm_renArr_plain ρ hi.1 hi.2),
-          by rw [PlainTag, renArr_snd]; exact hi.2⟩)
-        ex r0 _ _ (fun i hi => ⟨hImm0 i hi, hplain i hi⟩) i hi).1
-    · exact immCode_of_noArrImm (noArrImm_regionLprogCopy _ _ _ _ i hi)
-  have hU : ∀ i ∈ (regionWebs ex r0).code ++ regionLprogCopy a none
-      [NarrowWords.wideTy (.stackArr 64 n)] (regionWebs ex r0).code (regionWebs ex r0).res,
-      UntagP i.1 := by
-    intro i hi
-    rcases List.mem_append.mp hi with hi | hi
-    · exact forall_mem_regionWebs (P := fun i => UntagP i.1) (fun ρ i hi => untagP_renArr ρ hi)
-        ex r0 _ _ (exportR_untagP _ _ _ hcf _ _ r0 hr0) i hi
-    · exact untagP_regionLprogCopy _ _ _ _ i hi
+  have hC := websCopy_accCode a (ts := [NarrowWords.wideTy (.stackArr 64 n)]) hcf hw hr0 ex
+  have hI := websCopy_immCode a (ts := [NarrowWords.wideTy (.stackArr 64 n)]) hcf hL hr0 ex
+  have hU := websCopy_untagP a (ts := [NarrowWords.wideTy (.stackArr 64 n)]) hcf hr0 ex
   have hN : ∀ i ∈ (regionWebs ex r0).code, NoCArr i.1 :=
     forall_mem_regionWebs (P := fun i => NoCArr i.1) (fun ρ i hi => noCArr_renArr ρ hi)
       ex r0 _ _ (exportR_noCArr _ _ _ hcf _ _ r0 hr0)

@@ -431,6 +431,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG19
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsK
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsKPasses
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPhysImg
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldKinds

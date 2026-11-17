@@ -1328,6 +1328,7 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomInputAcc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLetsOnly,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsK,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPhysImg,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsKPasses,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFoldPosBack,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomMerge,
