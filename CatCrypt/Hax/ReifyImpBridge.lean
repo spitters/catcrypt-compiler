@@ -266,7 +266,8 @@ theorem evalImp_of_denote' (hbi : bi.DeepNoControlFlow) {e : ImpExpr} (h : Reify
 /-- **The ascent judgment gives the `evalImp` run.** A `FnCorres` statement of a fragment
     literal `e` from entry environments carrying no control-flow value, under builtins that
     produce none from arguments carrying none, gives, from some fuel on, the `evalImp` run of
-    `forToLoop e` returning `enc (f a)`. This is the form `haxReadAgrees_sound` rewrites. -/
+    `forToLoop e` returning `enc (f a)`. This is the run `haxReadAgrees_sound` relates to
+    the run of the reading. -/
 theorem fnCorres_evalImp {A β : Type} [HaxEnc β] (hbi : bi.DeepNoControlFlow) {e : ImpExpr}
     (h : ReifyFrag e) {entry : A → Env} {G : A → Prop} {f : A → β}
     (hentry : ∀ a, G a → (entry a).NoControlFlow) (hc : FnCorres bi e entry G f)

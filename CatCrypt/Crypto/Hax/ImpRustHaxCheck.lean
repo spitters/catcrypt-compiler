@@ -73,9 +73,21 @@ the returned form of a sequence whose tail is a loop or a call rather than
 tail expression of a block as that variable, which `normHaxRead`, `seqNF` and
 `impEq` carry unchanged.
 
-`haxReadAgrees e x` is `impEq (seqNF (normHaxRead x)) (seqNF e)`, with `impEq` a
-structural equality on the printed fragment (`impEq_sound`).
-`haxReadAgrees_sound` then states that `x` runs as `e` does.
+`haxReadEq e x` is `impEq (seqNF (normHaxRead x)) (seqNF e)`, with `impEq` a
+structural equality on the printed fragment (`impEq_sound`); `haxReadEq_sound`
+states that `x` runs as `e` does.
+
+## Renamed block locals
+
+The typed reader renames the `let`-bound locals of a block used as a statement
+apart with the suffix `_blkN`.  `impEqA σ a b` compares the two sides up to a
+correspondence `σ` of the printed locals with the reading's locals, updated at
+each binding along the evaluation order (`bindLocal`, `keepLocals`).
+`haxReadAgrees e x` holds when `haxReadEq e x` does or `impEqA` relates the two
+sides from the identity correspondence.  `haxReadAgrees_sound` states that the
+two runs reach the same value, with final environments related by the
+correspondence `haxReadLocals e x` (`RunRel`), which is the identity when
+`haxReadEq e x` holds.
 
 ## Main definitions
 
@@ -83,7 +95,10 @@ structural equality on the printed fragment (`impEq_sound`).
 * `normArg`, `normRhs`, `normHaxRead` — the normaliser.
 * `appendSeq`, `seqNF` — the sequence normal form.
 * `retOfUnit`, `TailUnit`, `retTail` — the tail of a statement sequence.
-* `impEq`, `haxReadAgrees` — the check.
+* `impEq`, `haxReadEq` — the structural check.
+* `LocalMap`, `bindLocal`, `keepLocals`, `bindLog`, `impEqA` — the comparison up to
+  a renaming of locals.
+* `haxReadAgrees`, `haxReadLocals`, `RunRel` — the check.
 
 ## Main results
 
@@ -94,8 +109,10 @@ structural equality on the printed fragment (`impEq_sound`).
 * `denote_retOfUnit`, `evalImp_retOfUnit`, `evalImp_retTail` — the returned
   form yields the value of the returned local.
 * `impEq_sound` — the equality is sound.
-* `haxReadAgrees_sound`, `haxReadAgrees_parse`, `haxReadAgrees_parseFnRet` —
-  soundness of the check.
+* `impEqA_frame`, `denote_impEqA`, `evalImp_impEqA` — the comparison up to a
+  renaming of locals is a simulation.
+* `haxReadEq_sound`, `haxReadAgrees_sound`, `haxReadAgrees_run`,
+  `haxReadAgrees_parse`, `haxReadAgrees_parseFnRet` — soundness of the checks.
 -/
 
 @[expose] public section
@@ -112,7 +129,9 @@ open _root_.Hax (ImpExpr ImpLit ImpPat Value Env Outcome Builtins denote denoteA
 /-- The operator names of the frontend's reading, each with the scalar call the
     printer prints as that operator. -/
 def haxOpPairs : List (String × String) :=
-  [("Add", "scalar#Add"), ("Mul", "scalar#Mul"), ("BitAnd#64", "scalar#BitAnd"),
+  [("Add", "scalar#Add"), ("Mul", "scalar#Mul"), ("Add#64", "scalar#Add"),
+   ("Add#size", "scalar#Add"), ("Mul#64", "scalar#Mul"), ("Mul#size", "scalar#Mul"),
+   ("BitAnd#64", "scalar#BitAnd"),
    ("BitAnd#size", "scalar#BitAnd"), ("BitXor#64", "scalar#BitXor"),
    ("BitXor#size", "scalar#BitXor"), ("Shr#64", "scalar#Shr"), ("Shr#size", "scalar#Shr"),
    ("Shl#64", "scalar#Shl"), ("Shl#size", "scalar#Shl"), ("Lt", "scalar#Lt"), ("Gt", "scalar#Gt"),
@@ -926,43 +945,684 @@ theorem impEq_sound (a : ImpExpr) : ∀ b, impEq a b = true → a = b := by
     rw [impEqList_sound es ih _ h]
   | _ => intro b h; cases b <;> simp [impEq] at h
 
-/-- **The check.**  The frontend's reading `extracted` of the printed text of
+/-- The structural check.  The frontend's reading `extracted` of the printed text of
     `printed`, normalised, has the sequence normal form of `printed`. -/
-def haxReadAgrees (printed extracted : ImpExpr) : Bool :=
+def haxReadEq (printed extracted : ImpExpr) : Bool :=
   impEq (seqNF (normHaxRead extracted)) (seqNF printed)
 
-/-- **Soundness of the check.**  A frontend reading that passes the check runs,
-    under the source semantics, as the printed expression does. -/
-theorem haxReadAgrees_sound (bi : Builtins) (h : HaxOpsAgree bi) (e x : ImpExpr)
-    (hc : haxReadAgrees e x = true) (fuel : Nat) (env : Env) :
+/-- **Soundness of the structural check.**  A frontend reading that passes
+    `haxReadEq` runs, under the source semantics, as the printed expression does. -/
+theorem haxReadEq_sound (bi : Builtins) (h : HaxOpsAgree bi) (e x : ImpExpr)
+    (hc : haxReadEq e x = true) (fuel : Nat) (env : Env) :
     evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env := by
   rw [← evalImp_normHaxRead bi h x fuel env, ← evalImp_seqNF bi (normHaxRead x) fuel env,
     impEq_sound _ _ hc, evalImp_seqNF bi e fuel env]
 
+/-! ## §5  The comparison up to a renaming of locals
+
+The typed reader renames the `let`-bound locals of a Rust block used as a statement
+apart, with the suffix `_blk` and the position of the block (`renameBlockLocals` of
+hax-lean's `HaxAdapter`), because the parse places the statements after the block in
+the scope of the block's last binding.  The printed text binds `m1` where the reading
+binds `m1_blk82`, and two blocks of one function may both bind `m1`.
+
+`impEqA σ a b` compares a reading `a` with a printed expression `b` structurally, with
+a correspondence `σ` of the printed locals with the reading's locals in place of
+equality of names, and updates `σ` along the evaluation order: a binding of the
+printed `m` against the reading's `y` makes `m` correspond to `y` (`bindLocal`).  A
+conditional and a counted loop keep only the correspondences that their bindings do
+not change (`keepLocals`).  `denote_impEqA` states that the two runs reach the same
+value, with environments related by the final correspondence (`LocalRel`). -/
+
+/-- A correspondence of the locals of the printed expression with the locals of the
+    reading: `σ m = some y` when the printed local `m` holds the value of the
+    reading's local `y`, and `σ m = none` when `m` is not tracked. -/
+abbrev LocalMap := String → Option String
+
+/-- The identity correspondence. -/
+def idLocals : LocalMap := fun m => some m
+
+/-- The correspondence after the printed local `m` and the reading's local `y` are
+    bound to one value: `m` corresponds to `y`, and a printed local that
+    corresponded to `y` is untracked. -/
+def bindLocal (σ : LocalMap) (m y : String) : LocalMap := fun k =>
+  if k = m then some y
+  else
+    match σ k with
+    | some z => if z = y then none else some z
+    | none => none
+
+/-- No pair `(m', y')` of `log` binds the printed local `m` or the reading's local
+    `z` except as the pair `(m, z)`. -/
+def stableB (log : List (String × String)) (m z : String) : Bool :=
+  log.all fun p => decide (p.1 = m) == decide (p.2 = z)
+
+/-- `σ` with each printed local whose correspondence `log` may change untracked. -/
+def keepLocals (σ : LocalMap) (log : List (String × String)) : LocalMap := fun k =>
+  match σ k with
+  | some z => if stableB log k z then some z else none
+  | none => none
+
+/-- The bounds of a counted loop whose bounds are integer literals. -/
+def litBounds : ImpExpr → ImpExpr → Option (Int × Int)
+  | .lit (.int l), .lit (.int h) => some (l, h)
+  | _, _ => none
+
+mutual
+
+/-- The bindings `(printed local, reading's local)` that `impEqA` meets on a pair of
+    expressions, in evaluation order. -/
+def bindLog : ImpExpr → ImpExpr → List (String × String)
+  | .letBind y v b, .letBind m w c => bindLog v w ++ (m, y) :: bindLog b c
+  | .app _ as, .app _ bs => bindLogList as bs
+  | .ifThenElse c t e, .ifThenElse c' t' e' =>
+      bindLog c c' ++ (bindLog t t' ++ bindLog e e')
+  | .seq a b, .seq c d => bindLog a c ++ bindLog b d
+  | .assign y v, .assign m w => bindLog v w ++ [(m, y)]
+  | .forFold y _ _ b, .forFold m _ _ c => (m, y) :: bindLog b c
+  | _, _ => []
+
+/-- `bindLog` on lists. -/
+def bindLogList : List ImpExpr → List ImpExpr → List (String × String)
+  | a :: as, b :: bs => bindLog a b ++ bindLogList as bs
+  | _, _ => []
+
+end
+
+mutual
+
+/-- Structural equality of a reading `a` with a printed expression `b` up to the
+    correspondence of locals `σ`, on literals, variables, bindings, calls,
+    conditionals, sequences, assignments and counted loops with literal bounds:
+    the correspondence after `b`, or `none`. -/
+def impEqA (σ : LocalMap) : ImpExpr → ImpExpr → Option LocalMap
+  | .lit l, .lit l' => if litEq l l' then some σ else none
+  | .var y, .var m => if σ m = some y then some σ else none
+  | .letBind y v b, .letBind m w c =>
+      (impEqA σ v w).bind fun σ1 => impEqA (bindLocal σ1 m y) b c
+  | .app f as, .app g bs => if f = g then impEqAList σ as bs else none
+  | .ifThenElse c t e, .ifThenElse c' t' e' =>
+      (impEqA σ c c').bind fun σc =>
+        (impEqA σc t t').bind fun _ => (impEqA σc e e').bind fun _ =>
+          some (keepLocals σc (bindLog t t' ++ bindLog e e'))
+  | .unitVal, .unitVal => some σ
+  | .seq a b, .seq c d => (impEqA σ a c).bind fun σ1 => impEqA σ1 b d
+  | .assign y v, .assign m w => (impEqA σ v w).map fun σ1 => bindLocal σ1 m y
+  | .forFold y lo hi b, .forFold m lo' hi' c =>
+      if (litBounds lo hi).isSome && decide (litBounds lo hi = litBounds lo' hi') then
+        (impEqA (bindLocal (keepLocals σ ((m, y) :: bindLog b c)) m y) b c).map
+          fun _ => keepLocals σ ((m, y) :: bindLog b c)
+      else none
+  | _, _ => none
+
+/-- `impEqA` on lists, threading the correspondence. -/
+def impEqAList (σ : LocalMap) : List ImpExpr → List ImpExpr → Option LocalMap
+  | [], [] => some σ
+  | a :: as, b :: bs => (impEqA σ a b).bind fun σ1 => impEqAList σ1 as bs
+  | _, _ => none
+
+end
+
+theorem stableB_append (l₁ l₂ : List (String × String)) (m z : String) :
+    stableB (l₁ ++ l₂) m z = (stableB l₁ m z && stableB l₂ m z) := by
+  simp [stableB, List.all_append]
+
+/-- The unfolding of `stableB` on a cons cell. -/
+theorem stableB_cons (p : String × String) (l : List (String × String)) (m z : String) :
+    stableB (p :: l) m z = ((decide (p.1 = m) == decide (p.2 = z)) && stableB l m z) := rfl
+
+theorem bindLocal_stable (σ : LocalMap) (m y k z : String) (hk : σ k = some z)
+    (hs : (decide (m = k) == decide (y = z)) = true) : bindLocal σ m y k = some z := by
+  unfold bindLocal
+  grind
+
+theorem keepLocals_stable (σ : LocalMap) (log : List (String × String)) (k z : String)
+    (hk : σ k = some z) (hs : stableB log k z = true) : keepLocals σ log k = some z := by
+  simp [keepLocals, hk, hs]
+
+theorem keepLocals_sub {σ : LocalMap} {log : List (String × String)} {k z : String}
+    (h : keepLocals σ log k = some z) : σ k = some z ∧ stableB log k z = true := by
+  unfold keepLocals at h
+  grind
+
+theorem litBounds_eq_some {lo hi : ImpExpr} {l h : Int} (hb : litBounds lo hi = some (l, h)) :
+    lo = .lit (.int l) ∧ hi = .lit (.int h) := by
+  unfold litBounds at hb
+  split at hb <;> grind
+
+/-- **The frame of the comparison.**  A printed local whose correspondence the
+    bindings of the comparison do not change keeps it. -/
+theorem impEqA_frame (a : ImpExpr) : ∀ (b : ImpExpr) (σ τ : LocalMap),
+    impEqA σ a b = some τ → ∀ k z, σ k = some z → stableB (bindLog a b) k z = true →
+      τ k = some z := by
+  induction a using ImpExpr.ind with
+  | lit l =>
+    intro b σ τ h k z hk _
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    split at h
+    · cases h; exact hk
+    · cases h
+  | var y =>
+    intro b σ τ h k z hk _
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    split at h
+    · cases h; exact hk
+    · cases h
+  | letBind y v body ihv ihb =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff] at h
+    rename_i m w c
+    obtain ⟨σ1, h1, h2⟩ := h
+    simp only [bindLog, stableB_append, stableB_cons, Bool.and_eq_true] at hs
+    exact ihb c _ τ h2 k z (bindLocal_stable σ1 m y k z (ihv w σ σ1 h1 k z hk hs.1) hs.2.1) hs.2.2
+  | app f args ih =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i g bs
+    split at h
+    · simp only [bindLog] at hs
+      induction args generalizing bs σ with
+      | nil =>
+        cases bs <;> simp only [impEqAList, reduceCtorEq, Option.some.injEq] at h
+        subst h; exact hk
+      | cons a as iha =>
+        cases bs <;> simp only [impEqAList, reduceCtorEq, Option.bind_eq_some_iff] at h
+        rename_i b bs
+        obtain ⟨σ1, h1, h2⟩ := h
+        simp only [bindLogList, stableB_append, Bool.and_eq_true] at hs
+        exact iha (fun a' ha' => ih a' (List.mem_cons_of_mem _ ha')) σ1
+          (ih a List.mem_cons_self b σ σ1 h1 k z hk hs.1) bs hs.2 h2
+    · cases h
+  | ifThenElse c t e ihc _ _ =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff,
+      Option.some.injEq] at h
+    rename_i c' t' e'
+    obtain ⟨σc, hc, _, _, _, _, rfl⟩ := h
+    simp only [bindLog, stableB_append, Bool.and_eq_true] at hs
+    exact keepLocals_stable σc _ k z (ihc c' σ σc hc k z hk hs.1)
+      (by simp only [stableB_append, Bool.and_eq_true]; exact hs.2)
+  | unitVal =>
+    intro b σ τ h k z hk _
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.some.injEq] at h
+    subst h; exact hk
+  | seq a1 a2 ih1 ih2 =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff] at h
+    rename_i c d
+    obtain ⟨σ1, h1, h2⟩ := h
+    simp only [bindLog, stableB_append, Bool.and_eq_true] at hs
+    exact ih2 d σ1 τ h2 k z (ih1 c σ σ1 h1 k z hk hs.1) hs.2
+  | assign y v ih =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.map_eq_some_iff] at h
+    rename_i m w
+    obtain ⟨σ1, h1, rfl⟩ := h
+    simp only [bindLog, stableB_append, stableB_cons, Bool.and_eq_true] at hs
+    exact bindLocal_stable σ1 m y k z (ih w σ σ1 h1 k z hk hs.1) hs.2.1
+  | forFold y lo hi body _ _ _ =>
+    intro b σ τ h k z hk hs
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i m lo' hi' c
+    split at h
+    · simp only [Option.map_eq_some_iff] at h
+      obtain ⟨_, _, rfl⟩ := h
+      simp only [bindLog] at hs
+      exact keepLocals_stable σ _ k z hk hs
+    · cases h
+  | _ => intro b σ τ h; cases b <;> simp [impEqA] at h
+
+/-- The printed local `k` holds, in the printed run's environment `ee`, the value
+    the reading's environment `ex` holds at the reading's local `σ k`. -/
+def LocalRel (σ : LocalMap) (ex ee : Env) : Prop := ∀ k z, σ k = some z → ee k = ex z
+
+/-- Two runs end in the same value with environments related by `σ`, or both in an
+    error. -/
+def SimOut (σ : LocalMap) (p q : Outcome × Env) : Prop :=
+  (∃ v, p.1 = .val v ∧ q.1 = .val v ∧ LocalRel σ p.2 q.2) ∨
+    (∃ s s', p.1 = .err s ∧ q.1 = .err s')
+
+/-- Two runs of argument lists end in the same values with environments related by
+    `σ`, or both in no values. -/
+def SimArgs (σ : LocalMap) (p q : Option (List Value) × Env) : Prop :=
+  (∃ vs, p.1 = some vs ∧ q.1 = some vs ∧ LocalRel σ p.2 q.2) ∨ (p.1 = none ∧ q.1 = none)
+
+/-- Two results of `evalImp` are both a value, with environments related by `σ`, or
+    both no result. -/
+def RunRel (σ : LocalMap) : Option (Value × Env) → Option (Value × Env) → Prop
+  | none, none => True
+  | some (v, ex), some (w, ee) => v = w ∧ LocalRel σ ex ee
+  | _, _ => False
+
+theorem localRel_idLocals (env : Env) : LocalRel idLocals env env := by
+  intro k z h
+  simp only [idLocals, Option.some.injEq] at h
+  rw [h]
+
+theorem localRel_idLocals_iff (ex ee : Env) : LocalRel idLocals ex ee ↔ ee = ex := by
+  constructor
+  · intro h; funext k; exact h k k rfl
+  · rintro rfl; exact localRel_idLocals _
+
+theorem runRel_idLocals (r : Option (Value × Env)) : RunRel idLocals r r := by
+  rcases r with _ | ⟨v, env⟩
+  · trivial
+  · exact ⟨rfl, localRel_idLocals env⟩
+
+theorem localRel_mono {σ σ' : LocalMap} {ex ee : Env} (h : LocalRel σ ex ee)
+    (hs : ∀ k z, σ' k = some z → σ k = some z) : LocalRel σ' ex ee :=
+  fun k z hk => h k z (hs k z hk)
+
+theorem localRel_bind {σ : LocalMap} {ex ee : Env} (h : LocalRel σ ex ee) (m y : String)
+    (v : Value) : LocalRel (bindLocal σ m y) (ex.extend y v) (ee.extend m v) := by
+  intro k z hk
+  unfold bindLocal at hk
+  grind only [Env.extend_other, LocalRel.eq_def, Option.some_inj, Env.extend_same]
+
+theorem simOut_mono {σ σ' : LocalMap} {p q : Outcome × Env} (h : SimOut σ p q)
+    (hs : ∀ k z, σ' k = some z → σ k = some z) : SimOut σ' p q := by
+  rcases h with ⟨v, h1, h2, hR⟩ | h
+  · exact Or.inl ⟨v, h1, h2, localRel_mono hR hs⟩
+  · exact Or.inr h
+
+/-- The run `p` continued by `k` when it ends in a value. -/
+def thenRun (p : Outcome × Env) (k : Value → Env → Outcome × Env) : Outcome × Env :=
+  match p with
+  | (.val v, e) => k v e
+  | (o, e) => (o, e)
+
+/-- The run `p` continued by `k` when it ends in a value, with no values otherwise. -/
+def argsRun (p : Outcome × Env) (k : Value → Env → Option (List Value) × Env) :
+    Option (List Value) × Env :=
+  match p with
+  | (.val v, e) => k v e
+  | (_, e) => (none, e)
+
+/-- The call of `f` on the values of an argument run. -/
+def appRun (bi : Builtins) (f : String) (p : Option (List Value) × Env) : Outcome × Env :=
+  match p with
+  | (some vals, e) =>
+    match bi f vals with
+    | some v => (.val v, e)
+    | none => (.err s!"unknown function or bad args: {f}", e)
+  | (none, e) => (.err "non-value in function arguments", e)
+
+theorem simOut_thenRun {σ τ : LocalMap} {p q : Outcome × Env}
+    {k k' : Value → Env → Outcome × Env} (h : SimOut σ p q)
+    (hk : ∀ v ex ee, LocalRel σ ex ee → SimOut τ (k v ex) (k' v ee)) :
+    SimOut τ (thenRun p k) (thenRun q k') := by
+  obtain ⟨o, e⟩ := p
+  obtain ⟨o', e'⟩ := q
+  rcases h with ⟨v, h1, h2, hR⟩ | ⟨s, s', h1, h2⟩
+  · simp only at h1 h2 hR
+    subst h1 h2
+    exact hk v e e' hR
+  · simp only at h1 h2
+    subst h1 h2
+    exact Or.inr ⟨s, s', rfl, rfl⟩
+
+theorem simArgs_argsRun {σ τ : LocalMap} {p q : Outcome × Env}
+    {k k' : Value → Env → Option (List Value) × Env} (h : SimOut σ p q)
+    (hk : ∀ v ex ee, LocalRel σ ex ee → SimArgs τ (k v ex) (k' v ee)) :
+    SimArgs τ (argsRun p k) (argsRun q k') := by
+  obtain ⟨o, e⟩ := p
+  obtain ⟨o', e'⟩ := q
+  rcases h with ⟨v, h1, h2, hR⟩ | ⟨s, s', h1, h2⟩
+  · simp only at h1 h2 hR
+    subst h1 h2
+    exact hk v e e' hR
+  · simp only at h1 h2
+    subst h1 h2
+    exact Or.inr ⟨rfl, rfl⟩
+
+theorem simArgs_cons {τ : LocalMap} {p q : Option (List Value) × Env} (v : Value)
+    (h : SimArgs τ p q) : SimArgs τ (p.1.map (v :: ·), p.2) (q.1.map (v :: ·), q.2) := by
+  rcases h with ⟨vs, h1, h2, hR⟩ | ⟨h1, h2⟩
+  · exact Or.inl ⟨v :: vs, by simp [h1], by simp [h2], hR⟩
+  · exact Or.inr ⟨by simp [h1], by simp [h2]⟩
+
+theorem simOut_appRun (bi : Builtins) (f : String) {τ : LocalMap}
+    {p q : Option (List Value) × Env} (h : SimArgs τ p q) :
+    SimOut τ (appRun bi f p) (appRun bi f q) := by
+  obtain ⟨o, e⟩ := p
+  obtain ⟨o', e'⟩ := q
+  rcases h with ⟨vs, h1, h2, hR⟩ | ⟨h1, h2⟩
+  · simp only at h1 h2 hR
+    subst h1 h2
+    simp only [appRun]
+    cases bi f vs
+    · exact Or.inr ⟨_, _, rfl, rfl⟩
+    · exact Or.inl ⟨_, rfl, rfl, hR⟩
+  · simp only at h1 h2
+    subst h1 h2
+    exact Or.inr ⟨_, _, rfl, rfl⟩
+
+section Simulation
+
+variable (bi : Builtins)
+
+theorem denoteArgs_nil_run (fuel : Nat) (env : Env) :
+    (denoteArgs bi fuel []).run env = (some [], env) := by
+  unfold denoteArgs
+  rfl
+
+theorem denoteArgs_cons_argsRun (fuel : Nat) (e : ImpExpr) (es : List ImpExpr) (env : Env) :
+    (denoteArgs bi fuel (e :: es)).run env =
+      argsRun ((denote bi fuel e).run env) fun v ea =>
+        (((denoteArgs bi fuel es).run ea).1.map (v :: ·), ((denoteArgs bi fuel es).run ea).2) := by
+  rw [denoteArgs_cons_run_eq]
+  rcases (denote bi fuel e).run env with ⟨o, ea⟩
+  cases o <;> rfl
+
+theorem denote_app_appRun (fuel : Nat) (f : String) (args : List ImpExpr) (env : Env) :
+    (denote bi fuel (.app f args)).run env = appRun bi f ((denoteArgs bi fuel args).run env) := by
+  rw [denote_app_run_eq]
+  rcases (denoteArgs bi fuel args).run env with ⟨mv, ea⟩
+  cases mv <;> rfl
+
+theorem denote_letBind_thenRun (fuel : Nat) (n : String) (v b : ImpExpr) (env : Env) :
+    (denote bi fuel (.letBind n v b)).run env =
+      thenRun ((denote bi fuel v).run env) fun w e => (denote bi fuel b).run (e.extend n w) := by
+  rw [denote_letBind_run_eq]
+  rcases (denote bi fuel v).run env with ⟨o, e⟩
+  cases o <;> rfl
+
+theorem denote_seq_thenRun (fuel : Nat) (a b : ImpExpr) (env : Env) :
+    (denote bi fuel (.seq a b)).run env =
+      thenRun ((denote bi fuel a).run env) fun _ e => (denote bi fuel b).run e := by
+  rw [denote_seq_run_eq]
+  rcases (denote bi fuel a).run env with ⟨o, e⟩
+  cases o <;> rfl
+
+theorem denote_assign_thenRun (fuel : Nat) (n : String) (v : ImpExpr) (env : Env) :
+    (denote bi fuel (.assign n v)).run env =
+      thenRun ((denote bi fuel v).run env) fun w e => (.val .unit, e.extend n w) := by
+  rw [denote_assign_run_eq]
+  rcases (denote bi fuel v).run env with ⟨o, e⟩
+  cases o <;> rfl
+
+theorem denote_ifThenElse_thenRun (fuel : Nat) (c t f : ImpExpr) (env : Env) :
+    (denote bi fuel (.ifThenElse c t f)).run env =
+      thenRun ((denote bi fuel c).run env) fun w e =>
+        match w with
+        | .bool true => (denote bi fuel t).run e
+        | .bool false => (denote bi fuel f).run e
+        | _ => (.err "if condition not a bool", e) := by
+  rw [denote_ifThenElse_run_eq]
+  rcases (denote bi fuel c).run env with ⟨o, e⟩
+  cases o with
+  | val w =>
+    cases w with
+    | bool bv => cases bv <;> rfl
+    | _ => rfl
+  | _ => rfl
+
+/-- A counted loop whose bodies agree up to a correspondence that each trip keeps. -/
+theorem denoteForLoop_impEqA (σ : LocalMap) (y m : String) (b c : ImpExpr)
+    (hb : ∀ fuel ex ee, LocalRel (bindLocal σ m y) ex ee →
+      SimOut σ ((denote bi fuel b).run ex) ((denote bi fuel c).run ee)) :
+    ∀ fuel lo hi ex ee, LocalRel σ ex ee →
+      SimOut σ ((denoteForLoop bi fuel y lo hi b).run ex)
+        ((denoteForLoop bi fuel m lo hi c).run ee) := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro lo hi ex ee hR
+    by_cases hl : hi ≤ lo
+    · rw [denoteForLoop_ge_run (h := hl), denoteForLoop_ge_run (h := hl)]
+      exact Or.inl ⟨_, rfl, rfl, hR⟩
+    · rw [denoteForLoop_zero_run (h := by omega), denoteForLoop_zero_run (h := by omega)]
+      exact Or.inr ⟨_, _, rfl, rfl⟩
+  | succ n ih =>
+    intro lo hi ex ee hR
+    by_cases hl : hi ≤ lo
+    · rw [denoteForLoop_ge_run (h := hl), denoteForLoop_ge_run (h := hl)]
+      exact Or.inl ⟨_, rfl, rfl, hR⟩
+    · rw [denoteForLoop_succ_run (h := by omega), denoteForLoop_succ_run (h := by omega)]
+      have hS := hb (n + 1) _ _ (localRel_bind hR m y (.int lo))
+      revert hS
+      generalize (denote bi (n + 1) b).run (ex.extend y (.int lo)) = p
+      generalize (denote bi (n + 1) c).run (ee.extend m (.int lo)) = q
+      obtain ⟨o, e1⟩ := p
+      obtain ⟨o', e2⟩ := q
+      rintro (⟨v, h1, h2, hR1⟩ | ⟨s, s', h1, h2⟩)
+      · simp only at h1 h2 hR1
+        subst h1 h2
+        exact ih (lo + 1) hi e1 e2 hR1
+      · simp only at h1 h2
+        subst h1 h2
+        exact Or.inr ⟨_, _, rfl, rfl⟩
+
+/-- **The comparison is a simulation.**  A reading and a printed expression that
+    `impEqA` relates from `σ` to `τ` run, from environments related by `σ`, to the
+    same value with environments related by `τ`, or both to an error. -/
+theorem denote_impEqA (a : ImpExpr) : ∀ (b : ImpExpr) (σ τ : LocalMap),
+    impEqA σ a b = some τ → ∀ fuel ex ee, LocalRel σ ex ee →
+      SimOut τ ((denote bi fuel (forToLoop a)).run ex)
+        ((denote bi fuel (forToLoop b)).run ee) := by
+  induction a using ImpExpr.ind with
+  | lit l =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i l'
+    split at h
+    · rename_i hl
+      cases h
+      rw [litEq_sound _ _ hl]
+      simp only [forToLoop, denote_lit_eq]
+      exact Or.inl ⟨_, rfl, rfl, hR⟩
+    · cases h
+  | var y =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i m
+    split at h
+    · rename_i hm
+      cases h
+      simp only [forToLoop, denote_var_run_eq]
+      rw [hR m y hm]
+      cases ex y
+      · exact Or.inr ⟨_, _, rfl, rfl⟩
+      · exact Or.inl ⟨_, rfl, rfl, hR⟩
+    · cases h
+  | letBind y v body ihv ihb =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff] at h
+    rename_i m w c
+    obtain ⟨σ1, h1, h2⟩ := h
+    simp only [forToLoop]
+    rw [denote_letBind_thenRun, denote_letBind_thenRun]
+    exact simOut_thenRun (ihv w σ σ1 h1 fuel ex ee hR) fun u ex1 ee1 hR1 =>
+      ihb c _ τ h2 fuel _ _ (localRel_bind hR1 m y u)
+  | app f args ih =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i g bs
+    split at h
+    · rename_i hfg
+      subst hfg
+      simp only [forToLoop]
+      rw [denote_app_appRun, denote_app_appRun]
+      refine simOut_appRun bi f ?_
+      induction args generalizing bs σ ex ee with
+      | nil =>
+        cases bs <;> simp only [impEqAList, reduceCtorEq, Option.some.injEq] at h
+        subst h
+        simp only [forToLoopArgs, denoteArgs_nil_run]
+        exact Or.inl ⟨[], rfl, rfl, hR⟩
+      | cons a as iha =>
+        cases bs <;> simp only [impEqAList, reduceCtorEq, Option.bind_eq_some_iff] at h
+        rename_i b bs
+        obtain ⟨σ1, h1, h2⟩ := h
+        simp only [forToLoopArgs]
+        rw [denoteArgs_cons_argsRun, denoteArgs_cons_argsRun]
+        exact simArgs_argsRun (ih a List.mem_cons_self b σ σ1 h1 fuel ex ee hR)
+          fun u ex1 ee1 hR1 => simArgs_cons u
+            (iha (fun a' ha' => ih a' (List.mem_cons_of_mem _ ha')) σ1 ex1 ee1 hR1 bs h2)
+    · cases h
+  | ifThenElse c t e ihc iht ihe =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff,
+      Option.some.injEq] at h
+    rename_i c' t' e'
+    obtain ⟨σc, hc, τ1, ht, τ2, he, rfl⟩ := h
+    simp only [forToLoop]
+    rw [denote_ifThenElse_thenRun, denote_ifThenElse_thenRun]
+    refine simOut_thenRun (ihc c' σ σc hc fuel ex ee hR) fun u ex1 ee1 hR1 => ?_
+    cases u with
+    | bool bv =>
+      cases bv
+      · refine simOut_mono (ihe e' σc τ2 he fuel ex1 ee1 hR1) fun k z hk => ?_
+        obtain ⟨hσ, hs⟩ := keepLocals_sub hk
+        simp only [stableB_append, Bool.and_eq_true] at hs
+        exact impEqA_frame _ _ _ _ he k z hσ hs.2
+      · refine simOut_mono (iht t' σc τ1 ht fuel ex1 ee1 hR1) fun k z hk => ?_
+        obtain ⟨hσ, hs⟩ := keepLocals_sub hk
+        simp only [stableB_append, Bool.and_eq_true] at hs
+        exact impEqA_frame _ _ _ _ ht k z hσ hs.1
+    | _ => exact Or.inr ⟨_, _, rfl, rfl⟩
+  | unitVal =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.some.injEq] at h
+    subst h
+    simp only [forToLoop, denote_unitVal_eq]
+    exact Or.inl ⟨_, rfl, rfl, hR⟩
+  | seq a1 a2 ih1 ih2 =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.bind_eq_some_iff] at h
+    rename_i c d
+    obtain ⟨σ1, h1, h2⟩ := h
+    simp only [forToLoop]
+    rw [denote_seq_thenRun, denote_seq_thenRun]
+    exact simOut_thenRun (ih1 c σ σ1 h1 fuel ex ee hR) fun _ ex1 ee1 hR1 =>
+      ih2 d σ1 τ h2 fuel ex1 ee1 hR1
+  | assign y v ih =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq, Option.map_eq_some_iff] at h
+    rename_i m w
+    obtain ⟨σ1, h1, rfl⟩ := h
+    simp only [forToLoop]
+    rw [denote_assign_thenRun, denote_assign_thenRun]
+    exact simOut_thenRun (ih w σ σ1 h1 fuel ex ee hR) fun u ex1 ee1 hR1 =>
+      Or.inl ⟨_, rfl, rfl, localRel_bind hR1 m y u⟩
+  | forFold y lo hi body _ _ ihb =>
+    intro b σ τ h fuel ex ee hR
+    cases b <;> simp only [impEqA, reduceCtorEq] at h
+    rename_i m lo' hi' c
+    split at h
+    · rename_i hb
+      simp only [Bool.and_eq_true, decide_eq_true_eq, Option.isSome_iff_exists] at hb
+      obtain ⟨⟨⟨l, hh⟩, hlb⟩, heq⟩ := hb
+      have hlb' := heq ▸ hlb
+      obtain ⟨rfl, rfl⟩ := litBounds_eq_some hlb
+      obtain ⟨rfl, rfl⟩ := litBounds_eq_some hlb'
+      simp only [Option.map_eq_some_iff] at h
+      obtain ⟨τb, hbody, rfl⟩ := h
+      simp only [forToLoop, denote_forLoop_lit_run]
+      refine denoteForLoop_impEqA bi _ y m _ _ (fun fuel ex ee hR' =>
+        simOut_mono (ihb c _ τb hbody fuel ex ee hR') fun k z hk => ?_) fuel l hh ex ee
+        (localRel_mono hR fun k z hk => (keepLocals_sub hk).1)
+      have hs := (keepLocals_sub hk).2
+      simp only [stableB_cons, Bool.and_eq_true] at hs
+      exact impEqA_frame _ _ _ _ hbody k z (bindLocal_stable _ m y k z hk hs.1) hs.2
+    · cases h
+  | _ => intro b σ τ h; cases b <;> simp [impEqA] at h
+
+/-- `impEqA` relates the successful runs `evalImp`. -/
+theorem evalImp_impEqA (a b : ImpExpr) (σ τ : LocalMap) (h : impEqA σ a b = some τ)
+    (fuel : Nat) (ex ee : Env) (hR : LocalRel σ ex ee) :
+    RunRel τ (evalImp bi fuel (forToLoop a) ex) (evalImp bi fuel (forToLoop b) ee) := by
+  have hS := denote_impEqA bi a b σ τ h fuel ex ee hR
+  unfold evalImp
+  revert hS
+  generalize (denote bi fuel (forToLoop a)).run ex = p
+  generalize (denote bi fuel (forToLoop b)).run ee = q
+  obtain ⟨o, e1⟩ := p
+  obtain ⟨o', e2⟩ := q
+  rintro (⟨v, h1, h2, hR1⟩ | ⟨s, s', h1, h2⟩)
+  · simp only at h1 h2 hR1
+    subst h1 h2
+    exact ⟨rfl, hR1⟩
+  · simp only at h1 h2
+    subst h1 h2
+    trivial
+
+end Simulation
+
+/-- **The check.**  The frontend's reading `extracted` of the printed text of
+    `printed`, normalised, has the sequence normal form of `printed`, structurally
+    (`haxReadEq`) or up to a renaming of locals (`impEqA`). -/
+def haxReadAgrees (printed extracted : ImpExpr) : Bool :=
+  haxReadEq printed extracted ||
+    (impEqA idLocals (seqNF (normHaxRead extracted)) (seqNF printed)).isSome
+
+/-- The correspondence of the printed locals with the reading's locals that the check
+    establishes at the end of the run: the identity when `haxReadEq` holds. -/
+def haxReadLocals (printed extracted : ImpExpr) : LocalMap :=
+  if haxReadEq printed extracted then idLocals
+  else (impEqA idLocals (seqNF (normHaxRead extracted)) (seqNF printed)).getD idLocals
+
+/-- **Soundness of the check.**  A frontend reading that passes the check runs,
+    under the source semantics and from the same environment, to the value the
+    printed expression runs to, with the final environments related by
+    `haxReadLocals`, or both fail. -/
+theorem haxReadAgrees_sound (bi : Builtins) (h : HaxOpsAgree bi) (e x : ImpExpr)
+    (hc : haxReadAgrees e x = true) (fuel : Nat) (env : Env) :
+    RunRel (haxReadLocals e x) (evalImp bi fuel (forToLoop x) env)
+      (evalImp bi fuel (forToLoop e) env) := by
+  unfold haxReadLocals
+  split
+  · rename_i hq
+    rw [haxReadEq_sound bi h e x hq fuel env]
+    exact runRel_idLocals _
+  · rename_i hq
+    simp only [haxReadAgrees, hq, Bool.false_or, Option.isSome_iff_exists] at hc
+    obtain ⟨τ, hτ⟩ := hc
+    rw [hτ, Option.getD_some, ← evalImp_normHaxRead bi h x fuel env,
+      ← evalImp_seqNF bi (normHaxRead x) fuel env, ← evalImp_seqNF bi e fuel env]
+    exact evalImp_impEqA bi _ _ _ _ hτ fuel env env (localRel_idLocals env)
+
+/-- A run of a reading that passes the check to a value is a run of the printed
+    expression to that value, with the final environments related by
+    `haxReadLocals`. -/
+theorem haxReadAgrees_run (bi : Builtins) (h : HaxOpsAgree bi) (e x : ImpExpr)
+    (hc : haxReadAgrees e x = true) (fuel : Nat) (env ex : Env) (v : Value)
+    (hx : evalImp bi fuel (forToLoop x) env = some (v, ex)) :
+    ∃ ee, evalImp bi fuel (forToLoop e) env = some (v, ee) ∧
+      LocalRel (haxReadLocals e x) ex ee := by
+  have hS := haxReadAgrees_sound bi h e x hc fuel env
+  rw [hx] at hS
+  revert hS
+  rcases evalImp bi fuel (forToLoop e) env with _ | ⟨w, ee⟩
+  · exact False.elim
+  · rintro ⟨rfl, hR⟩
+    exact ⟨ee, rfl, hR⟩
+
 /-- The parser of `ImpRustPrint` reads a printed text back as the printed
-    expression, and a frontend reading of that text that passes the check has
-    the sequence normal form of that expression and runs as it does. -/
+    expression, and a frontend reading of that text that passes the check runs
+    as it does. -/
 theorem haxReadAgrees_parse (ty : String → Option ImpRust.Tok) (e x : ImpExpr) (t : String)
     (hp : ppImpRust ty e = some t) (hc : haxReadAgrees e x = true) :
-    parseImpRust t = some e ∧ seqNF (normHaxRead x) = seqNF e ∧
+    parseImpRust t = some e ∧
       ∀ bi, HaxOpsAgree bi → ∀ fuel env,
-        evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env :=
-  ⟨parse_ppImpRust ty e t hp, impEq_sound _ _ hc,
-    fun bi h fuel env => haxReadAgrees_sound bi h e x hc fuel env⟩
+        RunRel (haxReadLocals e x) (evalImp bi fuel (forToLoop x) env)
+          (evalImp bi fuel (forToLoop e) env) :=
+  ⟨parse_ppImpRust ty e t hp, fun bi h fuel env => haxReadAgrees_sound bi h e x hc fuel env⟩
 
 /-- The parser of `ImpRustPrint` reads a printed function with a return type
     back as its body, and a frontend reading of that body that passes the check
-    has the sequence normal form of the body and runs as it does. -/
+    runs as it does. -/
 theorem haxReadAgrees_parseFnRet (name : String) (params : List (String × ImpRust.Tok))
     (retTy : ImpRust.Tok) (ty : String → Option ImpRust.Tok) (e x : ImpExpr) (t : String)
     (hp : ppImpRustFnRet name params retTy ty e = some t) (hc : haxReadAgrees e x = true) :
-    parseImpRustFnRet t = some (name, params, retTy, e) ∧ seqNF (normHaxRead x) = seqNF e ∧
+    parseImpRustFnRet t = some (name, params, retTy, e) ∧
       ∀ bi, HaxOpsAgree bi → ∀ fuel env,
-        evalImp bi fuel (forToLoop x) env = evalImp bi fuel (forToLoop e) env :=
-  ⟨parse_ppImpRustFnRet name params retTy ty e t hp, impEq_sound _ _ hc,
+        RunRel (haxReadLocals e x) (evalImp bi fuel (forToLoop x) env)
+          (evalImp bi fuel (forToLoop e) env) :=
+  ⟨parse_ppImpRustFnRet name params retTy ty e t hp,
     fun bi h fuel env => haxReadAgrees_sound bi h e x hc fuel env⟩
 
-/-! ## §5  A program for the round trip
+/-! ## §6  A program for the round trip
 
 `roundTripImp` binds `x` to the leaf call `fp_mul(a, b)`, replaces it four
 times by `fp_mul(x, b)` in a counted loop, and binds the scalar `s` to `c + d`.
