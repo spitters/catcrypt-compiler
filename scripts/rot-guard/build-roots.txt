@@ -419,6 +419,7 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
+CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSPFuelSource
 CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
