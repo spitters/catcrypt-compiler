@@ -32,7 +32,7 @@ structural in the number of permutations after the first output block.
 
 * `pad_length`: the padded message has a length divisible by the rate.
 * `shake128_eq_SHAKE128`: the XOF of `Primitives.SHAKE128` agrees with `shake128` on every
-  message whose length is not one less than a multiple of the rate.
+  message.
 -/
 
 @[expose] public section
@@ -140,9 +140,8 @@ theorem chunkByRate_cons (a : UInt8) (t : List UInt8) :
   rfl
 
 
-/-- `SHAKE128.padMessage` on a message shorter than one block of 168 bytes, other than one
-of 167 bytes. -/
-theorem padMessage_of_lt (msg : List UInt8) (h1 : msg.length < 168) (h2 : msg.length ≠ 167) :
+/-- `SHAKE128.padMessage` on a message shorter than one block of 168 bytes. -/
+theorem padMessage_of_lt (msg : List UInt8) (h1 : msg.length < 168) :
     SHAKE128.padMessage msg = [msg ++ padBytes 0x1F (168 - msg.length)] := by
   cases msg with
   | nil => rw [SHAKE128.padMessage, chunkByRate_nil]; rfl
@@ -151,10 +150,9 @@ theorem padMessage_of_lt (msg : List UInt8) (h1 : msg.length < 168) (h2 : msg.le
     rw [SHAKE128.padMessage, chunkByRate_cons,
       List.take_of_length_le (by simpa [SHAKE128.rate] using hl),
       List.drop_eq_nil_of_le (by simpa [SHAKE128.rate] using hl), chunkByRate_nil]
-    have hq : 168 - (a :: t).length ≠ 1 := by omega
-    simp only [List.getLast?_singleton, List.dropLast_singleton, List.nil_append, padBytes, hq,
-      ↓reduceIte, SHAKE128.rate, h1]
-    simp
+    simp only [List.getLast?_singleton, List.dropLast_singleton, List.nil_append, padBytes,
+      SHAKE128.rate, h1, ↓reduceIte]
+    by_cases hq : 167 - t.length = 1 <;> simp [hq]
 
 /-- `SHAKE128.padMessage` on a message of at least one block of 168 bytes. -/
 theorem padMessage_of_le (msg : List UInt8) (h : 168 ≤ msg.length) :
@@ -179,23 +177,21 @@ theorem padMessage_of_le (msg : List UInt8) (h : 168 ≤ msg.length) :
     | none => simp at hl
     | some lb => simp only; split <;> simp
 
-/-- The blocks of `SHAKE128.padMessage` are the blocks of `pad 168 0x1F` on every message whose
-length is not one less than a multiple of 168. -/
-theorem padMessage_eq_blocks (msg : List UInt8) (h : msg.length % 168 ≠ 167) :
+/-- The blocks of `SHAKE128.padMessage` are the blocks of `pad 168 0x1F`. -/
+theorem padMessage_eq_blocks (msg : List UInt8) :
     SHAKE128.padMessage msg = blocks 168 (msg.length / 168 + 1) (pad 168 0x1F msg) := by
   obtain ⟨n, hn⟩ : ∃ n, msg.length = n := ⟨_, rfl⟩
   induction n using Nat.strongRecOn generalizing msg with
   | _ n ih =>
   by_cases hlt : msg.length < 168
-  · rw [padMessage_of_lt msg hlt (by omega)]
+  · rw [padMessage_of_lt msg hlt]
     have hp : (pad 168 0x1F msg).length = 168 := by
       rw [pad_length 168 0x1F msg (by decide)]; omega
     have hd : msg.length / 168 = 0 := by omega
     rw [hd, blocks, blocks, List.take_of_length_le (by omega)]
     simp [pad, Nat.mod_eq_of_lt hlt]
   · have hle : 168 ≤ msg.length := by omega
-    have hm : (msg.drop 168).length % 168 ≠ 167 := by simp; omega
-    rw [padMessage_of_le msg hle, ih _ (by simp; omega) _ hm rfl]
+    rw [padMessage_of_le msg hle, ih _ (by simp; omega) _ rfl]
     have hk : msg.length / 168 + 1 = ((msg.drop 168).length / 168 + 1) + 1 := by
       simp; omega
     have hmod : (msg.drop 168).length % 168 = msg.length % 168 := by simp; omega
@@ -203,12 +199,11 @@ theorem padMessage_eq_blocks (msg : List UInt8) (h : msg.length % 168 ≠ 167) :
     conv => rhs; rw [blocks]
     rw [List.take_append_of_le_length hle, List.drop_append_of_le_length hle]
 
-/-- The absorbing phase of `Primitives.SHAKE128` is `absorb 168` of `pad 168 0x1F` on every
-message whose length is not one less than a multiple of 168. -/
-theorem absorb_eq_SHAKE128 (msg : List UInt8) (h : msg.length % 168 ≠ 167) :
+/-- The absorbing phase of `Primitives.SHAKE128` is `absorb 168` of `pad 168 0x1F`. -/
+theorem absorb_eq_SHAKE128 (msg : List UInt8) :
     SHAKE128.absorb msg = absorb 168 (pad 168 0x1F msg) := by
   rw [SHAKE128.absorb, absorb, pad_length 168 0x1F msg (by decide),
-    Nat.mul_div_cancel _ (by decide), padMessage_eq_blocks msg h]
+    Nat.mul_div_cancel _ (by decide), padMessage_eq_blocks msg]
 
 /-- The squeezing loop of `Primitives.SHAKE128` appends the first `n` bytes of the stream that
 `sponge` squeezes at rate 168. -/
@@ -232,12 +227,10 @@ theorem squeeze_go_eq (s : KState) (n : Nat) (acc : List UInt8) :
       rw [hk, squeezeBlocks, List.take_append (l₁ := List.take 168 (stateToBytes s)), hB,
         List.take_take, Nat.min_eq_right (by omega : 168 ≤ n), List.append_assoc]
 
-/-- The XOF of `Primitives.SHAKE128` agrees with `shake128` on every message whose length is
-not one less than a multiple of the rate 168. -/
-theorem shake128_eq_SHAKE128 (msg : List UInt8) (outLen : Nat)
-    (h : msg.length % 168 ≠ 167) :
+/-- The XOF of `Primitives.SHAKE128` agrees with `shake128` on every message. -/
+theorem shake128_eq_SHAKE128 (msg : List UInt8) (outLen : Nat) :
     SHAKE128.shake128 msg outLen = shake128 msg outLen := by
-  rw [SHAKE128.shake128, SHAKE128.squeeze, squeeze_go_eq, absorb_eq_SHAKE128 msg h]
+  rw [SHAKE128.shake128, SHAKE128.squeeze, squeeze_go_eq, absorb_eq_SHAKE128 msg]
   simp [shake128, sponge]
 
 end CatCrypt.Crypto.Primitives.KeccakSponge

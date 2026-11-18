@@ -61,9 +61,10 @@ def chunkByRate (msg : List UInt8) : List (List UInt8) :=
 termination_by msg.length
 decreasing_by simp_wf; simp [_h, rate]; omega
 
-/-- Pad a message for SHAKE-128 (FIPS 202, Section 6.2).
-    Appends domain separation `0x1F`, then `0x00` padding,
-    then sets the last byte's high bit `0x80`. -/
+/-- Pad a message for SHAKE-128 (FIPS 202, Section 6.2 and Appendix B.2).
+    Appends domain separation `0x1F`, then `0x00` padding, then the byte `0x80`;
+    when one byte of padding remains in the last block, appends the single byte
+    `0x1F ||| 0x80 = 0x9F`. -/
 def padMessage (msg : List UInt8) : List (List UInt8) :=
   let blocks := chunkByRate msg
   match blocks.getLast? with
@@ -74,7 +75,9 @@ def padMessage (msg : List UInt8) : List (List UInt8) :=
     if lastBlock.length < rate then
       -- Last block has room: append padding
       let padLen := rate - lastBlock.length
-      let padded := lastBlock ++ [0x1F] ++ List.replicate (padLen - 2) 0x00 ++ [0x80]
+      let padded :=
+        if padLen = 1 then lastBlock ++ [0x1F ||| 0x80]
+        else lastBlock ++ [0x1F] ++ List.replicate (padLen - 2) 0x00 ++ [0x80]
       blocks.dropLast ++ [padded]
     else
       -- Last block is full: add a new padding block
