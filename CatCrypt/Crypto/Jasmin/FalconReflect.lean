@@ -724,38 +724,23 @@ def falconKeygenReified : ReifiedFunc :=
     body    := falconKeygenBody
     retName := "__result" }
 
-/-! ## 9. Opaque-leaf correctness hypotheses
+/-! ## 9. Unproved obligations of the opaque leaves
 
-The leaves above are opaque constants in Lean. The emit's correctness lifts to
-the full spec only if the leaves' jasmin implementations match their
-intended semantics. We name those obligations explicitly here so downstream
-files can quote them (they are NOT proven; the leaves are linked against
-PQClean's matching implementations at C-harness link time, and the named
-hypotheses below are the assumption that link-time behavior is correct). -/
+The leaves above are opaque constants in Lean. The emit computes the Falcon
+specification only if the linked leaf implementations (PQClean, at C-harness
+link time) meet the following obligations. None of them is stated or proved
+in Lean.
 
-/-- Sign-side opaque-leaf assumption: `falcon_ffsampling`'s jasmin
-    implementation produces a within-bound short-vector preimage of `c`
-    against the secret basis. This is the BIG residual; the Falcon spec's
-    Theorem 3.9 (Gaussian tail) is what a real proof would invoke. -/
-def FfsamplingLeafCorrect : Prop := True  -- named hypothesis only
-
-/-- Sign-side opaque-leaf assumption: `falcon_comp_encode`'s jasmin
-    implementation realizes the spec's Golomb-Huffman bit-packing of `s2`
-    plus the 41-byte nonce/header. -/
-def CompEncodeLeafCorrect : Prop := True  -- named hypothesis only
-
-/-- Keygen-side opaque-leaf assumption: `falcon_ntru_gen` produces a
-    short NTRU basis pair within the spec's expected distribution. -/
-def NtruGenLeafCorrect : Prop := True     -- named hypothesis only
-
-/-- Keygen-side opaque-leaf assumption: `falcon_ntru_solve` returns
-    `(F, G)` with `fG − gF = q` (the inhomogeneous NTRU equation). -/
-def NtruSolveLeafCorrect : Prop := True   -- named hypothesis only
-
-/-- Keygen-side opaque-leaf assumption: LDL-precompute (folded into
-    `falcon_encode_sk`) is consistent with the basis the sampler
-    later consumes. -/
-def LdlPrecomputeLeafCorrect : Prop := True -- named hypothesis only
+* FfsamplingLeafCorrect: `falcon_ffsampling` produces a short preimage of `c`
+  under the secret basis (the Gaussian-tail bound of the Falcon specification,
+  Theorem 3.9).
+* CompEncodeLeafCorrect: `falcon_comp_encode` is the Golomb-Huffman packing of
+  `s2` with the 41-byte nonce and header.
+* NtruGenLeafCorrect: `falcon_ntru_gen` samples a short NTRU basis pair from the
+  distribution of the specification.
+* NtruSolveLeafCorrect: `falcon_ntru_solve` returns `(F, G)` with `fG − gF = q`.
+* LdlPrecomputeLeafCorrect: the LDL precomputation folded into
+  `falcon_encode_sk` agrees with the basis the sampler consumes. -/
 
 /-! ## 10. Inspection -/
 

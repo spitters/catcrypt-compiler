@@ -384,67 +384,32 @@ string emit is byte-identical at this size. -/
 /-- The canonical entry point: the medium-regime `(N=256, k=4)` LDE body. -/
 def ldeCosetFftReified : ReifiedFunc := ldeCosetFft256x4Reified
 
-/-! ## 7. Opaque-leaf correctness hypotheses
+/-! ## 7. Unproved obligations of the opaque leaves
 
-The leaves above are opaque axioms in Lean. The emit's correctness lifts to
-the full spec only if the leaves' jasmin implementations match the BabyBear
-spec semantics. We name those obligations explicitly here so downstream files
-can quote them — they are NOT proven; the leaves are linked against
-`plonky3-hax`'s matching implementations at C-harness link time, and the
-named hypotheses below are the assumption that link-time behavior is
-correct. -/
+The leaves above are opaque constants in Lean. The emit computes the BabyBear
+LDE specification only if the leaf implementations linked at C-harness link
+time (matching `plonky3-hax`) meet the following obligations. None of them is
+stated or proved in Lean.
 
-/-- Inverse-NTT leaf correctness: `babybear_ntt_inverse_N` realises the
-    spec's subgroup-H inverse NTT (cf. `plonky3-hax/src/specs/baby_bear.rs`
-    `bb_intt` if exposed; otherwise the canonical inverse-NTT pseudocode). -/
-def NttInverseLeafCorrect : Prop := True  -- named hypothesis only
+* NttInverseLeafCorrect: `babybear_ntt_inverse_N` is the inverse NTT over the
+  subgroup `H` (`bb_intt` of `plonky3-hax/src/specs/baby_bear.rs`).
+* NttForwardLeafCorrect: `babybear_ntt_forward_kN` is the forward NTT over the
+  coset domain.
+* ZeroExtendLeafCorrect: `babybear_zero_extend_N_to_kN` copies the lower `N`
+  positions and zeroes the upper `(k-1)·N`.
+* CosetTwistLeafCorrect: `babybear_coset_twist_kN` multiplies position `i` by
+  `shift^i`.
 
-/-- Forward-NTT leaf correctness: `babybear_ntt_forward_kN` realises the
-    spec's coset-domain forward NTT. -/
-def NttForwardLeafCorrect : Prop := True  -- named hypothesis only
+## 8. Relation to the hax extraction
 
-/-- Zero-extend leaf correctness: `babybear_zero_extend_N_to_kN` zero-pads
-    the upper `(k-1)·N` positions and copies the lower `N`. -/
-def ZeroExtendLeafCorrect : Prop := True  -- named hypothesis only
-
-/-- Coset-twist leaf correctness: `babybear_coset_twist_kN` multiplies
-    position `i` by `shift^i`. -/
-def CosetTwistLeafCorrect : Prop := True  -- named hypothesis only
-
-/-! ## 8. Bridge theorem to hax extraction
-
-The plonky3-hax Rust source for the coset-FFT LDE is `compute_column_lde` (in
-`plonky3-hax/src/specs/`). At present there is no `hax → Lean` extraction for
-that function exposed in CatCrypt (the plonky3-hax tree compiles, but its
-charon dump has not been wired into a `Hax.ReprBridge` view of an LDE
-function in the SurfaceDeps catalog).
-
-We therefore leave the LDE-side hax-bridge as a named hypothesis. The bridge
-is **structurally mechanical**: `compute_column_lde` is a straight-line
-sequence of four steps (`bb_intt → pad → twist → bb_ntt`), exactly matching
-`ldeCosetFftLean256x4`'s let-chain. The only obligation is to match each
-leaf-call's argument shape and width — a one-statement-per-line proof once
-the extraction is in place. -/
-
-/-- **Bridge to hax extraction (named hypothesis).**
-
-    Asserts that the pure-Lean `ldeCosetFftLean256x4` agrees with the hax-
-    extracted Rust `compute_column_lde` once the extraction lands. The bridge
-    is **mechanical**: `compute_column_lde`'s Rust body is the same 4-step
-    chain `bb_intt → zero_extend → coset_twist → bb_ntt`, with the same per-
-    step argument shapes; the Lean let-chain mirrors it position-for-position.
-
-    The bridge is currently a named hypothesis (not a theorem) for two
-    reasons:
-    1. **No hax extraction yet for LDE.** plonky3-hax's `compute_column_lde`
-       has not been wired through hax → CatCrypt's `Hax.ReprBridge`. When
-       it is, this Prop becomes the equation
-       `ldeCosetFftLean256x4 = hax_compute_column_lde_256_to_1024`.
-    2. **Opaque-leaf identification.** The bridge has to identify each
-       `babybear_*` leaf with the corresponding hax-extracted leaf (which
-       Rust calls `bb_intt`, `bb_ntt`, etc.). Once leaf naming is agreed,
-       the proof is mechanical (refl-up-to-leaf-renaming). -/
-def Phase2LdeBridgeToHaxExtraction : Prop := True  -- named hypothesis only
+The Rust source of the coset-FFT LDE is `compute_column_lde` in
+`plonky3-hax/src/specs/`; no hax extraction of it is present in the workspace.
+The open statement (Phase2LdeBridgeToHaxExtraction) is the equation
+`ldeCosetFftLean256x4 = hax_compute_column_lde_256_to_1024`, with each
+`babybear_*` leaf identified with its extracted counterpart (`bb_intt`,
+`bb_ntt`, …). `compute_column_lde` is the four-step chain
+`bb_intt → zero_extend → coset_twist → bb_ntt`, the let-chain of
+`ldeCosetFftLean256x4`. -/
 
 /-! ## 9. Dataflow checks
 

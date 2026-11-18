@@ -2562,10 +2562,11 @@ namespace Smoke
 /-- An empty body trivially satisfies `InPlaceSafe`. -/
 example : InPlaceSafe [] := by decide
 
-/-- A body with only loads (no stores) satisfies `InPlaceSafe`
-trivially — every store-suffix is empty. -/
-example (xs : List InstrR) (_ : ∀ i ∈ xs, hasStore i = false) :
-    True := by trivial
+/-- A body without stores satisfies `InPlaceSafe`. -/
+example (xs : List InstrR) (h : ∀ i ∈ xs, hasStore i = false) :
+    InPlaceSafe xs := by
+  have := noLateLoadAfterStore_append xs [] h (by simp)
+  simpa [InPlaceSafe] using this
 
 end Smoke
 

@@ -90,34 +90,6 @@ example : 32 * (2^250 - 1) + 11 = 2^255 - 21 := by decide
 /-- Sanity: `2^255 - 21 = p_25519 - 2` (Fermat exponent). -/
 example : (2^255 - 21 : Nat) = p_25519 - 2 := by decide
 
-/-! ### Category C: Concrete-input chain outputs
-
-For specific small inputs, `evalChain` runs concretely and the
-output is a specific Nat that `rfl` or `native_decide` can
-compute and compare.
-
-NOTE: For inputs like `a = 2`, the actual chain output is a
-specific 256-bit number; we don't enumerate it here but show
-the framework supports such claims. -/
-
-/-- The pow_p58 chain on input 2 outputs a *specific* Nat (the
-    full 256-bit value).  Closing via `native_decide`. -/
-example : powP58ChainResult 2 = powP58ChainResult 2 := rfl
-
-/-- The inv chain on input 2 produces an output that, when
-    multiplied by 2 mod p, gives 1 (Fermat: `2 · 2^(p-2) ≡ 1`).
-
-    This requires the inv chain's soundness axiom (since the
-    chain's actual output isn't tractable to vm_compute through
-    the abstract evaluator on the full chain length).  Once the
-    soundness axiom is invoked, the algebraic identity closes
-    by Fermat. -/
-example :
-    -- Given the inv chain's soundness, the abstract claim
-    -- `2 · invChainResult 2 ≡ 1 mod p_25519` is derivable.
-    -- We expose the shape; full discharge cites `invChain_eval_sound`.
-    True := trivial
-
 /-! ## §2  What `decide` can NOT prove (without more machinery)
 
 These categories require deeper proof machinery — typically

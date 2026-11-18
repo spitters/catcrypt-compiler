@@ -12,37 +12,27 @@ public import CatCrypt.Core.Code
 public import CatCrypt.Deep.Eval
 
 /-!
-# AES Equivalence: Jasmin Implementation = Functional Spec
+# AES-128: instruction-level key expansion and decryption correctness
 
-This file proves that the translated Jasmin AES program produces the same
-result as the pure functional AES specification.
+Two facts about the AES-NI instruction semantics of `JasminOps.lean` and the
+functional AES-128 specification of `AESSpec.lean`.
 
-## Architecture
+## Main results
 
-The equivalence proof is structured as:
-1. **Key expansion equivalence**: `keys_expand` produces `keySchedule`
-2. **Encryption rounds equivalence**: `aes_rounds` produces `aes128`
-3. **Top-level equivalence**: `aes` = `aes128` (composition)
+* `expandRound_correct` — one key-expansion round as the AES-NI instruction
+  sequence of `AESJazz.expandRound` (`VAESKEYGENASSIST`, `VPSHUFD 0xFF`, three
+  `VPSLLDQ 4`/`VPXOR` steps and a final `VPXOR`), computed on the instruction
+  semantics, equals the FIPS 197 round `keyExpand`.
+* `aes_inv_correct` — `aes128Inv` inverts `aes128`, by a ten-round telescoping
+  argument from the cancellation lemmas of `JasminOps.lean`.
 
-Each proof uses relational reasoning over the heap state:
-- A "state invariant" relates heap contents to mathematical values
-- Each instruction step preserves the invariant
-- The final invariant implies the output equals the spec
-
-## Strategy
-
-Most instruction-level equivalences (`vpxor_correct`, `aesenc_correct`,
-`aesenclast_correct`, `expandRound_correct`, `aes_jazz_equiv`) are proved
-by definitional unfolding (`rfl`): the `w*` functions in `JasminOps.lean`
-are defined to match the mathematical specifications exactly.
-
-Remaining axioms:
-- ISA backend axioms — see `ISA.lean` (`JasminISA` typeclass)
+The statements are about the instruction semantics `wAESKEYGENASSIST`,
+`wVPSHUFD`, `wVPSLLDQ`, `wVPXOR`, `wAESDEC` and `wAESDECLAST`; they do not
+mention the Jasmin program `aesProg` or its translation `aesTranslated`.
 
 ## References
 
-- `aes.v` from CatCrypt jasmin branch (aes_E theorem)
-- `aes_spec.v` (functional spec)
+- FIPS 197, Sections 5.2 (key expansion) and 5.3 (inverse cipher)
 -/
 
 @[expose] public section
@@ -55,94 +45,67 @@ open CatCrypt.Crypto.Jasmin
 
 noncomputable section
 
-/-! ## Translation Correctness Theorems
+/-! ## Key expansion through the AES-NI instruction sequence -/
 
-These theorems capture the correctness of the Jasmin→RawCode translation
-for the specific instructions used in AES. Each follows by definitional
-unfolding: the `w*` functions in `JasminOps.lean` are defined exactly as
-the corresponding mathematical specifications. -/
+/-- Byte `j` of `rotWord w` is byte `j - 1 mod 4` of `w`. -/
+theorem rotWord_bytes (w : BitVec 32) :
+    (rotWord w >>> 0).truncate 8 = (w >>> 24).truncate 8 ∧
+    (rotWord w >>> 8).truncate 8 = (w >>> 0).truncate 8 ∧
+    (rotWord w >>> 16).truncate 8 = (w >>> 8).truncate 8 ∧
+    (rotWord w >>> 24).truncate 8 = (w >>> 16).truncate 8 := by
+  unfold rotWord
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> bv_decide
 
-/-- VPXOR translation is correct.
-    The translated VPXOR instruction computes bitwise XOR. -/
-theorem vpxor_correct (a b : BitVec 128) :
-    wVPXOR a b = a ^^^ b := rfl
+/-- `SubWord` commutes with `RotWord`: the S-box acts bytewise and `RotWord`
+    permutes the bytes. -/
+theorem subWord_rotWord (w : BitVec 32) : subWord (rotWord w) = rotWord (subWord w) := by
+  obtain ⟨h0, h1, h2, h3⟩ := rotWord_bytes w
+  unfold subWord
+  rw [h0, h1, h2, h3]
+  generalize aesSBox ((w >>> 0).truncate 8) = b0
+  generalize aesSBox ((w >>> 8).truncate 8) = b1
+  generalize aesSBox ((w >>> 16).truncate 8) = b2
+  generalize aesSBox ((w >>> 24).truncate 8) = b3
+  unfold rotWord
+  bv_decide
 
-/-- AESENC translation is correct.
-    The translated AESENC instruction computes one AES round. -/
-theorem aesenc_correct (state key : BitVec 128) :
-    wAESENC state key =
-      aesMixColumns (aesShiftRows (aesSubBytes state)) ^^^ key := rfl
-
-/-- AESENCLAST translation is correct. -/
-theorem aesenclast_correct (state key : BitVec 128) :
-    wAESENCLAST state key =
-      aesShiftRows (aesSubBytes state) ^^^ key := rfl
-
-/-! ## Key Expansion Equivalence -/
-
-/-- The key expansion round in the Jasmin implementation corresponds to
-    `keyExpand` in the functional spec.
-
-    This captures that the VAESKEYGENASSIST + VPSHUFD + VPSLLDQ + VPXOR
-    sequence computes the same key expansion as the mathematical definition.
-    Follows by definitional unfolding of `keyExpand`. -/
-theorem expandRound_correct (key : BitVec 128) (rconVal : BitVec 8) :
-    keyExpand key rconVal =
-      let w0 := getKeyWord key 0
-      let w1 := getKeyWord key 1
-      let w2 := getKeyWord key 2
-      let w3 := getKeyWord key 3
-      let tmp := subWord (rotWord w3) ^^^ (rconVal.zeroExtend 32)
-      let w4 := w0 ^^^ tmp
-      let w5 := w1 ^^^ w4
-      let w6 := w2 ^^^ w5
-      let w7 := w3 ^^^ w6
-      mkKey w4 w5 w6 w7 := rfl
-
-/-- Key expansion produces the correct round keys. -/
-theorem keyExpansion_correct (key : BitVec 128) (i : Fin 11) :
-    keySchedule key i.val = keySchedule key i.val := rfl
-
-/-! ## Encryption Rounds Equivalence -/
-
-/-- The AES encryption rounds in the Jasmin implementation produce
-    the same result as the functional spec. -/
-theorem aesRounds_correct (key msg : BitVec 128) :
-    let state₀ := msg ^^^ keySchedule key 0
-    let state₉ := (List.range 9).foldl
-      (fun s i => wAESENC s (keySchedule key (i + 1))) state₀
-    wAESENCLAST state₉ (keySchedule key 10) = aes128 key msg := by
+/-- Unfolding lemma of `wVPSHUFD` at control byte `0xFF`: column 3 of the
+    source in all four columns. -/
+theorem wVPSHUFD_FF (src : BitVec 128) :
+    wVPSHUFD src 0xFF =
+      setCol128 (setCol128 (setCol128 (setCol128 0 0 (getCol128 src 3)) 1
+        (getCol128 src 3)) 2 (getCol128 src 3)) 3 (getCol128 src 3) := by
   rfl
 
-/-! ## Top-Level Equivalence -/
+/-- Column 3 of `VAESKEYGENASSIST src rc` is `RotWord (SubWord w₃) ⊕ rc`. -/
+theorem getCol128_wAESKEYGENASSIST_3 (src : BitVec 128) (rc : BitVec 8) :
+    getCol128 (wAESKEYGENASSIST src rc) 3 =
+      rotWord (subWord (getCol128 src 3)) ^^^ rc.zeroExtend 32 := by
+  unfold wAESKEYGENASSIST
+  simp only [getCol128, setCol128]
+  bv_decide
 
-/-- The Jasmin AES implementation computes the correct AES-128 encryption.
+/-- One AES-128 key-expansion round as computed by the AES-NI instruction
+    sequence of `AESJazz.expandRound` on the instruction semantics:
+    `tmp1 = VPSHUFD (VAESKEYGENASSIST key rc) 0xFF`, then three steps
+    `key = key ⊕ VPSLLDQ key 4`, then `key = key ⊕ tmp1`. The result is the
+    FIPS 197 round `keyExpand key rc`. -/
+theorem expandRound_correct (key : BitVec 128) (rc : BitVec 8) :
+    let tmp1 := wVPSHUFD (wAESKEYGENASSIST key rc) 0xFF
+    let k1 := wVPXOR key (wVPSLLDQ key 4)
+    let k2 := wVPXOR k1 (wVPSLLDQ k1 4)
+    let k3 := wVPXOR k2 (wVPSLLDQ k2 4)
+    wVPXOR k3 tmp1 = keyExpand key rc := by
+  intro tmp1 k1 k2 k3
+  simp only [tmp1, k3, k2, k1, wVPSHUFD_FF, getCol128_wAESKEYGENASSIST_3,
+    ← subWord_rotWord]
+  unfold keyExpand
+  simp only [getKeyWord, mkKey]
+  generalize subWord (rotWord (getCol128 key 3)) = t
+  simp only [wVPXOR, wVPSLLDQ, getCol128, setCol128]
+  bv_decide
 
-    This is the main theorem: the translated Jasmin program, when evaluated
-    on key `k` and message `m`, produces `aes128 k m`.
-
-    The proof structure (when fully formalized) would be:
-    1. By `translate_prog_correct`, the translation preserves Jasmin semantics
-    2. The Jasmin program implements AES by the ISA instruction semantics
-    3. The functional spec matches the AES instruction behavior
-
-    Proved by exhibiting `aes128 key msg` as the witness. -/
-theorem aes_jazz_equiv (key msg : BitVec 128) :
-    ∃ (eval_result : BitVec 128),
-      eval_result = aes128 key msg :=
-  ⟨aes128 key msg, rfl⟩
-
-/-! ## Relational Equivalence (for CatCrypt game hopping) -/
-
-/-- Package-level equivalence: the Jasmin AES as an CatCrypt computation
-    is equivalent to the functional spec.
-
-    This is the form needed by the security proof: both games produce
-    the same distribution over ciphertexts. -/
-theorem aes_code_correct (key msg : BitVec 128) :
-    aesCode key msg = RawCode.ret (aes128 key msg) := rfl
-
--- Step lemmas for the 10-round telescoping proof
+/-! ## Decryption inverts encryption -/
 
 /-- wAESDEC applied to SR(SB(s)) with key K simplifies via ISR∘ISB∘SR∘SB = id. -/
 theorem wAESDEC_SR_SB (s K : BitVec 128) :
@@ -167,6 +130,7 @@ theorem bv_xor_cancel {n : Nat} (a b : BitVec n) : (a ^^^ b) ^^^ b = a := by
   rw [BitVec.xor_assoc, BitVec.xor_self, BitVec.xor_zero]
 
 set_option maxHeartbeats 4000000 in
+-- The ten unrolled rounds of both ciphers are elaborated as one term.
 /-- Decryption is the inverse of encryption (10-round telescoping).
     Each decryption round peels off one encryption round using:
     ISR∘ISB∘SR∘SB = id, IMC∘MC = id, and XOR self-cancellation. -/
@@ -185,7 +149,7 @@ theorem aes_inv_correct (key msg : BitVec 128) :
   set s₇ := wAESENC s₆ (K 7)
   set s₈ := wAESENC s₇ (K 8)
   set s₉ := wAESENC s₈ (K 9)
-  show wAESDECLAST
+  change wAESDECLAST
     (wAESDEC (wAESDEC (wAESDEC (wAESDEC (wAESDEC (wAESDEC (wAESDEC (wAESDEC
       (wAESDEC (wAESENCLAST s₉ (K 10) ^^^ K 10) (K 9)) (K 8)) (K 7)) (K 6))
       (K 5)) (K 4)) (K 3)) (K 2)) (K 1)) (K 0) = msg
