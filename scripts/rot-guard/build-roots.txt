@@ -434,6 +434,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.FieldChainCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomAccessShape
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG19
+CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomNoLoadStore
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPhysImgSide
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeField
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeHyps
