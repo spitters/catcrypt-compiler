@@ -1353,6 +1353,7 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPhysImgSide,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosClass,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShape,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeField,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeHyps,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomRenB,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomResCopy,
