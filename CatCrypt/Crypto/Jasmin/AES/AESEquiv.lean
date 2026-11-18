@@ -6,8 +6,8 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.Jasmin.AES.AESSpec
-public import CatCrypt.Crypto.Jasmin.AES.AESJazz
-public import CatCrypt.Crypto.Jasmin.JasminTranslate
+public import CatCrypt.Crypto.Jasmin.JasminVar
+public import CatCrypt.Crypto.Jasmin.JasminOps
 public import CatCrypt.Core.Code
 public import CatCrypt.Deep.Eval
 
@@ -20,15 +20,14 @@ functional AES-128 specification of `AESSpec.lean`.
 ## Main results
 
 * `expandRound_correct` — one key-expansion round as the AES-NI instruction
-  sequence of `AESJazz.expandRound` (`VAESKEYGENASSIST`, `VPSHUFD 0xFF`, three
-  `VPSLLDQ 4`/`VPXOR` steps and a final `VPXOR`), computed on the instruction
+  sequence `VAESKEYGENASSIST`, `VPSHUFD 0xFF`, three `VPSLLDQ 4`/`VPXOR` steps and a
+  final `VPXOR`, computed on the instruction
   semantics, equals the FIPS 197 round `keyExpand`.
 * `aes_inv_correct` — `aes128Inv` inverts `aes128`, by a ten-round telescoping
   argument from the cancellation lemmas of `JasminOps.lean`.
 
 The statements are about the instruction semantics `wAESKEYGENASSIST`,
-`wVPSHUFD`, `wVPSLLDQ`, `wVPXOR`, `wAESDEC` and `wAESDECLAST`; they do not
-mention the Jasmin program `aesProg` or its translation `aesTranslated`.
+`wVPSHUFD`, `wVPSLLDQ`, `wVPXOR`, `wAESDEC` and `wAESDECLAST`.
 
 ## References
 
@@ -86,7 +85,7 @@ theorem getCol128_wAESKEYGENASSIST_3 (src : BitVec 128) (rc : BitVec 8) :
   bv_decide
 
 /-- One AES-128 key-expansion round as computed by the AES-NI instruction
-    sequence of `AESJazz.expandRound` on the instruction semantics:
+    sequence on the instruction semantics:
     `tmp1 = VPSHUFD (VAESKEYGENASSIST key rc) 0xFF`, then three steps
     `key = key ⊕ VPSLLDQ key 4`, then `key = key ⊕ tmp1`. The result is the
     FIPS 197 round `keyExpand key rc`. -/

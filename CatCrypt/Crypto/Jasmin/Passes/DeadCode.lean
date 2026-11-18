@@ -5,7 +5,11 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.Jasmin.PassFramework
+public import CatCrypt.Crypto.Jasmin.JasminAST
+public import CatCrypt.Crypto.Jasmin.JasminVar
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Deep.RawCode
+public import CatCrypt.Deep.Eval
 
 /-!
 # Dead Code Elimination Pass
@@ -26,9 +30,8 @@ This implements a simplified backward liveness analysis:
 2. Walk backwards through instructions
 3. An assignment `v := e` is dead if `v` is not live after the assignment
 
-The correctness proof requires a "heap frame" property: writing to a location
-that is never subsequently read does not affect the result. This property
-requires location tracking through the SPComp monad, which we axiomatize.
+`JasminEmit.optimize` runs `deadCodeElim` before printing. The pass has no
+correctness theorem.
 -/
 
 @[expose] public section
@@ -164,34 +167,9 @@ def deadCodeElim (liveOut : List Var) : Cmd → Cmd
 
 /-! ## Correctness
 
-Dead code elimination does **not** satisfy `CmdPassCorrect` because that predicate
-requires full `SPComp` equality including output heap state:
-```
-CmdPassCorrect pass ↔
-  ∀ env sid fuel cmd, (translateCmd env (pass cmd) ...).code.eval =
-                      (translateCmd env cmd ...).code.eval
-```
-where `SPComp α = Heap → SDistr (α × Heap)`. Since DCE removes writes to dead
-variables, the output heaps differ at those locations. This makes `CmdPassCorrect`
-**false** for DCE.
-
-The correct property is *contextual equivalence* restricted to live locations:
-any continuation that only reads live-out variables observes the same behavior.
-Formalizing this requires:
-
-1. **Location independence**: Showing that a computation is independent of a set
-   of heap locations (neither reads nor writes affect observable behavior)
-2. **Frame property**: Writing to an independent location then running independent
-   code yields the same observable output distribution
-3. **Translation tracking**: `translateCmd` only accesses locations corresponding
-   to variables in the command's read/write sets
-
-These properties are standard in separation logic and verified compilers (e.g.,
-Jasmin/EasyCrypt uses a frame rule on module memories). The definitions above
-(`exprVars`, `instrReads`, `instrWrites`, `liveBeforeCmd`, `deadCodeElim`) are
-the complete DCE implementation — only the correctness proof is omitted.
-
-No axiom is introduced: the pass is available as an unverified optimization.
-The constant folding and nop elimination passes are fully verified. -/
+`deadCodeElim` has no correctness theorem. It removes writes to variables that are
+not live afterwards, so the property it has is equivalence of the commands for every
+continuation that reads only the live-out variables. `JasminEmit.optimize` runs it
+before printing; no theorem of the compiler depends on it. -/
 
 end CatCrypt.Crypto.Jasmin

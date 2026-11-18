@@ -47,10 +47,8 @@ alone does not determine the type (several tower types share a width).
 
 ## Design choice
 
-Jasmin sem acts directly on `RustState` rather than a new `estate` type.
-The `translateVar`-indexed encoding already relates Lean `Heap` to
-`RustState` (via `HeapInv`/`ScalarInv`), so building a separate
-intermediate state buys nothing.
+Jasmin sem acts directly on `RustState` rather than on a separate `estate` type:
+the relation is stated between two `RustState`s, so no state encoding is needed.
 -/
 
 @[expose] public section

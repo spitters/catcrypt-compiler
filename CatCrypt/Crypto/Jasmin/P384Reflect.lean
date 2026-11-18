@@ -62,15 +62,9 @@ So `p384_ecdsa_verify_msm` has signature
 The theorems below are structural: the front lowers each body to a Jasmin
 command of a stated length whose calls carry the stated leaf names.
 
-The bodies contain `RCall` nodes, so `LowCTToJasmin.rustExecSimulates`, whose
-hypothesis is `callFree c = true`, does not apply to them. The applicable
-statement is `LowCTToJasmin.rustExecSimulates_withCalls`, which weakens that
-hypothesis to `callFreePlusCall c = true` and takes leaf oracles
-`hLeafN : ∀ fuel' ≥ 2, LeafImplOkNewSid leafSpec env fuel'` together with
-`hLimb` and `hClone`. Instantiating it for these kernels requires a
-`LeafSpec` and a `TransEnv` in which `p384_scalar_mul` and `p384_point_add`
-are implemented and agree; neither is supplied here, and the leaves are
-opaque constants.
+Correctness of the lowering of these bodies is by the dialect route
+(`rustExecSimulatesDialect`); the leaves `p384_scalar_mul` and `p384_point_add`
+are opaque constants, and this module states no simulation theorem.
 
 No constant-time property and no security property is claimed. The leaves are
 opaque, and the only P-384 `GroupParam` in this workspace is degenerate.

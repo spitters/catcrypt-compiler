@@ -84,15 +84,8 @@ obligations on the implementation, not properties established here.
 
 ## Simulation
 
-Both bodies are call-only, so `callFree` is `false` on them and
-`rustExecSimulates` does not apply. The applicable statement is
-`rustExecSimulates_withCalls`, whose `callFreePlusCall` precondition admits
-interleaved `.RCall` leaves. Instantiating it for these bodies requires a
-`LeafSpec` and a `TransEnv` in which every leaf named here satisfies
-`LeafImplOkNewSid` at every fuel `≥ 2`, together with the `LimbStoreImplOk`
-and `CloneImplOk` hypotheses (vacuously available for bodies containing no
-`.RLimbStore` and no `.RCloneCall`) and the heap and scalar invariants at the
-entry state. This module states none of them.
+Both bodies are call-only. Correctness of their lowering is by the dialect route
+(`rustExecSimulatesDialect`); this module states no simulation theorem.
 
 ## Main results
 

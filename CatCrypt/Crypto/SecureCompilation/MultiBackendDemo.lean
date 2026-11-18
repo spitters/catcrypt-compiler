@@ -10,7 +10,6 @@ import all CatCrypt.Core.Location
 import all CatCrypt.Crypto.CryptoWord
 import all CatCrypt.Crypto.Jasmin.JasminAST
 import all CatCrypt.Crypto.Jasmin.JasminOps
-import all CatCrypt.Crypto.Jasmin.JasminTranslate
 import all CatCrypt.Crypto.Jasmin.JasminTypes
 import all CatCrypt.Crypto.Jasmin.JasminVar
 import all CatCrypt.Crypto.SDist

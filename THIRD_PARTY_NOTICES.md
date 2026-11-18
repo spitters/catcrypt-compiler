@@ -93,16 +93,14 @@ repository states it. Paths are relative to the root of this package.
 
 - Upstream: <https://github.com/SSProve/ssprove>
 - Licence: MIT, "Copyright (c) 2021 SSProve".
-- Derived material: the Jasmin-to-code translation and the AES Jasmin program
-  and specification of the `jasmin` branch (`theories/Jasmin/jasmin_translate.v`,
-  `theories/Jasmin/examples/aes/aes_jazz.v`, `aes_spec.v`, `aes.v`).
+- Derived material: the Jasmin AST, types, variables and operations, and the AES
+  specification of the `jasmin` branch (`theories/Jasmin/jasmin_translate.v`,
+  `theories/Jasmin/examples/aes/aes_spec.v`, `aes.v`).
 - Files:
   - `CatCrypt/Crypto/Jasmin/JasminAST.lean`
-  - `CatCrypt/Crypto/Jasmin/JasminTranslate.lean`
   - `CatCrypt/Crypto/Jasmin/JasminTypes.lean`
   - `CatCrypt/Crypto/Jasmin/JasminVar.lean`
   - `CatCrypt/Crypto/Jasmin/JasminOps.lean`
-  - `CatCrypt/Crypto/Jasmin/AES/AESJazz.lean`
   - `CatCrypt/Crypto/Jasmin/AES/AESSpec.lean`
   - `CatCrypt/Crypto/Jasmin/AES/AESEquiv.lean`
 

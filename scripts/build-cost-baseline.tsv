@@ -8,7 +8,6 @@ CatCrypt/Crypto/Hax/ImpRustHaxCheck.lean	896	1590	1869
 CatCrypt/Crypto/Hax/ImpRustHaxRoundTrip.lean	11	1630	1678
 CatCrypt/Crypto/Hax/ImpRustHaxRoundTripExtracted.lean	2	233	803
 CatCrypt/Crypto/Hax/ImpRustPrint.lean	1710	1000	1090
-CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	1210	3290	1853
 CatCrypt/Crypto/SecureCompilation/Ascent/CallFrame.lean	294	841	766
 CatCrypt/Crypto/SecureCompilation/Ascent/CarryMulCorrect.lean	2990	4860	3756
 CatCrypt/Crypto/SecureCompilation/Ascent/Demos/Ed25519BytesLeafCalls.lean	403	41700	1209

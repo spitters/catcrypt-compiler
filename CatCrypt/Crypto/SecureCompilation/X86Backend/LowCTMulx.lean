@@ -164,8 +164,7 @@ allocator guarantees for a two-output instruction:
 
 `StateMatch ρ` additionally needs the source operands to be in `u64` range
 (`rs.rsScalar a, b < 2⁶⁴`) for the truncating `ofNat` on the source side to be
-the identity — the scalar-bounds invariant the `LowCT→Jasmin` lowering already
-maintains (`ScalarsBounded`). -/
+the identity, that is `rs.rsScalar x < 2 ^ 64` for the source operands. -/
 
 /-- **Functional correctness (both outputs, the crux).**  If the machine state
     `js` matches the source state `rs` under `ρ` and the operands are in `u64`

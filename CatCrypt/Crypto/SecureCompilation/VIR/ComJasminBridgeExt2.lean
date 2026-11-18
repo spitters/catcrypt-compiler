@@ -16,8 +16,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeExt
 
 * **`Osignext` (signed width-cast).** The mirror unop `SOp1.Osignext szo szi`
   sign-extends the source word: on a `Vword szi w` it returns
-  `Vword szo (BitVec.signExtend szo.bits w)`, the sign-extension the reference
-  `JasminTranslate.evalSop1 (Osignext …)` computes
+  `Vword szo (BitVec.signExtend szo.bits w)`
   (`signExtendWord wsi wso v = v.signExtend wso.bits`). Same read-correspondence
   (source register read via `pvar_read_corr`), same per-step + end-to-end bridge
   (through `cassgn_regArith_simulates` / `cassgn_regArith_endToEnd`, generic in

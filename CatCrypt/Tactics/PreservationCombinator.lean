@@ -75,7 +75,7 @@ callee result into the corresponding caller LVal via `bindResults`
 (writing exactly the `Lvar` targets).
 
 The `where listRegWrites` clause keeps termination structural via the
-nested-list pattern (mirrors `PassFramework.fuelBoundInstr`). -/
+nested-list pattern. -/
 
 def InstrR.regWritesRec : InstrR → List String
   | .Cassgn (.Lvar v) _ _ _   => [v.var.vname]

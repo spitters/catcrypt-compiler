@@ -23,7 +23,6 @@ and its lowerings live in `SecureCompilation/VIR/`.
 | [`JasminToRustEmit`](JasminToRustEmit.lean), [`JasminToRustEmitSimulates`](JasminToRustEmitSimulates.lean) | Jasmin AST to safe Rust, with its simulation theorem |
 | [`JincToCom`](JincToCom.lean), [`JincElab`](JincElab.lean), [`JincToLowCT`](JincToLowCT.lean) | the `.jinc` import path: text, untyped AST, `Com jasminDialect`, the compiler's x86; [JINC_IMPORT.md](../../../JINC_IMPORT.md) states its fragment, its imports and its theorems |
 | [`MemoryModel`](MemoryModel.lean), [`Hoare`](Hoare.lean) | the flat memory model and Hoare triples over `JasminMemState` |
-| [`ISA`](ISA.lean) | the ISA abstraction for compiler targets |
 | [`BignumExec`](BignumExec.lean), [`InstrRReflect`](InstrRReflect.lean), `BignumHoare/` | the bignum SSA fragment, its interpreter and reflective evaluators |
 
 ## Reflect surfaces
@@ -38,12 +37,12 @@ states what is proved about each primitive.
 
 | Directory | Contents |
 |---|---|
-| `AES/` | AES-128 specification, a Jasmin program and their equivalence |
+| `AES/` | AES-128 specification and AES-NI instruction lemmas |
 | `BignumHoare/` | reflective evaluators for field exponentiation chains, field-parametric in `EvalChainGeneric` and for chain-shaped LowCT in `LowCTReflectiveEval`, and the contract of the `bignum_montmul_p25519` call |
 | `BLS12_381/`, `P256/` | instances of `EvalChainGeneric` for BLS12-381 and P-256 |
 | `Ed25519/` | Ed25519 field-leaf chains, the compress leaf and its correctness |
 | `Mpn/` | width-parametric multi-precision kernels and the q̂ bound |
-| `Passes/` | constant folding, dead-code and no-op elimination on the Jasmin AST |
+| `Passes/` | dead-code elimination, run by `JasminEmit` before printing |
 | `Examples/` | worked examples and emit drivers |
 
 ## Conventions

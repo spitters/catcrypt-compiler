@@ -426,10 +426,9 @@ The headline result: any pipeline of verified passes preserves the
 underlying simulation. -/
 
 /-- Headline meta-theorem: applying the pipeline to a LowCT produces
-    a semantically-equivalent LowCT.  Combined with the framework's
-    `rustExecSimulates` (LowCT ↔ Jasmin), this means the optimized
-    LowCT's Jasmin lowering simulates the same semantics as the
-    original — the optimizer adds no trust. -/
+    a semantically-equivalent LowCT.  Combined with the dialect route
+    `rustExecSimulatesDialect` for the lowering, the optimized LowCT's
+    lowering has the semantics of the original. -/
 theorem optimizer_preserves_simulates
     (passes : List OptimizerPass) (N : Nat) (leafSpec : LeafSpec)
     (c : LowCT) (rs rs' : RustState) :

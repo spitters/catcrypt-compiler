@@ -86,3 +86,267 @@ CatCrypt.Crypto.Jasmin.LowCTReflect.NttForwardLeafCorrect	CatCrypt/Crypto/Jasmin
 CatCrypt.Crypto.Jasmin.LowCTReflect.NttInverseLeafCorrect	CatCrypt/Crypto/Jasmin/Plonky3LdeReflect.lean	-	docs/vacuity-review-jasmin-2026-11-17.md	named hypothesis defined as True; no theorem used it
 CatCrypt.Crypto.Jasmin.LowCTReflect.ZeroExtendLeafCorrect	CatCrypt/Crypto/Jasmin/Plonky3LdeReflect.lean	-	docs/vacuity-review-jasmin-2026-11-17.md	named hypothesis defined as True; no theorem used it
 CatCrypt.Crypto.Jasmin.LowCTReflect.Phase2LdeBridgeToHaxExtraction	CatCrypt/Crypto/Jasmin/Plonky3LdeReflect.lean	-	docs/vacuity-review-jasmin-2026-11-17.md	named hypothesis defined as True; no theorem used it
+CatCrypt.Crypto.Jasmin.TransEnv	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.TransResult	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.boolLoc	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.intLoc	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.arrLoc	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.wordLoc	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.readVar	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.readGVar	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.writeVar	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.evalSop1	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.evalSop2	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translatePExpr	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translatePExprAll	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateWriteLVal	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateWriteLVals	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.rangeIndices	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateInstrR	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateForLoop	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateCmd	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateCmd_cfor_newSid	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateCmd_newSid	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateInstrR_newSid	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateFun	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.buildTransEnv	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateProg	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.translateVar_sword_ty	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.readVar_sword_eq	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.writeVar_sarr_eq	CatCrypt/Crypto/Jasmin/JasminTranslate.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: RawCode translation of JasminAST
+CatCrypt.Crypto.Jasmin.eval_put_wordLoc	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.eval_put_intLoc	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.countX	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.countI	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.countY	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.wordConstU64	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.countLoopFun	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.countI_id_ne_countX_id	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.translateFun_countLoop_eval	CatCrypt/Crypto/Jasmin/JasminTranslateLoopScope.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_zero_eval_ne_pure	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.exists_state_encoded	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_leafImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_leafImplOkNewSid	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_callNImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_limbStoreImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_selectImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.not_forall_cloneImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.towerLoc_id_ne	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.rsTower_of_locatedLookup	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translatePExpr_locToPExpr_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translatePExprAll_locToPExpr_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateWriteLVals_locToLVal_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.intToWord_U64_toNat	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.intToWord_U64_toNat	-	moved into LowCTMirrorCorres
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_store64_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cloneTower_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cmov_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.emptyTransEnv	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_ccall_emptyTransEnv_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.storeLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.limbStoreImplOk_storeLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.cloneImplOk_of_two_le	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.selectImplOk_of_two_le	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.leafImplOk_storeLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callNUpdate_storeLeafSpec_rsTower	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callNImplOk_storeLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.sdistr_pure_inj	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_ccall_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callResultArr	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.callResultArr	-	moved into LowCTMirrorCorres
+CatCrypt.Crypto.Jasmin.LowCT.callResultArr_cons	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.towerArgVal	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translatePExprAll_locToPExpr_eval_eq	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.argVals_eq	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateWriteLVals_single_cons	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateWriteLVals_single_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateWriteLVals_locToLVal_results	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateWriteLVals_dests_callNUpdate	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.pureLeafEnv	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.pureCallSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_ccall_pureLeafEnv_eval	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.leafImplOk_pureLeafEnv	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.leafImplOkNewSid_of_leafImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callNImplOk_pureLeafEnv	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addArrays	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addArrays_length_le	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addLeafTable	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addLeafSpec_call_add	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.leafImplOkNewSid_addLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callNLeafName_eq_add_zero	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addCallNLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addCallNLeafSpec_call_add	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.callNImplOk_addCallNLeafSpec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addProgState	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addCallProg	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addCallProg_exec	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.LowCT.addProg_simulates	CatCrypt/Crypto/Jasmin/LowCTToJasminImplOk.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: leaf oracles of the R1 simulation
+CatCrypt.Crypto.Jasmin.RawCode.semEquiv	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.ExprPassCorrect	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.CmdPassCorrect	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.ProgPassCorrect	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.exprPassCorrect_comp	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.exprPassCorrect_id	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.mapInstrExprs	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.mapCmdExprs	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundInstr	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundCmd	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundInstr_fuelBoundList	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundCmd_nil	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundCmd_cons	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuelBoundCmd_pos	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translatePExprAll_map	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateForLoop_map_eval	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateCmd_cons_eval	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateCmd_cons_newSid	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.exprPass_lifting_joint	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.exprPass_lifts_to_instr	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.exprPass_lifts_to_cmd	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateForLoop_fuel_step	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.fuel_step_joint	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateCmd_fuel_step	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.translateCmd_fuel_step_newSid	CatCrypt/Crypto/Jasmin/PassFramework.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass framework over translateCmd
+CatCrypt.Crypto.Jasmin.foldApp1	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.foldApp2	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.foldIf	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.constFoldExpr	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.foldApp1_spec	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.foldApp2_spec	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.foldIf_spec	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.constFoldExpr_correct	CatCrypt/Crypto/Jasmin/Passes/ConstantFold.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.isNopInstr	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.nopElimCmd	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.translateWriteLVal_Lnone	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.translate_cassgn_lnone_const_eval	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.translate_cassgn_lnone_bool_eval	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.translate_cassgn_lnone_arrinit_eval	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.isNopInstr_eval	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.nopElimCmd_cons_nop	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.nopElimCmd_cons_keep	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.nopElimCmd_correct_sufficient_fuel	CatCrypt/Crypto/Jasmin/Passes/NopElim.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: pass on no pipeline
+CatCrypt.Crypto.Jasmin.JasminISA	CatCrypt/Crypto/Jasmin/ISA.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	class JasminISA without instance retired
+CatCrypt.Crypto.Jasmin.AES.vKey	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vMsg	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vCipher	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vRKeys	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vState	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vTmp1	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vTmp2	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vRCon	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.vI	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.mkVarI	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.mkGVar	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.mkLVar	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.mkPVar	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.expandRound	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.keysExpandBody	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.keysExpandFun	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesencRound	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesenclastRound	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesRoundsBody	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesRoundsFun	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesBody	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesFun	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesProg	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesEntryFn	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.AES.aesTranslated	CatCrypt/Crypto/Jasmin/AES/AESJazz.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: AES Jasmin program used by no kept route
+CatCrypt.Crypto.Jasmin.LowCT.bitVec_ofNat_ne_zero	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.callFree_forBodyN	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.callFree_toJasmin_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.CallNImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.cif_cond_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.cloneCall_toJasmin_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.CloneImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.coerceValue_sint_u64	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.coerceValue_u64_u64	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.eval_put_bind_heap	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.HeapInv	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.heapInv_rsSetScalar	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.heapInv_rsSetTower_init	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.heapInv_set_u64	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.InlineRegistryRefines	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.intToWord_U64_ofNat	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.jarray_default_eq	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.jasminFuel	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.jasminFuel_forBodyN_le_RFor	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.jasminFuel_gt_length	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.jasminFuel_pos	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.LeafImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.LeafImplOkNewSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.length_unrollForJ	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.LimbStoreImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.limbStore_toJasmin_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustCallNSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustCallSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustCallSimulates_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustCloneCallSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustCloneCallSimulates_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustExec_forBodyN_of_RFor	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustExecSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustExecSimulates_emptyInlineRegistry	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustExecSimulates_withCalls	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustExecSimulates_with_inlines	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.RustExecWithCalls.BranchScopeMerges	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.RustExecWithCalls.branchScopeMerges_of_callFree	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.RustExecWithCalls.CloneCallsWellTyped	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustLimbStoreSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.rustSelectSimulates	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.ScalarInv	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarInv_after_scalar_set	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarInv_rsSetScalar_other	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarInv_rsSetTower	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarInv_set_scalar_eq	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarInv_set_tower	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.ScalarsBounded	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarsBounded_rsSetScalar	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarsBounded_rsSetScalar_zero	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarsBounded_rsSetTower	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarsBounded_zero	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarSetsSmall	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarSetsSmall_forBodyN	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.scalarSetsSmall_val	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.SelectImplOk	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.toJasminCmdWithInlines_eq_toJasminCmd_of_callFree	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.towerLoc	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.towerLoc_id_ne_of_ne_name	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_append_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_append_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cassgn_u64_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cassgn_u64_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cassgn_u64_val_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cassgn_u64_val_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_false	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_true	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cons_cassgn_sarr_init_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cons_cassgn_sarr_init_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cons_cassgn_u64_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cons_cassgn_u64_newSid	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cons_cassgn_u64_val_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translatePExpr_pvar_u64_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.translatePExpr_word_of_int_eval	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.truncateWord_u64_u64	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.whileFree_forBodyN	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.wordLoc_id_ne_of_ne_name	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.wordLoc_id_ne_towerLoc_id	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.writeVar_sarr_default	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.writeVar_u64_val	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.Jasmin.LowCT.writeVar_u64_zero	CatCrypt/Crypto/Jasmin/LowCTToJasmin.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	route R1 retired: simulation half of LowCTToJasmin
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.CorresTrans	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	R1 half of the paired correspondence removed
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_append	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram.corresSem_append	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_call	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_call	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_call_copy	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_call_copy	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_callN	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_callN	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_callN_swap	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_callN_swap	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_cloneTower	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_cloneTower	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_copy	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_copy	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_ifNz	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_ifNz	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_limbStore	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_limbStore	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_nil	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram.corresSem_nil	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_scalarSet	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_scalarSet	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_select	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_select	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_unrollForJ	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresSem_unrollForJ	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.corresTrans_weaken	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram.corresSem_weaken	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.toJasminCmd_corresTrans	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.toJasminCmd_corresSem	-	renamed on the mirror half
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.TransDet	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	R1 half of the paired correspondence removed
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.translateCmd_copy_eval	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	R1 half of the paired correspondence removed
+CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorCorres.translateWriteLVals_callOuts_eval	CatCrypt/Crypto/SecureCompilation/VIR/LowCTMirrorCorres.lean	-	docs/jasmin-r1-retire-plan-2026-11-17.md	R1 half of the paired correspondence removed

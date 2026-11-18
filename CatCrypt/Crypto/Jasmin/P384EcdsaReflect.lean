@@ -93,17 +93,8 @@ each lowered body, and the leaf name of each emitted command.
 
 ## Simulation
 
-Both bodies are call-only, so `callFree` is `false` on them and
-`rustExecSimulates` does not apply — its `hCF : callFree c = true`
-precondition excludes `.RCall`. The applicable statement is
-`rustExecSimulates_withCalls`, whose `callFreePlusCall` precondition admits
-interleaved `.RCall` leaves. Instantiating it for these bodies requires a
-`LeafSpec` and a `TransEnv` in which every leaf named here satisfies
-`LeafImplOkNewSid` at every fuel `≥ 2`, together with the `LimbStoreImplOk`
-and `CloneImplOk` hypotheses (vacuously available for bodies containing no
-`.RLimbStore` and no `.RCloneCall`) and the heap and scalar invariants at the
-entry state. Those leaf hypotheses are supplied by the shim's verified leaf
-table; this module states none of them.
+Both bodies are call-only. Correctness of their lowering is by the dialect route
+(`rustExecSimulatesDialect`); this module states no simulation theorem.
 
 ## References
 

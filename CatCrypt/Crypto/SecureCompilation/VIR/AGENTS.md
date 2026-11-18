@@ -119,15 +119,14 @@ registers and flags with `MULX_64`, `ADCX_64` and `CMOVcc_64` results
 body derivation (`ccall_words_semIr`, `ccall_leaf_of_body`).
 `LowCTMirrorTranslate.lean` (`toJasminCmd_translateCmdExt_isSome`) shows that the
 JasminAST output of `LowCTToJasmin.toJasminCmd` on `callFreePlusCall` programs has a
-mirror translation, and `LowCTMirrorCorres.lean` (`toJasminCmd_corresTrans`,
-`toJasminCmd_mirror_exec`) that on `MirrorSimFragment` programs the `RawCode`
-translation and the mirror image run to states related by `MirrorHeapCorr`, given a
-correspondence for each call. `MirrorSimFragment` admits skips, assertions,
-sequences, blocks, function definitions, scalar constants, branches, counted loops,
-literal limb stores, selections within one tower type and admitted calls; it excludes
-`RLetU64Zero`, which lowers to an integer `0` that the mirror rejects at a word type,
-`RWhileNz`, which the `RawCode` translation maps to failure, and `RCloneCall` and
-`RCallN`.
+mirror translation, and `LowCTMirrorCorres.lean` (`toJasminCmd_corresSem`,
+`toJasminCmd_mirror_exec`) that on `MirrorSimFragment` programs the mirror image runs,
+from every state related to a heap by `MirrorHeapCorr`, to a state related to `fa heap`
+for a heap function `fa`, given a correspondence for each call. `MirrorSimFragment`
+admits skips, assertions, sequences, blocks, function definitions, scalar zero
+bindings, scalar constants, branches, counted loops, literal limb stores, selections
+and copies within one tower type, and admitted calls `RCall`, `RCallN` and
+`RCloneCall`; `RWhileNz` has its own rule (`toJasminCmd_whileNz_mirror_exec`).
 
 ## Constant time and robust compilation
 

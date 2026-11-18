@@ -83,7 +83,6 @@ CatCrypt.Crypto.Jasmin.Halo2IPAProverReflect
 CatCrypt.Crypto.Jasmin.InfoFlow
 CatCrypt.Crypto.Jasmin.JasminEmitBridge
 CatCrypt.Crypto.Jasmin.JasminToRustEmitSimulates
-CatCrypt.Crypto.Jasmin.JasminTranslateLoopScope
 CatCrypt.Crypto.Jasmin.JoltProverReflect
 CatCrypt.Crypto.Jasmin.KeccakJincEmit
 CatCrypt.Crypto.Jasmin.LeafOps
@@ -100,8 +99,6 @@ CatCrypt.Crypto.Jasmin.Mpn.QhatBound
 CatCrypt.Crypto.Jasmin.MsmReflect
 CatCrypt.Crypto.Jasmin.P256.EvalChain
 CatCrypt.Crypto.Jasmin.P256Reflect
-CatCrypt.Crypto.Jasmin.Passes.ConstantFold
-CatCrypt.Crypto.Jasmin.Passes.NopElim
 CatCrypt.Crypto.Jasmin.Plonky3AirReflect
 CatCrypt.Crypto.Jasmin.Plonky3FriReflect
 CatCrypt.Crypto.Jasmin.Plonky3LdeReflect

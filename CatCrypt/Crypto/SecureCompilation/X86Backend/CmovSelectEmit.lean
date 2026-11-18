@@ -7,7 +7,6 @@ module
 import all CatCrypt.Core.Heap
 import all CatCrypt.Core.Location
 import all CatCrypt.Crypto.Jasmin.JasminOps
-import all CatCrypt.Crypto.Jasmin.JasminTranslate
 import all CatCrypt.Crypto.Jasmin.JasminVar
 import all CatCrypt.Crypto.Jasmin.LowCTBorrowCheck
 import all CatCrypt.Crypto.Jasmin.LowCTReflect

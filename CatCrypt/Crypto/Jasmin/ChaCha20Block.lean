@@ -7,15 +7,19 @@ module
 
 public meta import CatCrypt.Crypto.Jasmin.ChaCha20QR
 public import CatCrypt.Crypto.Jasmin.ChaCha20QR
-public meta import CatCrypt.Crypto.Jasmin.ISA
-public import CatCrypt.Crypto.Jasmin.ISA
+public meta import CatCrypt.Crypto.Jasmin.JasminVar
+public meta import CatCrypt.Crypto.Jasmin.JasminOps
+public meta import CatCrypt.Deep.RawCode
+public import CatCrypt.Crypto.Jasmin.JasminVar
+public import CatCrypt.Crypto.Jasmin.JasminOps
+public import CatCrypt.Deep.RawCode
 
 /-!
 # ChaCha20 Full Block Function (RFC 8439)
 
 Extends the quarter-round case study to the full 20-round ChaCha20 block function
 with Jasmin SSA compilation and `catCryptDialect` translation. The UC wrappers and
-ISA-parametric UC security live in `JasminSecurity/ChaCha20PRF.lean` (the
+the concrete UC statement live in `JasminSecurity/ChaCha20PRF.lean` (the
 compiler-boundary cut keeps this file free of the `Crypto.UC` dependency).
 
 ## Architecture
@@ -33,7 +37,7 @@ Jasmin SSA pipeline:
   → doubleRoundCmd (8 QRs = 160 instructions)
   → fullBlockCmd (10 × doubleRound + feedforward = ~1632 instructions)
   → pureEvalMonoCmd correctness (compositional proof)
-  → JasminProg + JasminISA bridge (pure block program)
+  → JasminProg `chachaBlockProg` (pure block program)
 ```
 
 ## Key Features
@@ -53,7 +57,7 @@ namespace CatCrypt.Crypto.Jasmin.ChaCha20Block
 open CatCrypt.Core CatCrypt.Prob CatCrypt.Crypto
 open CatCrypt.Crypto.Jasmin.ChaCha20QR (quarterRound)
 open CatCrypt.Crypto.Jasmin.ToSSA
-open CatCrypt.Crypto.Jasmin (JasminISA JasminProg FunDecl FunName)
+open CatCrypt.Crypto.Jasmin (JasminProg FunDecl FunName)
 open scoped ENNReal
 
 set_option autoImplicit false

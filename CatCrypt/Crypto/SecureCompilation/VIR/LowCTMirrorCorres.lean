@@ -7,54 +7,51 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorTranslate
 public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram
-public import CatCrypt.Crypto.Jasmin.LowCTToJasminImplOk
 
 /-!
-# The `LowCT` lowering and its `psem.v` mirror image run to corresponding states
+# The `psem.v` mirror image of the `LowCT` lowering runs to described states
 
-`LowCTToJasmin.toJasminCmd` lowers a `LowCT` program to a JasminAST command, which
-has two semantics: the `RawCode` translation `JasminTranslate.translateCmd` over a
-heap, and, through `InstrRTranslateExt.translateCmdExt`, the relational semantics
-`Sem` of the `psem.v` mirror. This module relates the two on the image of the
-lowering.
+`LowCTToJasmin.toJasminCmd` lowers a `LowCT` program to a JasminAST command, and
+`InstrRTranslateExt.translateCmdExt` maps that command to the relational semantics `Sem`
+of the `psem.v` mirror. This module states, on the image of the lowering, that the
+mirror image runs to a state described by a function on heaps.
 
 ## The state relation
 
 `MirrorHeapCorr sid s heap` relates a mirror state to a heap at scope `sid`: every
-`u64` register `x` of the mirror holds the word at the location of the JasminAST
-variable `x : u64`, and every byte array `x` of `n` bytes holds the array at the
-location of `x : u8[n]`. `getW`/`setW` and `getA`/`setA` read and write those
-locations.
+`u64` register `x` of the mirror holds the word at the location `aWordLoc sid x`, and
+every byte array `x` of `n` bytes holds the array at `aArrLoc sid x n`. `getW`/`setW`
+and `getA`/`setA` read and write those locations. The heap describes mirror states; the
+lemmas below state the effect of a command as a function `fa` on heaps.
 
-## The paired correspondence
+## The correspondence
 
-`CorresTrans aS opS gd prog env sid P c c' fa` states that the JasminAST command `c`,
-translated with enough fuel, evaluates from every heap with `P` to the single outcome
-`fa heap` (`TransDet`), and that its mirror image `c'` corresponds at `fa`
-(`ComJasminBridgeProgram.CorresSem` over `MirrorHeapCorr sid`). The mirror operator
-tables are parameters; the lemmas assume the semantics of the operators they use:
-`OpWordOfInt` and `OpWordNeq` for the expression operators, and `AsmStore64`,
-`AsmCmov` and `AsmClone` for the tower pseudo-operations, which `towerAsmSem` satisfies.
+`ComJasminBridgeProgram.CorresSem aS opS gd prog (MirrorHeapCorr sid) P fa c'` states
+that the mirror command `c'` runs from every state related to a heap with `P` to a state
+related to `fa heap`. The mirror operator tables are parameters; the lemmas assume the
+semantics of the operators they use: `OpWordOfInt` and `OpWordNeq` for the expression
+operators, and `AsmStore64`, `AsmCmov` and `AsmClone` for the tower pseudo-operations,
+which `towerAsmSem` satisfies.
 
 ## Main results
 
-- `corresTrans_scalarSet`, `corresTrans_ifNz`, `corresTrans_limbStore`,
-  `corresTrans_select`, `corresTrans_cloneTower`, `corresTrans_call`,
-  `corresTrans_callN`, `corresTrans_copy`: one lemma per emitted instruction shape;
-  `RLetU64Zero` is
-  `corresTrans_scalarSet` at `0`.
-- `corresTrans_nil`, `corresTrans_append`, `corresTrans_unrollForJ`: composition.
+- `corresSem_scalarSet`, `corresSem_ifNz`, `corresSem_limbStore`,
+  `corresSem_select`, `corresSem_cloneTower`, `corresSem_call`,
+  `corresSem_callN`, `corresSem_copy`: one lemma per emitted instruction shape;
+  `RLetU64Zero` is `corresSem_scalarSet` at `0`.
+- `corresSem_unrollForJ`: the unrolled counted loop; sequencing is
+  `ComJasminBridgeProgram.corresSem_append`.
 - `ccall_arrs_semIr`, `ccall_arrsN_semIr`: the mirror call rules for array parameters
   and one or several array results.
-- `corresSem_whileNz`: the loop `while (e ≠ (64u)0) { body }` corresponds, over the
-  mirror `Sem` alone, at the iterate of the body's heap function at a first-failing
-  count; `toJasminCmd_whileNz_mirror_exec` runs the lowered loop's mirror image.
-- `toJasminCmd_corresTrans`: every program of `MirrorSimFragment` lowers to a command
-  with a mirror image related by `CorresTrans`, given a `CorresTrans` for each call.
+- `corresSem_whileNz`: the loop `while (e ≠ (64u)0) { body }` corresponds at the
+  iterate of the body's heap function at a first-failing count;
+  `toJasminCmd_whileNz_mirror_exec` runs the lowered loop's mirror image.
+- `toJasminCmd_corresSem`: every program of `MirrorSimFragment` lowers to a command
+  whose mirror image corresponds at some `fa`, given a correspondence for each call.
 - `toJasminCmd_mirror_exec`: the mirror image runs under the fuel-bounded executor
-  `execCmd` to a state related to the heap the `RawCode` translation produces.
+  `execCmd`, from every state related to a heap, to a state related to `fa heap`.
 - `u64OpSem_wordOfInt`, `u64OpSem_neq`, `towerAsmSem_store64`, `towerAsmSem_cmov`,
-  `corresTrans_call_copy`, `corresTrans_callN_swap`: the operator and call hypotheses
+  `corresSem_call_copy`, `corresSem_callN_swap`: the operator and call hypotheses
   hold for concrete operator tables, for a call to a function returning its argument,
   and for a call to a function returning its two arguments swapped.
 - `letZeroSetProg_mirror_exec`, `whileClearProg_mirror_exec`,
@@ -63,9 +60,8 @@ tables are parameters; the lemmas assume the semantics of the operators they use
 
 ## Scope
 
-`RWhileNz` lowers to a `Cwhile` that the `RawCode` translation maps to failure, so the
-loop has a `CorresSem` rule but no `CorresTrans` and is outside `MirrorSimFragment`;
-`toJasminCmd_whileNz_mirror_exec` composes it with a fragment body.
+`RWhileNz` is outside `MirrorSimFragment`, whose correspondence needs no iteration
+count; `toJasminCmd_whileNz_mirror_exec` composes the loop rule with a fragment body.
 -/
 
 @[expose] public section
@@ -78,10 +74,10 @@ open CatCrypt.Crypto.Jasmin.CoqSemMirror
 open CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram
 open CatCrypt.Core (Heap)
 
-/-- The heap of the `RawCode` translation. -/
+/-- The heaps that describe mirror states. -/
 abbrev AHeap := CatCrypt.Core.Heap
 
-/-- The scope identifiers of the `RawCode` translation. -/
+/-- The scope identifiers of the heap locations. -/
 abbrev AScopeId := CatCrypt.Crypto.Jasmin.ScopeId
 
 variable {SyscallState Mem : Type} [MemModel Mem]
@@ -96,11 +92,14 @@ def mArrVar (x : String) (n : Nat) : Var := { vname := x, vtype := .aarr .U8 n }
 
 /-- The heap location of the JasminAST variable `x : u64` in scope `sid`. -/
 noncomputable def aWordLoc (sid : AScopeId) (x : String) : CatCrypt.Core.Location :=
-  CatCrypt.Crypto.Jasmin.wordLoc sid { vname := x, vtype := .sword .U64 } .U64
+  { id := CatCrypt.Crypto.Jasmin.varLocId sid { vname := x, vtype := .sword .U64 },
+    ty := BitVec 64, fintype := CatCrypt.Crypto.instFintypeBitVec 64 }
 
 /-- The heap location of the JasminAST variable `x : u8[n]` in scope `sid`. -/
 noncomputable def aArrLoc (sid : AScopeId) (x : String) (n : Nat) : CatCrypt.Core.Location :=
-  CatCrypt.Crypto.Jasmin.arrLoc sid { vname := x, vtype := .sarr n } n
+  { id := CatCrypt.Crypto.Jasmin.varLocId sid { vname := x, vtype := .sarr n },
+    ty := CatCrypt.Crypto.Jasmin.JArray n,
+    fintype := CatCrypt.Crypto.Jasmin.JArray.instFintypeJArray n }
 
 /-- The mirror `u64` word value. -/
 def vW (w : BitVec 64) : Value := .Vword .U64 w
@@ -135,14 +134,14 @@ def MirrorHeapCorr (sid : AScopeId) (s : Estate SyscallState Mem) (heap : AHeap)
 /-- Word locations with different names are distinct. -/
 theorem aWordLoc_id_ne (sid : AScopeId) (x y : String) (h : x ≠ y) :
     (aWordLoc sid x).id ≠ (aWordLoc sid y).id := by
-  simp only [aWordLoc, CatCrypt.Crypto.Jasmin.wordLoc, CatCrypt.Crypto.Jasmin.varLocId]
+  simp only [aWordLoc, CatCrypt.Crypto.Jasmin.varLocId]
   intro he
   exact h (CatCrypt.Crypto.Jasmin.encodeVarName_injective (Nat.pair_eq_pair.mp he).2)
 
 /-- Array locations with different names or sizes are distinct. -/
 theorem aArrLoc_id_ne (sid : AScopeId) (x y : String) (n m : Nat) (h : ¬ (x = y ∧ n = m)) :
     (aArrLoc sid x n).id ≠ (aArrLoc sid y m).id := by
-  simp only [aArrLoc, CatCrypt.Crypto.Jasmin.arrLoc, CatCrypt.Crypto.Jasmin.varLocId]
+  simp only [aArrLoc, CatCrypt.Crypto.Jasmin.varLocId]
   intro he
   have h1 := Nat.pair_eq_pair.mp he
   have h2 := (Nat.pair_eq_pair.mp h1.1).2
@@ -152,8 +151,7 @@ theorem aArrLoc_id_ne (sid : AScopeId) (x y : String) (n m : Nat) (h : ¬ (x = y
 /-- A word location and an array location are distinct. -/
 theorem aWordLoc_id_ne_aArrLoc (sid : AScopeId) (x y : String) (n : Nat) :
     (aWordLoc sid x).id ≠ (aArrLoc sid y n).id := by
-  simp only [aWordLoc, aArrLoc, CatCrypt.Crypto.Jasmin.wordLoc, CatCrypt.Crypto.Jasmin.arrLoc,
-    CatCrypt.Crypto.Jasmin.varLocId]
+  simp only [aWordLoc, aArrLoc, CatCrypt.Crypto.Jasmin.varLocId]
   intro he
   have h2 := (Nat.pair_eq_pair.mp (Nat.pair_eq_pair.mp he).1).2
   simp only [CatCrypt.Crypto.Jasmin.encodeSType, CatCrypt.Crypto.Jasmin.WSize.bits] at h2
@@ -219,24 +217,7 @@ theorem mirrorHeapCorr_setArr (sid : AScopeId) (s : Estate SyscallState Mem) (he
       rw [getA_setA_other heap sid x y n m a (fun ⟨h1, h2⟩ => hxy ⟨h1.symm, h2.symm⟩)]
       exact h.2 y m
 
-/-! ## §2. The paired correspondence -/
-
-open CatCrypt.Crypto.Jasmin (TransEnv translateCmd)
-
-/-- `c`, translated to `RawCode` at scope `sid` with enough fuel, evaluates from every
-    heap satisfying `P` to the single outcome `fa heap`. -/
-def TransDet (env : TransEnv) (sid : AScopeId) (P : AHeap → Prop)
-    (c : CatCrypt.Crypto.Jasmin.Cmd) (fa : AHeap → AHeap) : Prop :=
-  ∃ N, ∀ fuel, N ≤ fuel → ∀ heap, P heap →
-    (translateCmd env c sid fuel).code.eval heap = CatCrypt.Prob.SDistr.pure (⟨()⟩, fa heap)
-
-/-- The JasminAST command `c` evaluates deterministically to `fa`, and the mirror command
-    `c'` corresponds at `fa` over `MirrorHeapCorr sid`. -/
-def CorresTrans (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (P : AHeap → Prop)
-    (c : CatCrypt.Crypto.Jasmin.Cmd) (c' : Cmd) (fa : AHeap → AHeap) : Prop :=
-  TransDet env sid P c fa ∧
-    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid) P fa c'
+/-! ## §2. Operator hypotheses -/
 
 /-- The mirror operator table converts an integer to a `u64` word by `BitVec.ofInt`. -/
 def OpWordOfInt (opS : OpSem) : Prop :=
@@ -246,71 +227,28 @@ def OpWordOfInt (opS : OpSem) : Prop :=
 def OpWordNeq (opS : OpSem) : Prop :=
   ∀ a b : BitVec 64, opS.sem_sop2 (.Oneq (.Op_w .U64)) (vW a) (vW b) = .ok (.Vbool (a != b))
 
-/-- The empty command. -/
-theorem corresTrans_nil (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [] [] id := by
-  refine ⟨⟨1, fun fuel hf heap _ => ?_⟩, corresSem_nil _⟩
-  obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 1 := ⟨fuel - 1, by omega⟩
-  simp only [translateCmd, CatCrypt.Deep.eval_ret, CatCrypt.Core.SPComp.pure_def]
-  rfl
-
-/-- Strengthening the precondition. -/
-theorem corresTrans_weaken {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    {env : TransEnv} {sid : AScopeId} {P P' : AHeap → Prop}
-    {c : CatCrypt.Crypto.Jasmin.Cmd} {c' : Cmd} {fa : AHeap → AHeap}
-    (h : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P c c' fa)
-    (hP : ∀ a, P' a → P a) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P' c c' fa := by
-  obtain ⟨⟨N, hN⟩, hS⟩ := h
-  exact ⟨⟨N, fun fuel hf heap hp => hN fuel hf heap (hP heap hp)⟩, corresSem_weaken _ hS hP⟩
-
-/-- Sequencing: `c1 ++ c2` and `c1' ++ c2'` correspond at `ga ∘ fa` when `fa` preserves
-    `P`. The second command runs in the scope of the first, since the translation keeps
-    the scope (`translateCmd_newSid`). -/
-theorem corresTrans_append {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    {env : TransEnv} {sid : AScopeId} {P : AHeap → Prop}
-    {c1 c2 : CatCrypt.Crypto.Jasmin.Cmd} {c1' c2' : Cmd} {fa ga : AHeap → AHeap}
-    (h1 : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P c1 c1' fa)
-    (h2 : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P c2 c2' ga)
-    (hinv : ∀ a, P a → P (fa a)) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P
-      (c1 ++ c2) (c1' ++ c2') (fun a => ga (fa a)) := by
-  obtain ⟨⟨N1, hN1⟩, hS1⟩ := h1
-  obtain ⟨⟨N2, hN2⟩, hS2⟩ := h2
-  refine ⟨⟨max N1 (N2 + c1.length), fun fuel hf heap hp => ?_⟩, corresSem_append _ hS1 hS2 hinv⟩
-  rw [CatCrypt.Crypto.Jasmin.LowCT.translateCmd_append_eval,
-    CatCrypt.Crypto.Jasmin.translateCmd_newSid, hN1 fuel (by omega) heap hp,
-    CatCrypt.Prob.SDistr.pure_bind]
-  exact hN2 (fuel - c1.length) (by omega) (fa heap) (hinv heap hp)
-
 /-! ## §3. Scalar constants and branches -/
 
 /-- **`RScalarSet`.** The constant assignment `x := (64u) v` sets the word at `x`. -/
-theorem corresTrans_scalarSet (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (x : String) (v : Nat) (hop : OpWordOfInt opS) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [.Cassgn (.Lvar { var := { vname := x, vtype := .sword .U64 }, info := {} })
-        .AT_none (.sword .U64) (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int)))]
+theorem corresSem_scalarSet (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (x : String) (v : Nat) (hop : OpWordOfInt opS) :
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True) (fun heap => setW heap sid x (BitVec.ofNat 64 v))
       [.MkI () (.Cassgn (.Lvar { v_var := mWordVar x }) .AT_none (.aword .U64)
-        (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int))))]
-      (fun heap => setW heap sid x (BitVec.ofNat 64 v)) := by
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    exact CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cassgn_u64_val_eval env sid x v n heap
-  · refine corresSem_instr _ () ?_
-    intro s heap hSR _
-    have hrhs : semPexpr (Mem := Mem) true gd opS s
-        (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int))) = .ok (.Vword .U64 (BitVec.ofNat 64 v)) := by
-      show opS.sem_sop1 (.Oword_of_int .U64) (.Vint (v : Int)) = _
-      rw [hop, BitVec.ofInt_natCast]
-      rfl
-    refine ⟨_, ?_, mirrorHeapCorr_setWord sid s heap x (BitVec.ofNat 64 v) hSR⟩
-    apply CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy.execInstrR_sound (n := 1)
-    rw [CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage.execInstrR_Cassgn_eq]
-    exact CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeFull.mirror_aword_assign_post
-      gd opS { v_var := mWordVar x } .U64 _ _ s rfl hrhs
+        (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int))))] := by
+  refine corresSem_instr _ () ?_
+  intro s heap hSR _
+  have hrhs : semPexpr (Mem := Mem) true gd opS s
+      (.Papp1 (.Oword_of_int .U64) (.Pconst (v : Int)))
+      = .ok (.Vword .U64 (BitVec.ofNat 64 v)) := by
+    change opS.sem_sop1 (.Oword_of_int .U64) (.Vint (v : Int)) = _
+    rw [hop, BitVec.ofInt_natCast]
+    rfl
+  refine ⟨_, ?_, mirrorHeapCorr_setWord sid s heap x (BitVec.ofNat 64 v) hSR⟩
+  apply CatCrypt.Crypto.SecureCompilation.VIR.ExecAdequacy.execInstrR_sound (n := 1)
+  rw [CatCrypt.Crypto.SecureCompilation.VIR.OpSemCoverage.execInstrR_Cassgn_eq]
+  exact CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeFull.mirror_aword_assign_post
+    gd opS { v_var := mWordVar x } .U64 _ _ s rfl hrhs
 
 /-- The mirror guard `e ≠ (64u)0` of the lowered branch and loop on the scalar `e`. -/
 def mirrorNeqZero (e : String) : Pexpr :=
@@ -334,60 +272,36 @@ theorem semPexpr_mirrorNeqZero (gd : GlobDecls) (opS : OpSem) {sid : AScopeId} (
   exact hop2 _ _
 
 /-- **`RIfNz`.** The branch on `e ≠ 0` runs the branch the word at `e` selects. -/
-theorem corresTrans_ifNz {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    {env : TransEnv} {sid : AScopeId} {P : AHeap → Prop} (e : String)
-    {ct cf : CatCrypt.Crypto.Jasmin.Cmd} {ct' cf' : Cmd} {fat faf : AHeap → AHeap}
+theorem corresSem_ifNz {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
+    {sid : AScopeId} {P : AHeap → Prop} (e : String)
+    {ct' cf' : Cmd} {fat faf : AHeap → AHeap}
     (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
-    (ht : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P ct ct' fat)
-    (hf : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P cf cf' faf) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid P
-      [.Cif (.Papp2 (.Oneq .U64)
-          (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} }, gs := false })
-          (.Papp1 (.Oword_of_int .U64) (.Pconst 0))) ct cf]
+    (ht : CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      (MirrorHeapCorr sid) P fat ct')
+    (hf : CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      (MirrorHeapCorr sid) P faf cf') :
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid) P
+      (fun heap => if getW heap sid e != 0 then fat heap else faf heap)
       [.MkI () (.Cif (.Papp2 (.Oneq (.Op_w .U64)) (.Pvar (mkLvar { v_var := mWordVar e }))
-          (.Papp1 (.Oword_of_int .U64) (.Pconst 0))) ct' cf')]
-      (fun heap => if getW heap sid e != 0 then fat heap else faf heap) := by
-  obtain ⟨⟨Nt, hNt⟩, hSt⟩ := ht
-  obtain ⟨⟨Nf, hNf⟩, hSf⟩ := hf
-  refine ⟨⟨max Nt Nf + 1, fun fuel hfuel heap hp => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 1 := ⟨fuel - 1, by omega⟩
-    have hc : (CatCrypt.Crypto.Jasmin.translatePExpr sid
-        (.Papp2 (.Oneq .U64)
-          (.Pvar { gv := { var := { vname := e, vtype := .sword .U64 }, info := {} }, gs := false })
-          (.Papp1 (.Oword_of_int .U64) (.Pconst 0)))).eval heap
-        = CatCrypt.Prob.SDistr.pure (⟨.sbool, getW heap sid e != 0⟩, heap) :=
-      CatCrypt.Crypto.Jasmin.LowCT.cif_cond_eval sid e heap
-    cases hb : (getW heap sid e != 0) with
-    | true =>
-      rw [hb] at hc
-      rw [CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_true env sid _ ct cf n heap heap hc,
-        hNt n (by omega) heap hp]
-      beta_reduce
-      rw [ite_eq_left hb]
-    | false =>
-      rw [hb] at hc
-      rw [CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cif_eval_false env sid _ ct cf n heap heap hc,
-        CatCrypt.Crypto.Jasmin.translateCmd_newSid, hNf n (by omega) heap hp]
-      beta_reduce
-      rw [ite_eq_right (by rw [hb]; decide)]
-  · refine corresSem_instr _ () ?_
-    intro s heap hSR hp
-    have hcond := semPexpr_mirrorNeqZero gd opS e hop1 hop2 s heap hSR
-    cases hb : (getW heap sid e != 0) with
-    | true =>
-      rw [hb] at hcond
-      obtain ⟨s', hs', hSR'⟩ := hSt s heap hSR hp
-      refine ⟨s', .Eif_true _ _ _ _ _ hcond hs', ?_⟩
-      beta_reduce
-      rw [ite_eq_left hb]
-      exact hSR'
-    | false =>
-      rw [hb] at hcond
-      obtain ⟨s', hs', hSR'⟩ := hSf s heap hSR hp
-      refine ⟨s', .Eif_false _ _ _ _ _ hcond hs', ?_⟩
-      beta_reduce
-      rw [ite_eq_right (by rw [hb]; decide)]
-      exact hSR'
+          (.Papp1 (.Oword_of_int .U64) (.Pconst 0))) ct' cf')] := by
+  refine corresSem_instr _ () ?_
+  intro s heap hSR hp
+  have hcond := semPexpr_mirrorNeqZero gd opS e hop1 hop2 s heap hSR
+  cases hb : (getW heap sid e != 0) with
+  | true =>
+    rw [hb] at hcond
+    obtain ⟨s', hs', hSR'⟩ := ht s heap hSR hp
+    refine ⟨s', .Eif_true _ _ _ _ _ hcond hs', ?_⟩
+    beta_reduce
+    rw [ite_eq_left hb]
+    exact hSR'
+  | false =>
+    rw [hb] at hcond
+    obtain ⟨s', hs', hSR'⟩ := hf s heap hSR hp
+    refine ⟨s', .Eif_false _ _ _ _ _ hcond hs', ?_⟩
+    beta_reduce
+    rw [ite_eq_right (by rw [hb]; decide)]
+    exact hSR'
 
 /-! ## §3b. The loop on a scalar -/
 
@@ -396,8 +310,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeProgram (iterFold)
 /-- **`RWhileNz`, over the mirror `Sem`.** Let the body `body'` correspond at `fb` from
     heaps with `P` and a nonzero word at `e`, let `fb` preserve `P` there, and let
     `count heap` be an iteration count at which the word at `e` first vanishes. Then the
-    loop `while (e ≠ (64u)0) { body' }` corresponds at `iterFold fb (count heap)`. The
-    `RawCode` translation of `Cwhile` is failure, so the loop has no `TransDet` half. -/
+    loop `while (e ≠ (64u)0) { body' }` corresponds at `iterFold fb (count heap)`. -/
 theorem corresSem_whileNz {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
     {sid : AScopeId} (e : String) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
     {P : AHeap → Prop} {body' : Cmd} {fb : AHeap → AHeap} (count : AHeap → Nat)
@@ -488,112 +401,99 @@ theorem writeLval_lvar_arr (gd : GlobDecls) (opS : OpSem) (s : Estate SyscallSta
     Bool.not_true, decide_true, Bool.true_and, Bool.true_or]
   rfl
 
+/-- The integer constant `v.toNat` converts back to the 64-bit word `v`. -/
+theorem intToWord_U64_toNat (v : BitVec 64) :
+    CatCrypt.Crypto.Jasmin.intToWord .U64 (v.toNat : Int) = v := by
+  simp [CatCrypt.Crypto.Jasmin.intToWord, CatCrypt.Crypto.Jasmin.WSize.bits]
+
 /-- **`RLimbStore`.** `STORE64` writes the word `v` at byte offset `8 * idx` of `loc`. -/
-theorem corresTrans_limbStore {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (hasm : AsmStore64 aS)
+theorem corresSem_limbStore {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (hasm : AsmStore64 aS)
     (loc : CatCrypt.Crypto.Jasmin.LowCT.Located) (idx : Nat) (v : BitVec 64) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [.Copn [CatCrypt.Crypto.Jasmin.LowCT.locToLVal loc] .AT_none (.Oasm { name := "STORE64" })
-        [CatCrypt.Crypto.Jasmin.LowCT.locToPExpr loc, .Pconst idx, .Pconst v.toNat]]
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True)
+      (fun heap => setA heap sid loc.locVar loc.locSrc.storageBytes
+        (JArray.setWord (getA heap sid loc.locVar loc.locSrc.storageBytes) .U64 (idx * 8) v))
       [.MkI () (.Copn [.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }] .AT_none
         (.Oasm "STORE64")
         [.Pvar (mkLvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }),
-          .Pconst idx, .Pconst v.toNat])]
-      (fun heap => setA heap sid loc.locVar loc.locSrc.storageBytes
-        (JArray.setWord (getA heap sid loc.locVar loc.locSrc.storageBytes) .U64 (idx * 8) v)) := by
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    exact CatCrypt.Crypto.Jasmin.LowCT.translateCmd_store64_eval env loc idx v sid n heap
-  · refine corresSem_instr _ () ?_
-    intro s heap hSR _
-    refine ⟨_, .Eopn _ _ _ _ _ _ ?_, mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
-    have hargs := semPexpr_pvar_arr gd opS s
-      { v_var := mArrVar loc.locVar loc.locSrc.storageBytes } _ _
-      (hSR.2 loc.locVar loc.locSrc.storageBytes)
-    show (do
-      let vs ← semPexprList (Mem := Mem) true gd opS s
-        [.Pvar (mkLvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }),
-          .Pconst idx, .Pconst v.toNat]
-      let rs ← aS.sopn_sem (.Oasm "STORE64") vs
-      writeLvals (Mem := Mem) true gd opS s
-        [.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }] rs) = _
-    simp only [semPexprList, hargs]
-    show (do
-      let rs ← aS.sopn_sem (.Oasm "STORE64")
-        [vA _ (getA heap sid loc.locVar loc.locSrc.storageBytes), .Vint idx, .Vint v.toNat]
-      writeLvals (Mem := Mem) true gd opS s
-        [.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }] rs) = _
-    rw [hasm]
-    show (do
-      let s1 ← writeLval (Mem := Mem) true gd opS
-        (.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }) _ s
-      writeLvals (Mem := Mem) true gd opS s1 [] []) = _
-    rw [writeLval_lvar_arr]
-    simp only [Int.toNat_natCast, CatCrypt.Crypto.Jasmin.LowCT.intToWord_U64_toNat]
-    rfl
+          .Pconst idx, .Pconst v.toNat])] := by
+  refine corresSem_instr _ () ?_
+  intro s heap hSR _
+  refine ⟨_, .Eopn _ _ _ _ _ _ ?_, mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
+  have hargs := semPexpr_pvar_arr gd opS s
+    { v_var := mArrVar loc.locVar loc.locSrc.storageBytes } _ _
+    (hSR.2 loc.locVar loc.locSrc.storageBytes)
+  change (do
+    let vs ← semPexprList (Mem := Mem) true gd opS s
+      [.Pvar (mkLvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }),
+        .Pconst idx, .Pconst v.toNat]
+    let rs ← aS.sopn_sem (.Oasm "STORE64") vs
+    writeLvals (Mem := Mem) true gd opS s
+      [.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }] rs) = _
+  simp only [semPexprList, hargs]
+  change (do
+    let rs ← aS.sopn_sem (.Oasm "STORE64")
+      [vA _ (getA heap sid loc.locVar loc.locSrc.storageBytes), .Vint idx, .Vint v.toNat]
+    writeLvals (Mem := Mem) true gd opS s
+      [.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }] rs) = _
+  rw [hasm]
+  change (do
+    let s1 ← writeLval (Mem := Mem) true gd opS
+      (.Lvar { v_var := mArrVar loc.locVar loc.locSrc.storageBytes }) _ s
+    writeLvals (Mem := Mem) true gd opS s1 [] []) = _
+  rw [writeLval_lvar_arr]
+  simp only [Int.toNat_natCast, intToWord_U64_toNat]
+  rfl
 
 /-- **`RCloneCall`, first instruction.** `CLONE_TOWER` copies the array of `oldVar` to
     `cloneVar`. -/
-theorem corresTrans_cloneTower {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (hasm : AsmClone aS)
+theorem corresSem_cloneTower {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (hasm : AsmClone aS)
     (cloneVar oldVar : String) (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [.Copn [.Lvar { var := { vname := cloneVar, vtype := .sarr t.storageBytes },
-                      info := { towerTag := t.byteSize } }] .AT_none
-            (.Oasm { name := "CLONE_TOWER" })
-            [CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := oldVar, locSrc := t }]]
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True)
+      (fun heap => setA heap sid cloneVar t.storageBytes (getA heap sid oldVar t.storageBytes))
       [.MkI () (.Copn [.Lvar { v_var := mArrVar cloneVar t.storageBytes }] .AT_none
-        (.Oasm "CLONE_TOWER") [.Pvar (mkLvar { v_var := mArrVar oldVar t.storageBytes })])]
-      (fun heap => setA heap sid cloneVar t.storageBytes (getA heap sid oldVar t.storageBytes)) := by
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    exact CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cloneTower_eval env cloneVar oldVar t sid n heap
-  · refine corresSem_instr _ () ?_
-    intro s heap hSR _
-    refine ⟨_, .Eopn _ _ _ _ _ _ ?_, mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
-    have hargs := semPexpr_pvar_arr gd opS s { v_var := mArrVar oldVar t.storageBytes }
-      _ _ (hSR.2 oldVar t.storageBytes)
-    show (do
-      let vs ← semPexprList (Mem := Mem) true gd opS s
-        [.Pvar (mkLvar { v_var := mArrVar oldVar t.storageBytes })]
-      let rs ← aS.sopn_sem (.Oasm "CLONE_TOWER") vs
-      writeLvals (Mem := Mem) true gd opS s [.Lvar { v_var := mArrVar cloneVar t.storageBytes }] rs)
-      = _
-    simp only [semPexprList, hargs]
-    show (do
-      let rs ← aS.sopn_sem (.Oasm "CLONE_TOWER") [vA _ (getA heap sid oldVar t.storageBytes)]
-      writeLvals (Mem := Mem) true gd opS s [.Lvar { v_var := mArrVar cloneVar t.storageBytes }] rs)
-      = _
-    rw [hasm]
-    show (do
-      let s1 ← writeLval (Mem := Mem) true gd opS
-        (.Lvar { v_var := mArrVar cloneVar t.storageBytes }) _ s
-      writeLvals (Mem := Mem) true gd opS s1 [] []) = _
-    rw [writeLval_lvar_arr]
-    rfl
+        (.Oasm "CLONE_TOWER") [.Pvar (mkLvar { v_var := mArrVar oldVar t.storageBytes })])] := by
+  refine corresSem_instr _ () ?_
+  intro s heap hSR _
+  refine ⟨_, .Eopn _ _ _ _ _ _ ?_, mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
+  have hargs := semPexpr_pvar_arr gd opS s { v_var := mArrVar oldVar t.storageBytes }
+    _ _ (hSR.2 oldVar t.storageBytes)
+  change (do
+    let vs ← semPexprList (Mem := Mem) true gd opS s
+      [.Pvar (mkLvar { v_var := mArrVar oldVar t.storageBytes })]
+    let rs ← aS.sopn_sem (.Oasm "CLONE_TOWER") vs
+    writeLvals (Mem := Mem) true gd opS s [.Lvar { v_var := mArrVar cloneVar t.storageBytes }] rs)
+    = _
+  simp only [semPexprList, hargs]
+  change (do
+    let rs ← aS.sopn_sem (.Oasm "CLONE_TOWER") [vA _ (getA heap sid oldVar t.storageBytes)]
+    writeLvals (Mem := Mem) true gd opS s [.Lvar { v_var := mArrVar cloneVar t.storageBytes }] rs)
+    = _
+  rw [hasm]
+  change (do
+    let s1 ← writeLval (Mem := Mem) true gd opS
+      (.Lvar { v_var := mArrVar cloneVar t.storageBytes }) _ s
+    writeLvals (Mem := Mem) true gd opS s1 [] []) = _
+  rw [writeLval_lvar_arr]
+  rfl
 
 /-- **`RSelect`.** `CMOV` writes to `dstVar` the array of `x0` when the word at `sel` is
     `0` and the array of `x1` otherwise. -/
-theorem corresTrans_select {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (hasm : AsmCmov aS)
+theorem corresSem_select {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (hasm : AsmCmov aS)
     (sel dstVar x0 x1 : String) (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [.Copn [CatCrypt.Crypto.Jasmin.LowCT.locToLVal { locVar := dstVar, locSrc := t }] .AT_none
-          (.Oasm { name := "CMOV" })
-          [.Pvar { gv := { var := { vname := sel, vtype := .sword .U64 }, info := {} }, gs := false },
-            CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := x0, locSrc := t },
-            CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := x1, locSrc := t }]]
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True)
+      (fun heap => setA heap sid dstVar t.storageBytes
+        (if getW heap sid sel = 0 then getA heap sid x0 t.storageBytes
+          else getA heap sid x1 t.storageBytes))
       [.MkI () (.Copn [.Lvar { v_var := mArrVar dstVar t.storageBytes }] .AT_none (.Oasm "CMOV")
         [.Pvar (mkLvar { v_var := mWordVar sel }),
           .Pvar (mkLvar { v_var := mArrVar x0 t.storageBytes }),
-          .Pvar (mkLvar { v_var := mArrVar x1 t.storageBytes })])]
-      (fun heap => setA heap sid dstVar t.storageBytes
-        (if getW heap sid sel = 0 then getA heap sid x0 t.storageBytes
-          else getA heap sid x1 t.storageBytes)) := by
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    exact CatCrypt.Crypto.Jasmin.LowCT.translateCmd_cmov_eval env sel dstVar x0 x1 t sid n heap
-      (getW heap sid sel) rfl
+          .Pvar (mkLvar { v_var := mArrVar x1 t.storageBytes })])] := by
   · refine corresSem_instr _ () ?_
     intro s heap hSR _
     refine ⟨_, .Eopn _ _ _ _ _ _ ?_, mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
@@ -816,15 +716,12 @@ def mirrorCallCmd (f : String) (dest : Located) (args : List Located) : Cmd :=
     { name := f }
     (args.map (fun a => .Pvar (mkLvar { v_var := mArrVar a.locVar a.locSrc.storageBytes }))))]
 
-/-- **`RCall`.** In the environment `pureLeafEnv g` whose function `f` returns the array
-    `h` of its argument values, the call writes that array to `dest`, when the mirror
-    callee `fd` has array parameters `pv` and an array result `ret` holding the same array
-    at the end of its body. -/
-theorem corresTrans_call {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (sid : AScopeId) (g : String → Option (List TypedValue → List TypedValue))
-    (f : String) (dest : Located) (args : List Located)
+/-- **`RCall`.** The call writes to `dest` the array `h` of the argument values, when the
+    mirror callee `fd` has array parameters `pv` and an array result `ret` holding that
+    array at the end of its body. -/
+theorem corresSem_call {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (f : String) (dest : Located) (args : List Located)
     (h : List TypedValue → JArray dest.locSrc.storageBytes)
-    (hg : g f = some (fun vs => [⟨.sarr dest.locSrc.storageBytes, h vs⟩]))
     (fd : FunDef) (hfd : getFunDef prog { name := f } = some fd) (pv : List VarI) (ret : VarI)
     (hlen : pv.length = args.length)
     (htyin : fd.tyin = args.map (fun a => .aarr .U8 a.locSrc.storageBytes))
@@ -835,19 +732,12 @@ theorem corresTrans_call {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Pr
       Sem aS opS gd prog (Estate.mk scs mem (paramVmA (calleeParamArrs sid pv args heap) Vm.init))
         fd.body s2 ∧
       (s2.evm).get ret.v_var = vA _ (h (callArgVals sid args heap))) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (pureLeafEnv g) sid
-      (fun _ => True) (toJasminCmd (.RCall f dest args)) (mirrorCallCmd f dest args)
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True)
       (fun heap => setA heap sid dest.locVar dest.locSrc.storageBytes
-        (h (callArgVals sid args heap))) := by
-  rw [toJasminCmd_RCall]
+        (h (callArgVals sid args heap)))
+      (mirrorCallCmd f dest args) := by
   unfold mirrorCallCmd
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    refine translateCmd_ccall_pureLeafEnv_eval g [locToLVal dest] f args sid n heap _
-      (fun gf hgf => ?_) (fun hn => by rw [hg] at hn; cases hn)
-    rw [hg] at hgf
-    cases hgf
-    exact translateWriteLVals_locToLVal_eval sid dest _ heap
   · refine corresSem_instr _ () ?_
     intro s heap hSR _
     obtain ⟨s2, hs2, hret⟩ := hbody s.escs s.emem heap
@@ -875,8 +765,6 @@ theorem corresTrans_call {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Pr
       exact ⟨hc.1, hc.2⟩
 
 /-! ## §5b. Calls with several array results -/
-
-open CatCrypt.Crypto.Jasmin (translateWriteLVals translateWriteLVal writeVar_sarr_eq)
 
 /-- Writing arrays of their declared sizes to array variables, in order, is `paramVmA`. -/
 theorem writeLvals_arrs (gd : GlobDecls) (opS : OpSem) :
@@ -949,20 +837,6 @@ def CallOut.typed (o : CallOut) : TypedValue := ⟨.sarr o.loc.locSrc.storageByt
 noncomputable def writeOuts (sid : AScopeId) (outs : List CallOut) (heap : AHeap) : AHeap :=
   outs.foldl (fun hp o => setA hp sid o.loc.locVar o.loc.locSrc.storageBytes o.a) heap
 
-/-- Writing the outputs to their tower variables is `writeOuts`. -/
-theorem translateWriteLVals_callOuts_eval (sid : AScopeId) :
-    ∀ (outs : List CallOut) (heap : AHeap),
-      (translateWriteLVals sid (outs.map (fun o => locToLVal o.loc)) (outs.map CallOut.typed)).eval
-        heap = CatCrypt.Prob.SDistr.pure (⟨()⟩, writeOuts sid outs heap)
-  | [], heap => by
-    simp only [List.map_nil, translateWriteLVals, writeOuts, List.foldl_nil,
-      CatCrypt.Deep.eval_ret, CatCrypt.Core.SPComp.pure_def]
-  | o :: outs, heap => by
-    simp only [List.map_cons, translateWriteLVals, translateWriteLVal, CallOut.typed, locToLVal,
-      locToVar, towerToSType, writeVar_sarr_eq, CatCrypt.Deep.eval_bind,
-      CatCrypt.Core.SPComp.bind_def]
-    exact (eval_put_bind_heap heap _ _ _).trans (translateWriteLVals_callOuts_eval sid outs _)
-
 /-- The caller-side array variables receiving the outputs `outs`. -/
 def callOutArrs (outs : List CallOut) : List ArrArg :=
   outs.map (fun o => ⟨{ v_var := mArrVar o.loc.locVar o.loc.locSrc.storageBytes },
@@ -1008,16 +882,13 @@ def mirrorCallNCmd (f : String) (dests args : List Located) : Cmd :=
 theorem mirrorCallCmd_eq (f : String) (dest : Located) (args : List Located) :
     mirrorCallCmd f dest args = mirrorCallNCmd f [dest] args := rfl
 
-/-- **`RCallN`.** In the environment `pureLeafEnv g` whose function `f` returns the
-    outputs `h vs` of its argument values, laid out on `dests`, the call writes each
-    output to its destination in order, when the mirror callee `fd` has array parameters
-    `pv` and array results `rv` holding the outputs at the end of its body. -/
-theorem corresTrans_callN {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (sid : AScopeId) (g : String → Option (List TypedValue → List TypedValue))
-    (f : String) (dests args : List Located)
+/-- **`RCallN`.** The call writes the outputs `h vs` of the argument values `vs`, laid out
+    on `dests`, to their destinations in order, when the mirror callee `fd` has array
+    parameters `pv` and array results `rv` holding the outputs at the end of its body. -/
+theorem corresSem_callN {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (f : String) (dests args : List Located)
     (h : List TypedValue → List CallOut)
     (hshape : ∀ vs, (h vs).map CallOut.loc = dests)
-    (hg : g f = some (fun vs => (h vs).map CallOut.typed))
     (fd : FunDef) (hfd : getFunDef prog { name := f } = some fd) (pv rv : List VarI)
     (hlen : pv.length = args.length) (hrlen : rv.length = dests.length)
     (htyin : fd.tyin = args.map (fun a => .aarr .U8 a.locSrc.storageBytes))
@@ -1029,19 +900,10 @@ theorem corresTrans_callN {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : P
       Sem aS opS gd prog (Estate.mk scs mem (paramVmA (calleeParamArrs sid pv args heap) Vm.init))
         fd.body s2 ∧
       ∀ ro ∈ rv.zip (h (callArgVals sid args heap)), (s2.evm).get ro.1.v_var = vA _ ro.2.a) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (pureLeafEnv g) sid
-      (fun _ => True) (toJasminCmd (.RCallN f dests args)) (mirrorCallNCmd f dests args)
-      (fun heap => writeOuts sid (h (callArgVals sid args heap)) heap) := by
-  rw [toJasminCmd_RCallN]
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True) (fun heap => writeOuts sid (h (callArgVals sid args heap)) heap)
+      (mirrorCallNCmd f dests args) := by
   unfold mirrorCallNCmd
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    refine translateCmd_ccall_pureLeafEnv_eval g (dests.map locToLVal) f args sid n heap _
-      (fun gf hgf => ?_) (fun hn => by rw [hg] at hn; cases hn)
-    rw [hg] at hgf
-    cases hgf
-    rw [← hshape (callArgVals sid args heap), List.map_map]
-    exact translateWriteLVals_callOuts_eval sid (h (callArgVals sid args heap)) heap
   · refine corresSem_instr _ () ?_
     intro s heap hSR _
     obtain ⟨s2, hs2, hret⟩ := hbody s.escs s.emem heap
@@ -1087,50 +949,23 @@ theorem corresTrans_callN {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : P
 
 /-! ### Whole-array copy -/
 
-/-- The array assignment `dstVar = srcVar` of two locations of tower type `t`, translated
-    at fuel `n + 2`, copies the array of `srcVar` to `dstVar`. -/
-theorem translateCmd_copy_eval (env : TransEnv) (dstVar srcVar : String)
-    (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) (sid : AScopeId) (n : Nat) (heap0 : AHeap) :
-    (translateCmd env
-        [.Cassgn (CatCrypt.Crypto.Jasmin.LowCT.locToLVal { locVar := dstVar, locSrc := t })
-          .AT_none (CatCrypt.Crypto.Jasmin.LowCT.towerToSType t)
-          (CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := srcVar, locSrc := t })]
-        sid (n + 2)).code.eval heap0 =
-      CatCrypt.Prob.SDistr.pure (⟨()⟩, setA heap0 sid dstVar t.storageBytes
-        (getA heap0 sid srcVar t.storageBytes)) := by
-  simp only [translateCmd, CatCrypt.Crypto.Jasmin.translateInstrR, CatCrypt.Deep.eval_bind,
-    CatCrypt.Deep.eval_ret, CatCrypt.Core.SPComp.bind_def, CatCrypt.Core.SPComp.pure_def,
-    CatCrypt.Crypto.Jasmin.LowCT.translatePExpr_locToPExpr_eval,
-    CatCrypt.Prob.SDistr.pure_bind]
-  simp only [CatCrypt.Crypto.Jasmin.LowCT.towerToSType, CatCrypt.Crypto.Jasmin.coerceValue,
-    ↓reduceDIte, CatCrypt.Crypto.Jasmin.translateWriteLVal, CatCrypt.Crypto.Jasmin.LowCT.locToLVal,
-    CatCrypt.Crypto.Jasmin.LowCT.locToVar]
-  erw [CatCrypt.Crypto.Jasmin.writeVar_sarr_eq]
-  exact CatCrypt.Crypto.Jasmin.LowCT.eval_put_bind_heap heap0 _ _
-    (fun h => CatCrypt.Prob.SDistr.pure ((⟨()⟩ : ULift Unit), h))
-
 /-- **`RCopy`.** The array assignment `dstVar = srcVar` of two locations of tower type
     `t` copies the array of `srcVar` to `dstVar`. -/
-theorem corresTrans_copy {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (dstVar srcVar : String)
+theorem corresSem_copy {aS : AsmSem} (opS : OpSem) (gd : GlobDecls) (prog : Prog)
+    (sid : AScopeId) (dstVar srcVar : String)
     (t : CatCrypt.Crypto.Jasmin.LowCT.TowerType) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid (fun _ => True)
-      [.Cassgn (CatCrypt.Crypto.Jasmin.LowCT.locToLVal { locVar := dstVar, locSrc := t })
-        .AT_none (CatCrypt.Crypto.Jasmin.LowCT.towerToSType t)
-        (CatCrypt.Crypto.Jasmin.LowCT.locToPExpr { locVar := srcVar, locSrc := t })]
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+      (fun _ => True)
+      (fun heap => setA heap sid dstVar t.storageBytes (getA heap sid srcVar t.storageBytes))
       [.MkI () (.Cassgn (.Lvar { v_var := mArrVar dstVar t.storageBytes }) .AT_none
-        (.aarr .U8 t.storageBytes) (.Pvar (mkLvar { v_var := mArrVar srcVar t.storageBytes })))]
-      (fun heap => setA heap sid dstVar t.storageBytes (getA heap sid srcVar t.storageBytes)) := by
-  refine ⟨⟨2, fun fuel hf heap _ => ?_⟩, ?_⟩
-  · obtain ⟨n, rfl⟩ : ∃ n, fuel = n + 2 := ⟨fuel - 2, by omega⟩
-    exact translateCmd_copy_eval env dstVar srcVar t sid n heap
-  · refine corresSem_instr _ () ?_
-    intro s heap hSR _
-    exact ⟨_, .Eassgn _ _ _ _ _ _ _ _
-      (semPexpr_pvar_arr gd opS s { v_var := mArrVar srcVar t.storageBytes } _ _
-        (hSR.2 srcVar t.storageBytes))
-      (truncateVal_arr_self _ _) (writeLval_lvar_arr gd opS s _ _ _),
-      mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
+        (.aarr .U8 t.storageBytes) (.Pvar (mkLvar { v_var := mArrVar srcVar t.storageBytes })))] := by
+  refine corresSem_instr _ () ?_
+  intro s heap hSR _
+  exact ⟨_, .Eassgn _ _ _ _ _ _ _ _
+    (semPexpr_pvar_arr gd opS s { v_var := mArrVar srcVar t.storageBytes } _ _
+      (hSR.2 srcVar t.storageBytes))
+    (truncateVal_arr_self _ _) (writeLval_lvar_arr gd opS s _ _ _),
+    mirrorHeapCorr_setArr sid s heap _ _ _ hSR⟩
 
 /-! ## §6. Composition over a `LowCT` fragment -/
 
@@ -1138,7 +973,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslate
 open CatCrypt.Crypto.SecureCompilation.VIR.InstrRTranslateExt
 open CatCrypt.Crypto.SecureCompilation.VIR.LowCTMirrorTranslate
 
-/-- The `LowCT` programs covered by `toJasminCmd_corresTrans`: skips, assertions,
+/-- The `LowCT` programs covered by `toJasminCmd_corresSem`: skips, assertions,
     sequences, blocks, function definitions, scalar zero bindings, scalar constants,
     branches on a scalar, counted loops, literal limb stores, selections between
     locations of one tower type, whole-array copies between locations of one tower
@@ -1227,22 +1062,22 @@ theorem translateCmdExt_whileNz (e : String) (body : LowCT) {b : Cmd}
 
 /-- **The unrolled counted loop.** `n` copies of the index write followed by the body
     correspond when the body does. -/
-theorem corresTrans_unrollForJ {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    {env : TransEnv} {sid : AScopeId} (hop : OpWordOfInt opS) (x : String)
+theorem corresSem_unrollForJ {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
+    {sid : AScopeId} (hop : OpWordOfInt opS) (x : String)
     {bodyJ : CatCrypt.Crypto.Jasmin.Cmd} {body' : Cmd} {fb : AHeap → AHeap}
     (hb : translateCmdExt bodyJ = some body')
-    (hB : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-      (fun _ => True) bodyJ body' fb) :
+    (hB : CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      (MirrorHeapCorr sid) (fun _ => True) fb body') :
     ∀ n, ∃ c' fa, translateCmdExt (unrollForJ x bodyJ n) = some c' ∧
-      CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-        (fun _ => True) (unrollForJ x bodyJ n) c' fa
-  | 0 => ⟨[], id, rfl, corresTrans_nil aS opS gd prog env sid⟩
+      CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+        (MirrorHeapCorr sid) (fun _ => True) fa c'
+  | 0 => ⟨[], id, rfl, corresSem_nil _⟩
   | n + 1 => by
-    obtain ⟨c', fa, hc', hC⟩ := corresTrans_unrollForJ hop x hb hB n
-    have hS := corresTrans_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
-      env sid x n hop
-    have hSB := corresTrans_append hS hB (fun _ _ => trivial)
-    refine ⟨_, _, ?_, corresTrans_append hC hSB (fun _ _ => trivial)⟩
+    obtain ⟨c', fa, hc', hC⟩ := corresSem_unrollForJ hop x hb hB n
+    have hS := corresSem_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      sid x n hop
+    have hSB := corresSem_append _ hS hB (fun _ _ => trivial)
+    refine ⟨_, _, ?_, corresSem_append _ hC hSB (fun _ _ => trivial)⟩
     simp only [unrollForJ]
     refine translateCmdExt_append_some hc' ?_
     exact translateCmdExt_append_some (a := [_]) (by
@@ -1251,59 +1086,61 @@ theorem corresTrans_unrollForJ {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pro
         translateSOp1, translatePExpr, mWordVar, translateAssgnTag]) hb
 
 /-- **Composition.** Every program of `MirrorSimFragment callOk` lowers to a command with
-    a mirror image, and the two correspond, given a correspondence for each call that
-    `callOk` admits, stated on the multi-output form (`RCall f dest args` is
+    a mirror image that corresponds at some `fa`, given a correspondence for each call
+    that `callOk` admits, stated on the multi-output form (`RCall f dest args` is
     `RCallN f [dest] args`). -/
-theorem toJasminCmd_corresTrans {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    (env : TransEnv) (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
+theorem toJasminCmd_corresSem {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
+    (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
     (hstore : AsmStore64 aS) (hcmov : AsmCmov aS) (hclone : AsmClone aS)
     (callOk : String → List Located → List Located → Prop)
     (hcall : ∀ f dests args, callOk f dests args → ∃ fa,
-      CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-        (fun _ => True) (toJasminCmd (.RCallN f dests args)) (mirrorCallNCmd f dests args) fa) :
+      CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+        (fun _ => True) fa (mirrorCallNCmd f dests args)) :
     ∀ c, MirrorSimFragment callOk c → ∃ c' fa, translateCmdExt (toJasminCmd c) = some c' ∧
-      CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-        (fun _ => True) (toJasminCmd c) c' fa := by
+      CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+        (fun _ => True) fa c' := by
   intro c hc
   induction c with
-  | RSkip => exact ⟨[], id, rfl, corresTrans_nil aS opS gd prog env sid⟩
-  | RAssert _ => exact ⟨[], id, rfl, corresTrans_nil aS opS gd prog env sid⟩
+  | RSkip => exact ⟨[], id, rfl, corresSem_nil _⟩
+  | RAssert _ => exact ⟨[], id, rfl, corresSem_nil _⟩
   | RSeq c1 c2 ih1 ih2 =>
     obtain ⟨c1', fa, h1, H1⟩ := ih1 hc.1
     obtain ⟨c2', ga, h2, H2⟩ := ih2 hc.2
-    exact ⟨_, _, translateCmdExt_append_some h1 h2, corresTrans_append H1 H2 (fun _ _ => trivial)⟩
+    exact ⟨_, _, translateCmdExt_append_some h1 h2,
+      corresSem_append _ H1 H2 (fun _ _ => trivial)⟩
   | RFnDef _ _ _ c1 c2 ih1 ih2 =>
     obtain ⟨c1', fa, h1, H1⟩ := ih1 hc.1
     obtain ⟨c2', ga, h2, H2⟩ := ih2 hc.2
-    exact ⟨_, _, translateCmdExt_append_some h1 h2, corresTrans_append H1 H2 (fun _ _ => trivial)⟩
+    exact ⟨_, _, translateCmdExt_append_some h1 h2,
+      corresSem_append _ H1 H2 (fun _ _ => trivial)⟩
   | RBlock body ih => exact ih hc
   | RLetU64Zero x body ih =>
     obtain ⟨b', fb, hb, HB⟩ := ih hc
-    have hS := corresTrans_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
-      env sid x 0 hop1
-    refine ⟨_, _, ?_, corresTrans_append hS HB (fun _ _ => trivial)⟩
+    have hS := corresSem_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      sid x 0 hop1
+    refine ⟨_, _, ?_, corresSem_append _ hS HB (fun _ _ => trivial)⟩
     rw [toJasminCmd_RLetU64Zero, ← List.singleton_append]
     exact translateCmdExt_append_some (a := [_]) (by
       simp [translateCmdExt, translateInstrRExt, translateLValExt, translateVarIExt,
         translateVarExt, translateSTypeExt, translateSType, translateWSize, translatePExprExt,
         translateSOp1, translatePExpr, mWordVar, translateAssgnTag]) hb
   | RScalarSet x v =>
-    refine ⟨_, _, ?_, corresTrans_scalarSet aS opS gd prog env sid x v hop1⟩
+    refine ⟨_, _, ?_, corresSem_scalarSet aS opS gd prog sid x v hop1⟩
     simp [translateCmdExt, translateInstrRExt, translateLValExt, translateVarIExt,
       translateVarExt, translateSTypeExt, translateSType, translateWSize, translatePExprExt,
       translateSOp1, translatePExpr, mWordVar, translateAssgnTag]
   | RIfNz e ct cf ih1 ih2 =>
     obtain ⟨ct', fat, h1, H1⟩ := ih1 hc.1
     obtain ⟨cf', faf, h2, H2⟩ := ih2 hc.2
-    refine ⟨_, _, ?_, corresTrans_ifNz e hop1 hop2 H1 H2⟩
+    refine ⟨_, _, ?_, corresSem_ifNz e hop1 hop2 H1 H2⟩
     simp [translateCmdExt, translateInstrRExt, h1, h2, translatePExprExt, translateSOp2Ext,
       translateWSize, translateGVarExt, translateVarIExt, translateVarExt, translateSTypeExt,
       translateSType, translateSOp1, translatePExpr, mWordVar, mkLvar]
   | RFor x n body ih =>
     obtain ⟨b', fb, hb, HB⟩ := ih hc
-    exact corresTrans_unrollForJ hop1 x hb HB n
+    exact corresSem_unrollForJ hop1 x hb HB n
   | RLimbStore loc idx v =>
-    refine ⟨_, _, ?_, corresTrans_limbStore opS gd prog env sid hstore loc idx v⟩
+    refine ⟨_, _, ?_, corresSem_limbStore opS gd prog sid hstore loc idx v⟩
     simp [translateCmdExt, translateInstrRExt, translateLValExt, locToLVal, locToPExpr,
       locToGVar, locToVar, towerToSType, translateVarIExt, translateVarExt, translateSTypeExt,
       translatePExprExt, translateGVarExt, translatePExpr, mArrVar, mkLvar, translateAssgnTag]
@@ -1314,7 +1151,7 @@ theorem toJasminCmd_corresTrans {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pr
     obtain ⟨x1, t1⟩ := src1
     simp only at h0 h1
     subst h0 h1
-    refine ⟨_, _, ?_, corresTrans_select opS gd prog env sid hcmov sel d x0 x1 _⟩
+    refine ⟨_, _, ?_, corresSem_select opS gd prog sid hcmov sel d x0 x1 t1⟩
     simp [translateCmdExt, translateInstrRExt, translateLValExt, locToLVal, locToPExpr,
       locToGVar, locToVar, towerToSType, translateVarIExt, translateVarExt, translateSTypeExt,
       translatePExprExt, translateGVarExt, translateSType, translateWSize,
@@ -1323,7 +1160,7 @@ theorem toJasminCmd_corresTrans {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pr
     obtain ⟨d, t⟩ := dst
     obtain ⟨s, ts⟩ := src
     subst hc
-    refine ⟨_, _, ?_, corresTrans_copy opS gd prog env sid d s ts⟩
+    refine ⟨_, _, ?_, corresSem_copy opS gd prog sid d s ts⟩
     simp [translateCmdExt, translateInstrRExt, translateLValExt, locToLVal, locToPExpr,
       locToGVar, locToVar, towerToSType, translateVarIExt, translateVarExt, translateSTypeExt,
       translatePExprExt, translateGVarExt, mArrVar, mkLvar, translateAssgnTag]
@@ -1339,34 +1176,30 @@ theorem toJasminCmd_corresTrans {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pr
     simp only at hod
     subst hod
     obtain ⟨fa, H⟩ := hcall f [dest] args hok
-    refine ⟨_, _, ?_, corresTrans_append
-      (corresTrans_cloneTower opS gd prog env sid hclone cv ov ot) H (fun _ _ => trivial)⟩
+    refine ⟨_, _, ?_, corresSem_append _
+      (corresSem_cloneTower opS gd prog sid hclone cv ov ot) H (fun _ _ => trivial)⟩
     exact translateCmdExt_append_some (translateCmdExt_cloneTower cv ot ov)
       (translateCmdExt_callN f [dest] args)
   | _ => exact hc.elim
 
-/-- **End to end.** For a program of the fragment, from a mirror state related to a heap,
-    the `RawCode` translation evaluates at every fuel from some bound on to one heap, and
-    the mirror image runs under the fuel-bounded executor `execCmd` to a state related to
-    that heap. -/
+/-- **End to end.** A program of the fragment lowers to a command with a mirror image
+    `c'`, and for some heap function `fa`, `c'` runs under the fuel-bounded executor
+    `execCmd` from every mirror state related to a heap to a state related to `fa heap`. -/
 theorem toJasminCmd_mirror_exec {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {prog : Prog}
-    (env : TransEnv) (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
+    (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
     (hstore : AsmStore64 aS) (hcmov : AsmCmov aS) (hclone : AsmClone aS)
     (callOk : String → List Located → List Located → Prop)
     (hcall : ∀ f dests args, callOk f dests args → ∃ fa,
-      CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-        (fun _ => True) (toJasminCmd (.RCallN f dests args)) (mirrorCallNCmd f dests args) fa)
-    (c : LowCT) (hc : MirrorSimFragment callOk c)
-    (s : Estate SyscallState Mem) (heap : AHeap) (hSR : MirrorHeapCorr sid s heap) :
-    ∃ c' heap', translateCmdExt (toJasminCmd c) = some c' ∧
-      (∃ N, ∀ fuel, N ≤ fuel →
-        (translateCmd env (toJasminCmd c) sid fuel).code.eval heap
-          = CatCrypt.Prob.SDistr.pure (⟨()⟩, heap')) ∧
-      ∃ s' fuel, execCmd aS opS gd fuel s c' prog = .ok s' ∧ MirrorHeapCorr sid s' heap' := by
-  obtain ⟨c', fa, hc', ⟨N, hN⟩, hS⟩ :=
-    toJasminCmd_corresTrans env sid hop1 hop2 hstore hcmov hclone callOk hcall c hc
-  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS s heap hSR trivial
-  exact ⟨c', fa heap, hc', ⟨N, fun fuel' hf => hN fuel' hf heap trivial⟩, s', fuel, hrun, hSR'⟩
+      CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog (MirrorHeapCorr sid)
+        (fun _ => True) fa (mirrorCallNCmd f dests args))
+    (c : LowCT) (hc : MirrorSimFragment callOk c) :
+    ∃ (c' : Cmd) (fa : AHeap → AHeap), translateCmdExt (toJasminCmd c) = some c' ∧
+      ∀ (s : Estate SyscallState Mem) (heap : AHeap), MirrorHeapCorr sid s heap →
+        ∃ s' fuel, execCmd aS opS gd fuel s c' prog = .ok s' ∧
+          MirrorHeapCorr sid s' (fa heap) := by
+  obtain ⟨c', fa, hc', hS⟩ :=
+    toJasminCmd_corresSem sid hop1 hop2 hstore hcmov hclone callOk hcall c hc
+  exact ⟨c', fa, hc', fun s heap hSR => corresSem_exec _ hS s heap hSR trivial⟩
 
 /-- **`RWhileNz` end to end.** For a loop whose body lowers to a command with mirror
     image `b'` corresponding at `fb`, and an iteration count `count` at which the word at
@@ -1374,11 +1207,11 @@ theorem toJasminCmd_mirror_exec {aS : AsmSem} {opS : OpSem} {gd : GlobDecls} {pr
     `while (e ≠ (64u)0) { b' }`, which runs under `execCmd` from every state related to a
     heap to a state related to `iterFold fb (count heap) heap`. -/
 theorem toJasminCmd_whileNz_mirror_exec {aS : AsmSem} {opS : OpSem} {gd : GlobDecls}
-    {prog : Prog} (env : TransEnv) (sid : AScopeId) (hop1 : OpWordOfInt opS)
+    {prog : Prog} (sid : AScopeId) (hop1 : OpWordOfInt opS)
     (hop2 : OpWordNeq opS) (e : String) (body : LowCT) {b' : Cmd} {fb : AHeap → AHeap}
     (hb : translateCmdExt (toJasminCmd body) = some b')
-    (hB : CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
-      (fun _ => True) (toJasminCmd body) b' fb)
+    (hB : CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog
+      (MirrorHeapCorr sid) (fun _ => True) fb b')
     (count : AHeap → Nat)
     (hcount : ∀ heap, (∀ j < count heap, getW (iterFold fb j heap) sid e ≠ 0) ∧
         getW (iterFold fb (count heap) heap) sid e = 0) :
@@ -1391,7 +1224,7 @@ theorem toJasminCmd_whileNz_mirror_exec {aS : AsmSem} {opS : OpSem} {gd : GlobDe
   refine ⟨translateCmdExt_whileNz e body hb, fun s heap hSR => ?_⟩
   have hW := corresSem_whileNz (aS := aS) (opS := opS) (gd := gd) (prog := prog)
     (sid := sid) e hop1 hop2 (P := fun _ => True) count
-    (corresSem_weaken _ hB.2 (fun _ _ => trivial)) (fun _ _ _ => trivial)
+    (corresSem_weaken _ hB (fun _ _ => trivial)) (fun _ _ _ => trivial)
     (fun heap _ => hcount heap)
   exact corresSem_exec _ hW s heap hSR trivial
 
@@ -1423,24 +1256,25 @@ def copyFunDef (n : Nat) : FunDef :=
 def copyProg (f : String) (n : Nat) : Prog :=
   { pFuncs := [({ name := f }, copyFunDef n)], pGlobs := [] }
 
+/-- The array a destination of storage size `n` holds after a call returning `results`:
+    the first result when it is an array of size `n`, and `old` otherwise. -/
+def callResultArr (n : Nat) (old : JArray n) : List TypedValue → JArray n
+  | [] => old
+  | ⟨.sarr m, v⟩ :: _ => if h : m = n then h ▸ v else old
+  | _ :: _ => old
+
 /-- The call `d = f(a)` to a function returning its array argument, with `d` and `a` of
-    the tower type `t`: `corresTrans_call` applies to the environment whose `f` returns its
-    first argument and to the mirror program `copyProg f`. -/
-theorem corresTrans_call_copy (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (sid : AScopeId)
+    the tower type `t`: `corresSem_call` applies to the mirror program `copyProg f`. -/
+theorem corresSem_call_copy (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (sid : AScopeId)
     (f d a : String) (t : TowerType) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd
-      (copyProg f t.storageBytes)
-      (pureLeafEnv (fun _ => some (fun vs =>
-        [⟨.sarr t.storageBytes, callResultArr t.storageBytes (fun _ => 0) vs⟩])))
-      sid (fun _ => True)
-      (toJasminCmd (.RCall f { locVar := d, locSrc := t } [{ locVar := a, locSrc := t }]))
-      (mirrorCallCmd f { locVar := d, locSrc := t } [{ locVar := a, locSrc := t }])
-      (fun heap => setA heap sid d t.storageBytes (getA heap sid a t.storageBytes)) := by
-  have h := corresTrans_call (SyscallState := SyscallState) (Mem := Mem) (aS := aS) opS gd
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd
+      (copyProg f t.storageBytes) (MirrorHeapCorr sid) (fun _ => True)
+      (fun heap => setA heap sid d t.storageBytes (getA heap sid a t.storageBytes))
+      (mirrorCallCmd f { locVar := d, locSrc := t } [{ locVar := a, locSrc := t }]) := by
+  have h := corresSem_call (SyscallState := SyscallState) (Mem := Mem) (aS := aS) opS gd
     (copyProg f t.storageBytes) sid
-    (fun _ => some (fun vs => [⟨.sarr t.storageBytes, callResultArr t.storageBytes (fun _ => 0) vs⟩]))
     f { locVar := d, locSrc := t } [{ locVar := a, locSrc := t }]
-    (callResultArr t.storageBytes (fun _ => 0)) rfl (copyFunDef t.storageBytes)
+    (callResultArr t.storageBytes (fun _ => 0)) (copyFunDef t.storageBytes)
     (by simp [getFunDef, copyProg]) [{ v_var := mArrVar "r" t.storageBytes }]
     { v_var := mArrVar "r" t.storageBytes } rfl rfl rfl
     (by intro pa hpa; simp at hpa; subst hpa; rfl) rfl rfl
@@ -1466,26 +1300,21 @@ def swapOuts (t : TowerType) (d1 d2 : String) (vs : List TypedValue) : List Call
    ⟨{ locVar := d2, locSrc := t }, callResultArr t.storageBytes (fun _ => 0) vs⟩]
 
 /-- The call `d1, d2 = f(a1, a2)` to a function returning its arguments swapped, all of
-    the tower type `t`: `corresTrans_callN` applies to the environment whose `f` returns
-    `swapOuts` and to the mirror program `swapProg f`. -/
-theorem corresTrans_callN_swap (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (sid : AScopeId)
+    the tower type `t`: `corresSem_callN` applies with the outputs `swapOuts` and the mirror
+    program `swapProg f`. -/
+theorem corresSem_callN_swap (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (sid : AScopeId)
     (f d1 d2 a1 a2 : String) (t : TowerType) :
-    CorresTrans (SyscallState := SyscallState) (Mem := Mem) aS opS gd
-      (swapProg f t.storageBytes)
-      (pureLeafEnv (fun _ => some (fun vs => (swapOuts t d1 d2 vs).map CallOut.typed)))
-      sid (fun _ => True)
-      (toJasminCmd (.RCallN f [{ locVar := d1, locSrc := t }, { locVar := d2, locSrc := t }]
-        [{ locVar := a1, locSrc := t }, { locVar := a2, locSrc := t }]))
-      (mirrorCallNCmd f [{ locVar := d1, locSrc := t }, { locVar := d2, locSrc := t }]
-        [{ locVar := a1, locSrc := t }, { locVar := a2, locSrc := t }])
+    CorresSem (SyscallState := SyscallState) (Mem := Mem) aS opS gd
+      (swapProg f t.storageBytes) (MirrorHeapCorr sid) (fun _ => True)
       (fun heap => setA (setA heap sid d1 t.storageBytes (getA heap sid a2 t.storageBytes))
-        sid d2 t.storageBytes (getA heap sid a1 t.storageBytes)) := by
-  have h := corresTrans_callN (SyscallState := SyscallState) (Mem := Mem) (aS := aS) opS gd
+        sid d2 t.storageBytes (getA heap sid a1 t.storageBytes))
+      (mirrorCallNCmd f [{ locVar := d1, locSrc := t }, { locVar := d2, locSrc := t }]
+        [{ locVar := a1, locSrc := t }, { locVar := a2, locSrc := t }]) := by
+  have h := corresSem_callN (SyscallState := SyscallState) (Mem := Mem) (aS := aS) opS gd
     (swapProg f t.storageBytes) sid
-    (fun _ => some (fun vs => (swapOuts t d1 d2 vs).map CallOut.typed))
     f [{ locVar := d1, locSrc := t }, { locVar := d2, locSrc := t }]
     [{ locVar := a1, locSrc := t }, { locVar := a2, locSrc := t }]
-    (swapOuts t d1 d2) (fun _ => rfl) rfl (swapFunDef t.storageBytes)
+    (swapOuts t d1 d2) (fun _ => rfl) (swapFunDef t.storageBytes)
     (by simp [getFunDef, swapProg])
     [{ v_var := mArrVar "p" t.storageBytes }, { v_var := mArrVar "q" t.storageBytes }]
     [{ v_var := mArrVar "q" t.storageBytes }, { v_var := mArrVar "p" t.storageBytes }]
@@ -1517,18 +1346,18 @@ def letZeroSetProg : LowCT := .RLetU64Zero "x" (.RScalarSet "y" 5)
 /-- **Witness for `RLetU64Zero`.** The mirror image of `letZeroSetProg` runs under
     `execCmd` to a state with `x = 0` and `y = 5`. -/
 theorem letZeroSetProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (hop1 : OpWordOfInt opS)
+    (sid : AScopeId) (hop1 : OpWordOfInt opS)
     (s : Estate SyscallState Mem) (heap : AHeap) (hSR : MirrorHeapCorr sid s heap) :
     ∃ c' s' fuel, translateCmdExt (toJasminCmd letZeroSetProg) = some c' ∧
       execCmd aS opS gd fuel s c' prog = .ok s' ∧
       (s'.evm).get (mWordVar "x") = vW 0 ∧ (s'.evm).get (mWordVar "y") = vW 5 := by
-  have hS := corresTrans_append
-    (corresTrans_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
+  have hS := corresSem_append _
+    (corresSem_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog sid
       "x" 0 hop1)
-    (corresTrans_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
+    (corresSem_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog sid
       "y" 5 hop1)
     (fun _ _ => trivial)
-  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS.2 s heap hSR trivial
+  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS s heap hSR trivial
   refine ⟨_, s', fuel, rfl, hrun, ?_, ?_⟩
   · rw [hSR'.1 "x", getW_setW_other _ _ _ _ _ (by decide), getW_setW_same]
     rfl
@@ -1542,7 +1371,7 @@ def whileClearProg : LowCT := .RWhileNz "e" (.RScalarSet "e" 0)
     to a state with `e = 0`, from every related heap: the loop iterates once when `e` is
     nonzero and not at all otherwise. -/
 theorem whileClearProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) (prog : Prog)
-    (env : TransEnv) (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
+    (sid : AScopeId) (hop1 : OpWordOfInt opS) (hop2 : OpWordNeq opS)
     (s : Estate SyscallState Mem) (heap : AHeap) (hSR : MirrorHeapCorr sid s heap) :
     ∃ c' s' fuel, translateCmdExt (toJasminCmd whileClearProg) = some c' ∧
       execCmd aS opS gd fuel s c' prog = .ok s' ∧ (s'.evm).get (mWordVar "e") = vW 0 := by
@@ -1562,10 +1391,10 @@ theorem whileClearProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls) 
       · rw [iterFold_succ, iterFold_zero, getW_setW_same]
         rfl
   obtain ⟨hc', hrun⟩ := toJasminCmd_whileNz_mirror_exec (aS := aS) (opS := opS) (gd := gd)
-    (prog := prog) env sid hop1 hop2 "e" (.RScalarSet "e" 0)
+    (prog := prog) sid hop1 hop2 "e" (.RScalarSet "e" 0)
     (b' := [.MkI () (.Cassgn (.Lvar { v_var := mWordVar "e" }) .AT_none (.aword .U64)
       (.Papp1 (.Oword_of_int .U64) (.Pconst 0)))]) rfl
-    (corresTrans_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog env sid
+    (corresSem_scalarSet (SyscallState := SyscallState) (Mem := Mem) aS opS gd prog sid
       "e" 0 hop1) _ hcount
   obtain ⟨s', fuel, hrun', hSR'⟩ := hrun s heap hSR
   refine ⟨_, s', fuel, hc', hrun', ?_⟩
@@ -1585,15 +1414,12 @@ theorem cloneCallProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
       execCmd aS opS gd fuel s c' (copyProg f t.storageBytes) = .ok s' ∧
       (s'.evm).get (mArrVar "c" t.storageBytes) = vA _ (getA heap sid "a" t.storageBytes) ∧
       (s'.evm).get (mArrVar "d" t.storageBytes) = vA _ (getA heap sid "a" t.storageBytes) := by
-  have hS := corresTrans_append
-    (corresTrans_cloneTower (SyscallState := SyscallState) (Mem := Mem) opS gd
-      (copyProg f t.storageBytes)
-      (pureLeafEnv (fun _ => some (fun vs =>
-        [⟨.sarr t.storageBytes, callResultArr t.storageBytes (fun _ => 0) vs⟩])))
-      sid hclone "c" "a" t)
-    (corresTrans_call_copy (SyscallState := SyscallState) (Mem := Mem) aS opS gd sid f "d" "a" t)
+  have hS := corresSem_append _
+    (corresSem_cloneTower (SyscallState := SyscallState) (Mem := Mem) opS gd
+      (copyProg f t.storageBytes) sid hclone "c" "a" t)
+    (corresSem_call_copy (SyscallState := SyscallState) (Mem := Mem) aS opS gd sid f "d" "a" t)
     (fun _ _ => trivial)
-  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS.2 s heap hSR trivial
+  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS s heap hSR trivial
   refine ⟨_, s', fuel, ?_, hrun, ?_, ?_⟩
   · exact translateCmdExt_append_some (translateCmdExt_cloneTower "c" t "a")
       (translateCmdExt_call f { locVar := "d", locSrc := t } [{ locVar := "a", locSrc := t }])
@@ -1616,9 +1442,9 @@ theorem swapCallProg_mirror_exec (aS : AsmSem) (opS : OpSem) (gd : GlobDecls)
       execCmd aS opS gd fuel s c' (swapProg f t.storageBytes) = .ok s' ∧
       (s'.evm).get (mArrVar "d1" t.storageBytes) = vA _ (getA heap sid "a2" t.storageBytes) ∧
       (s'.evm).get (mArrVar "d2" t.storageBytes) = vA _ (getA heap sid "a1" t.storageBytes) := by
-  have hS := corresTrans_callN_swap (SyscallState := SyscallState) (Mem := Mem) aS opS gd sid
+  have hS := corresSem_callN_swap (SyscallState := SyscallState) (Mem := Mem) aS opS gd sid
     f "d1" "d2" "a1" "a2" t
-  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS.2 s heap hSR trivial
+  obtain ⟨s', fuel, hrun, hSR'⟩ := corresSem_exec _ hS s heap hSR trivial
   refine ⟨_, s', fuel, translateCmdExt_callN f _ _, hrun, ?_, ?_⟩
   · rw [hSR'.2 "d1", getA_setA_other _ _ _ _ _ _ _ (fun h => absurd h.1 (by decide)),
       getA_setA_same]
