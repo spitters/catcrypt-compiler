@@ -420,6 +420,7 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2sLinked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.ChaCha
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedAbi
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
+CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode

@@ -1249,6 +1249,7 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.NarrowKernel,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef,
   ]
 def pkgModules7 : Array Lake.Glob := #[
