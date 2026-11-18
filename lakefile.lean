@@ -538,6 +538,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.PrimeIR.Proof.FieldModelBridge,
     Lake.Glob.one `CatCrypt.Crypto.PrimeIR.Proof.Fp256Mont,
     Lake.Glob.one `CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow,
+    Lake.Glob.one `CatCrypt.Crypto.Primitives.AES,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.AES128,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.BLAKE2s,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.GF128,

@@ -188,6 +188,7 @@ CatCrypt.Crypto.Pairing.HashToCurveBLS12381
 CatCrypt.Crypto.Pairing.LeafProvenDenote
 CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
+CatCrypt.Crypto.Primitives.AES
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
 CatCrypt.Crypto.Primitives.KeccakSponge
