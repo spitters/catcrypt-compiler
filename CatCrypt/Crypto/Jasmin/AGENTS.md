@@ -47,6 +47,9 @@ states what is proved about each primitive.
 
 ## Conventions
 
+- The routes of Jasmin into the framework (linked kernels by ascent, `jasminDialect` as the
+  IR of `compileA`, security through functional correctness) are stated in
+  [CORRECTNESS.md](../../../CORRECTNESS.md#jasmin-in-the-framework).
 - A new primitive front: copy the nearest `*Reflect.lean`, register the leaves, and
   state the lowering checks as its siblings do.
 - The Rust route reaches LowCT from `CatCrypt/Crypto/Hax/`

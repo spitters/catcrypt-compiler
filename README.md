@@ -61,7 +61,8 @@ s2n-bignum and CryptOpt output, is taken as given and proved correct by
 with its own front end, a parser and a partial evaluator, which are trusted as `jasminc`'s front end
 is, and compiles the resulting program through this compiler's back end; a theorem about an imported
 kernel is a theorem about that program, such as constant time for formosa-keccak's permutation
-([`keccakF1600_constant_time`](CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean)).
+([`keccakF1600_constant_time`](CatCrypt/Crypto/Jasmin/KeccakJincEmit.lean)). The three ways Jasmin
+meets the framework are stated in [CORRECTNESS.md](CORRECTNESS.md#jasmin-in-the-framework).
 
 ## Descent, ascent and transfer
 

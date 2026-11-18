@@ -598,6 +598,32 @@ specification. The last step uses transfer where the specification is stated ove
 failed, the report names the construct, leaf or loop that needs a new rule. Passing
 the same extraction through the hax front also yields the emitted bytes.
 
+## Jasmin in the framework
+
+Jasmin meets the framework in three ways.
+
+1. **Linked kernels.** A kernel that the compiler links, such as a bignum loop, a symmetric
+   primitive or an NTT, is machine code produced by `jasminc` or another generator. The
+   ascent on x86 (`CorresJ`, `CorresIsa`; [Ascent](#ascent-correspondence-from-given-code-to-a-specification),
+   [ASCENT.md](ASCENT.md), [CERTIFYING_THIRD_PARTY_CODE.md](CERTIFYING_THIRD_PARTY_CODE.md))
+   proves the bytes of the kernel against its specification, over the x86-64 model of the
+   compiler's back end.
+2. **`compileA`.** The structured dialect `jasminDialect` (`Com jasminDialect`) is the IR of
+   the compiler's own back end: `extChain` lowers an `NFProg` to it, the export lowers it to
+   `Lprog`, and the encoder produces bytes. The descent theorems
+   ([Descent](#descent-the-verified-compiler)) cover each of these steps. The
+   `.jinc` importer ([JINC_IMPORT.md](JINC_IMPORT.md)) reads Jasmin source into
+   `Com jasminDialect` for statements about that source; its partial evaluator has no
+   simulation theorem.
+3. **Security.** A protocol theorem is stated over spec-level games, and uses a kernel
+   through its functional correctness: the ascent result of route 1, joined to the
+   specification function by an ordinary proof. The security statement is about the
+   specification.
+
+The mirror of the Coq semantics of Jasmin (`JasminCoqSemMirror`, `VIR/ExecAdequacy.lean`,
+`VIR/ComJasminBridgeProgram.lean`) is the reference semantics against which the `.jazz` text
+printed from `Com jasminDialect` is compared.
+
 ## Composition of the techniques
 
 The welds are in `CatCrypt/Crypto/SecureCompilation/Ascent/`:
