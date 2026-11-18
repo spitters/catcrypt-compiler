@@ -1240,6 +1240,7 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2LinkedData,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2sLinked,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.ChaCha,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Keccak,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinkedData,
