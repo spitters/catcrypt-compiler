@@ -40,7 +40,7 @@ not fail), summed over the rounds of the run: `Z.input.rounds * ε`.
   statistical distance.
 * `realizesSim_of_gate_run` — the target system realizes the source system behind the leakage
   simulator at `Z.input.rounds * ε`, from a per-call statistical distance `ε` of the read-back
-  values.
+  values; an instance of `realizesSim_of_gate_dom`.
 * `haxc_rrcH_of_handlerRC` — the instance for the hax compiler, from `HandlerRC` and the gate
   conclusion of the linked program; `haxc_rrcH_zero` its form at `0`.
 * `haxc_rrcH` — from the conclusion of `haxc_rcH`.
@@ -82,10 +82,9 @@ theorem liftRApprox_pure_right_of_mass {d : SDistr α} {b : β} {R : α → β �
     intro a b'
     rw [SDistr.bind_apply_some, tsum_eq_single a]
     · by_cases hb : b' = b
-      · subst hb
-        by_cases hR : R a b' <;> simp [hR, SDistr.pure_apply_some, SDistr.fail_apply_some]
-      · have hb' : b ≠ b' := Ne.symm hb
-        by_cases hR : R a b <;> simp [hR, hb, hb', SDistr.pure_apply_some, SDistr.fail_apply_some]
+      · subst hb; by_cases hR : R a b' <;> simp [hR, SDistr.pure_apply_some, SDistr.fail_apply_some]
+      · by_cases hR : R a b <;>
+          simp [hR, hb, Ne.symm hb, SDistr.pure_apply_some, SDistr.fail_apply_some]
     · intro x hx
       by_cases hR : R x b <;> simp [hR, SDistr.pure_apply_some, SDistr.fail_apply_some, hx]
   have hrow : ∀ a, ∑' b', w (some (a, b')) = if R a b then d (some a) else 0 := by
@@ -109,10 +108,7 @@ theorem liftRApprox_pure_right_of_mass {d : SDistr α} {b : β} {R : α → β �
     exact tsum_congr fun a => by split_ifs <;> simp
   refine ⟨⟨w, fun a => ?_, fun b' => ?_, ?_, ?_⟩, ?_⟩
   · rw [hrow]; split_ifs <;> simp
-  · rw [hcol]
-    by_cases hb : b' = b
-    · subst hb; simpa [SDistr.pure_apply_some] using hM1
-    · simp [hb]
+  · rw [hcol]; split_ifs with hb <;> simp [hb, SDistr.pure_apply_some, hM1]
   · simp_rw [hrow]
     refine le_trans ?_ h
     refine ENNReal.le_sub_of_add_le_right (ne_top_of_le_ne_top ENNReal.one_ne_top hM1) ?_
@@ -122,9 +118,7 @@ theorem liftRApprox_pure_right_of_mass {d : SDistr α} {b : β} {R : α → β �
     simpa [SDistr.pure_apply_some] using h
   · intro a b' hw
     rw [hjoint] at hw
-    by_cases hc : R a b ∧ b' = b
-    · rw [hc.2]; exact hc.1
-    · simp [hc] at hw
+    grind
 
 /-- **A graded judgment against a point mass.** When, at every initial heap `s`, the mass of
     `c s` on the pairs related to `(b, s)` by `Ψ` is at least `1 - ε`, `c` and `pure b` are
@@ -204,12 +198,6 @@ noncomputable def gateTgtSysRun (enter : E → St → St) (Pre : St → Prop) (s
         (run (enter e t))
     else SPComp.pure (t, none)
 
-/-- Choice at equal predicates gives equal witnesses. -/
-private theorem choose_congr_pred' {p q : V → Prop} (h : p = q) (hp : ∃ v, p v)
-    (hq : ∃ v, q v) : Classical.choose hp = Classical.choose hq := by
-  subst h
-  rfl
-
 /-- **Reactive robust compilation from per-call statistical distances.** Let the gate
     conclusion give constant-time leakage, with public projections whose equality implies the
     public relation and a target that has a leakage trace whenever it has a result, and let
@@ -235,29 +223,11 @@ theorem realizesSim_of_gate_run [Nonempty Tr] {Pre : St → Prop} {Pub : St → 
     RealizesSim (gateTgtSysRun enter Pre srcRun leakRun run read t₀)
       (gateSrcSys enter Pre srcRun u₀) (leakSim pe (simLeak Pre srcRun leakRun pub))
       (fun _ Z => Z.input.rounds * ε) := by
-  refine realizes_of_couplingApprox _ _ (fun _ _ => True) ε trivial ?_
-  rintro t ⟨l, u⟩ e -
-  rw [leakSim_withSub_step]
-  by_cases hD : Pre (enter e u) ∧ ∃ v, srcRun (enter e u) v
-  · have hT : (Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr := by
-      have hp : Pre (enter e t) := (hPre e t u).2 hD.1
-      obtain ⟨v, hv⟩ := hD.2
-      have hv' : srcRun (enter e t) v := (hsrc e t u).symm ▸ hv
-      exact ⟨⟨hp, v, hv'⟩, hterm _ v hp (g.value _ _ hp hv')⟩
-    simp only [gateTgtSysRun, dite_eq_left hT, gateSrcSys, dite_eq_left hD, SPComp.pure_bind]
-    refine rHoareApprox_map_pure_of_sdist (h := hrun ⟨enter e t, hT⟩) fun s' hs' => ⟨trivial, ?_⟩
-    have hl : leakOf (Pre := Pre) (srcRun := srcRun) (leakRun := leakRun) ⟨enter e t, hT⟩ =
-        simLeak Pre srcRun leakRun pub (pe e) := by
-      rw [leakOf_eq_simLeak g pub hpub, hpe]
-    have hv : srcOf (Pre := Pre) (srcRun := srcRun) (leakRun := leakRun) ⟨enter e t, hT⟩ =
-        Classical.choose hD.2 := choose_congr_pred' (hsrc e t u) hT.1.2 hD.2
-    simp only [pairLeak, Option.bind_some, Option.map_some, hl, ← hv, hs']
-  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧
-        ∃ tr, leakRun (enter e t) tr) := fun h =>
-      hD ⟨(hPre e t u).1 h.1.1, (hsrc e t u) ▸ h.1.2⟩
-    simp only [gateTgtSysRun, dite_eq_right hT, gateSrcSys, dite_eq_right hD, SPComp.pure_bind]
-    exact rHoareApprox_mono_eps zero_le
-      (rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, trivial, rfl⟩))
+  refine realizesSim_of_gate_dom g pub hterm enter pe hPre hsrc _ ε (fun t e hT _ => ?_)
+    (fun t e hT => by simp only [gateTgtSysRun, dite_eq_right hT]) u₀
+  simp only [gateTgtSysRun, dite_eq_left hT]
+  refine rHoareApprox_map_pure_of_sdist (h := hrun ⟨enter e t, hT⟩) fun s' hs' => ⟨trivial, ?_⟩
+  rw [hs', leakOf_eq_simLeak g pub hpub, hpe]
 
 end Gate
 

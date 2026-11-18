@@ -190,6 +190,7 @@ CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
+CatCrypt.Crypto.Primitives.KeccakSponge
 CatCrypt.Crypto.Primitives.Poly1305
 CatCrypt.Crypto.Primitives.RandomOracle
 CatCrypt.Crypto.Primitives.SHA256Rounds
@@ -211,9 +212,7 @@ CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompoundGuards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.RangeTests
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedArrays
-CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedHax
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.XCheckTest
-CatCrypt.Crypto.SecureCompilation.AeneasFront.XCheck
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
 CatCrypt.Crypto.SecureCompilation.Algebraic.NttStageToJasminWord
@@ -435,9 +434,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldChainCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG19
-CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsKPasses
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPhysImgSide
-CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShape
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeHyps
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldFrontP256
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldInstances

@@ -104,56 +104,35 @@ theorem denoteSpine_val_mono (fuel : Nat) : ∀ (bi : Builtins) (e : ImpExpr) {b
     ∀ (env env' : Env) (v : Value), (denoteSpine bi fuel e).run env = (.val v, env') →
       (denoteSpine bi' fuel' e).run env = (.val v, env') := by
   intro bi e
-  induction bi, e using _root_.Hax.InlineLocalClosures.denoteSpine.induct fuel with
-  | case1 bi f ps body cont hc ih =>
-      intro bi' fuel' hsub hle env env' v h
-      simp only [denoteSpine, hc, ite_true] at h ⊢
-      exact ih env (closureTable_mono hsub hle f ps body env) hle env env' v h
-  | case2 bi f ps body cont hc =>
-      intro bi' fuel' hsub hle env env' v h
-      simp only [denoteSpine, hc] at h ⊢
-      exact denote'_val_mono_le hsub hle h
-  | case3 bi x w cont hw ih =>
-      intro bi' fuel' hsub hle env env' v h
-      rw [denoteSpine.eq_2 _ _ _ _ _ hw] at h ⊢
-      rcases hr : denote' bi fuel w env with ⟨o, s⟩
-      simp only [StateT.run, bind, StateT.bind, hr] at h
-      rcases o with (u|u|u|_|u)
-      case val =>
-        simp only [StateT.run, bind, StateT.bind, denote'_val_mono_le hsub hle hr]
-        cases u
-        case controlFlow => exact h
-        all_goals
-          simp only [StateT.bind, modify, modifyGet, MonadStateOf.modifyGet,
-            StateT.modifyGet] at h ⊢
-          exact ih hsub hle _ _ _ h
-      all_goals
-        exfalso
-        revert h
-        simp only [pure, StateT.pure]
-        intro h
-        cases h
-  | case4 bi a b ih =>
-      intro bi' fuel' hsub hle env env' v h
-      rw [denoteSpine.eq_3] at h ⊢
-      rcases hr : denote' bi fuel a env with ⟨o, s⟩
-      simp only [StateT.run, bind, StateT.bind, hr] at h
-      rcases o with (u|u|u|_|u)
-      case val =>
-        simp only [StateT.run, bind, StateT.bind, denote'_val_mono_le hsub hle hr]
-        cases u
-        case controlFlow => exact h
-        all_goals exact ih hsub hle _ _ _ h
-      all_goals
-        exfalso
-        revert h
-        simp only [pure, StateT.pure]
-        intro h
-        cases h
-  | case5 bi e h1 h2 h3 =>
-      intro bi' fuel' hsub hle env env' v h
-      rw [denoteSpine.eq_4 _ _ _ h1 h2 h3] at h ⊢
-      exact denote'_val_mono_le hsub hle h
+  induction bi, e using _root_.Hax.InlineLocalClosures.denoteSpine.induct fuel <;>
+    intro bi' fuel' hsub hle env env' v h
+  case case1 bi f ps body cont hc ih =>
+    simp only [denoteSpine, hc, ite_true] at h ⊢
+    exact ih env (closureTable_mono hsub hle f ps body env) hle env env' v h
+  case case2 bi f ps body cont hc =>
+    simp only [denoteSpine, hc] at h ⊢
+    exact denote'_val_mono_le hsub hle h
+  case case3 bi x w cont hw ih =>
+    rw [denoteSpine.eq_2 _ _ _ _ _ hw] at h ⊢
+    rcases hr : denote' bi fuel w env with ⟨o, s⟩
+    simp only [StateT.run, bind, StateT.bind, hr] at h
+    rcases o with (u|u|u|_|u)
+    case val =>
+      simp only [StateT.run, bind, StateT.bind, denote'_val_mono_le hsub hle hr]
+      cases u <;> first | exact h | exact ih hsub hle _ _ _ h
+    all_goals cases h
+  case case4 bi a b ih =>
+    rw [denoteSpine.eq_3] at h ⊢
+    rcases hr : denote' bi fuel a env with ⟨o, s⟩
+    simp only [StateT.run, bind, StateT.bind, hr] at h
+    rcases o with (u|u|u|_|u)
+    case val =>
+      simp only [StateT.run, bind, StateT.bind, denote'_val_mono_le hsub hle hr]
+      cases u <;> first | exact h | exact ih hsub hle _ _ _ h
+    all_goals cases h
+  case case5 bi e h1 h2 h3 =>
+    rw [denoteSpine.eq_4 _ _ _ h1 h2 h3] at h ⊢
+    exact denote'_val_mono_le hsub hle h
 
 /-- **The reference table is increasing in its function fuel**, at every depth. -/
 theorem refBi_le_of_fuel_le (fs : List ModFn) (bi : Builtins) {fuelC fuelC' : Nat}

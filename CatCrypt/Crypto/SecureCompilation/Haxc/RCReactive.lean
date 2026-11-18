@@ -56,6 +56,9 @@ call outside the domain answers `none` on both sides and keeps the state.
 
 ## Main results
 
+* `realizesSim_of_gate_dom` — a reactive target system realizes the reactive source system
+  behind the leakage simulator at `Z.input.rounds * ε`, from a coupling at grade `ε` of each
+  call in the domain with the answer of the source behind the simulator.
 * `realizesSim_of_gate` — the reactive target system realizes the reactive source system
   behind the leakage simulator at distance `0`, from a gate conclusion whose entry relations do
   not depend on the kept state.
@@ -88,7 +91,7 @@ namespace CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Core CatCrypt.Prob CatCrypt.Crypto
 open CatCrypt.Crypto.RCGate
 open CatCrypt.Crypto.UCTransparent
-open CatCrypt.Crypto.UCCoupling (realizes_zero_of_coupling stepPost)
+open CatCrypt.Crypto.UCCoupling (realizes_of_couplingApprox stepPost)
 open CatCrypt.Relational
 open scoped ENNReal
 
@@ -220,6 +223,51 @@ theorem leakSim_withSub_step_of_dom [Nonempty Tr] (enter : E → St → St) (Pre
     SPComp.pure_bind, Option.bind_some, Option.map_some]
   rfl
 
+/-- **Reactive robust compilation from per-call couplings.** Let the entry map `enter` give
+    entry states whose precondition and source runs do not depend on the kept state, and let
+    the gate conclusion give a target that has a leakage trace whenever it has a result. Let a
+    reactive target system `T` answer `none` and keep its state outside the domain, and in the
+    domain be coupled at grade `ε` with the answer that pairs the source value with the trace
+    simulated from `pe e`. Then `T` realizes the reactive source system behind the leakage
+    simulator `leakSim pe (simLeak …)` at `ε` per activation, `Z.input.rounds * ε` in all. -/
+theorem realizesSim_of_gate_dom [Nonempty Tr] {Pre : St → Prop} {Pub : St → St → Prop}
+    {srcRun : St → V → Prop} {tgtRes : St → V → Prop} {leakRun : St → Tr → Prop}
+    (g : GateConclusion Pre Pub srcRun tgtRes leakRun) (pub : St → P)
+    (hterm : ∀ s v, Pre s → tgtRes s v → ∃ tr, leakRun s tr)
+    (enter : E → St → St) (pe : E → P)
+    (hPre : ∀ e t u, Pre (enter e t) ↔ Pre (enter e u))
+    (hsrc : ∀ e t u, srcRun (enter e t) = srcRun (enter e u))
+    (T : Sys St E (Option (V × Tr))) (ε : ℝ≥0∞)
+    (hin : ∀ t e (h : (Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧
+        ∃ tr, leakRun (enter e t) tr) (y : Option Tr × St),
+      rHoareApprox ε eqPre (T.step t e)
+        (SPComp.pure (y, some (srcOf (Pre := Pre) (srcRun := srcRun) (leakRun := leakRun)
+          ⟨enter e t, h⟩, simLeak Pre srcRun leakRun pub (pe e))))
+        (stepPost fun _ _ => True))
+    (hout : ∀ t e, ¬ ((Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧
+        ∃ tr, leakRun (enter e t) tr) → T.step t e = SPComp.pure (t, none))
+    (u₀ : St) :
+    RealizesSim T (gateSrcSys enter Pre srcRun u₀) (leakSim pe (simLeak Pre srcRun leakRun pub))
+      (fun _ Z => Z.input.rounds * ε) := by
+  refine realizes_of_couplingApprox _ _ (fun _ _ => True) ε trivial ?_
+  rintro t ⟨l, u⟩ e -
+  rw [leakSim_withSub_step]
+  by_cases hD : Pre (enter e u) ∧ ∃ v, srcRun (enter e u) v
+  · have hp : Pre (enter e t) := (hPre e t u).2 hD.1
+    obtain ⟨v, hv⟩ := hD.2
+    have hv' : srcRun (enter e t) v := (hsrc e t u).symm ▸ hv
+    have hT : (Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr :=
+      ⟨⟨hp, v, hv'⟩, hterm _ v hp (g.value _ _ hp hv')⟩
+    simp only [gateSrcSys, dite_eq_left hD, SPComp.pure_bind, pairLeak, Option.bind_some,
+      Option.map_some, ← choose_congr_pred (hsrc e t u) hT.1.2 hD.2]
+    exact hin t e hT _
+  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧
+        ∃ tr, leakRun (enter e t) tr) := fun h =>
+      hD ⟨(hPre e t u).1 h.1.1, (hsrc e t u) ▸ h.1.2⟩
+    simp only [hout t e hT, gateSrcSys, dite_eq_right hD, SPComp.pure_bind]
+    exact rHoareApprox_mono_eps zero_le
+      (rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, trivial, rfl⟩))
+
 /-- **Reactive robust compilation from a gate conclusion.** Let the compilation satisfy the
     gate conclusion, with a deterministic target result, a target that terminates with a
     leakage trace whenever it halts with a result, and public projections whose equality
@@ -242,26 +290,14 @@ theorem realizesSim_of_gate [Nonempty Tr] {Pre : St → Prop} {Pub : St → St �
     RealizesSim (gateTgtSys enter Pre srcRun tgtRes leakRun exit t₀)
       (gateSrcSys enter Pre srcRun u₀) (leakSim pe (simLeak Pre srcRun leakRun pub))
       (fun _ _ => 0) := by
-  refine (realizes_zero_of_coupling (rel := fun _ _ => True) ⟨trivial, ?_⟩).1
-  rintro t ⟨l, u⟩ e -
-  rw [leakSim_withSub_step]
-  by_cases hD : Pre (enter e u) ∧ ∃ v, srcRun (enter e u) v
-  · have hT : (Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr := by
-      have hp : Pre (enter e t) := (hPre e t u).2 hD.1
-      obtain ⟨v, hv⟩ := hD.2
-      have hv' : srcRun (enter e t) v := (hsrc e t u).symm ▸ hv
-      exact ⟨⟨hp, v, hv'⟩, hterm _ v hp (g.value _ _ hp hv')⟩
-    rw [gateTgtSys_step_of_dom enter Pre srcRun tgtRes leakRun exit t₀ t e hT,
-      congrFun (realObs_eq_idealObs g pub hpub htgt) ⟨enter e t, hT⟩]
-    simp only [gateSrcSys, dite_eq_left hD, idealObs, srcOf, SPComp.map, SPComp.pure_bind]
-    refine rHoare_ret fun _ _ hh => ⟨hh, trivial, ?_⟩
-    simp only [pairLeak, Option.bind_some, Option.map_some, hpe,
-      choose_congr_pred (hsrc e t u) hT.1.2 hD.2]
-  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, srcRun (enter e t) v) ∧
-        ∃ tr, leakRun (enter e t) tr) := fun h =>
-      hD ⟨(hPre e t u).1 h.1.1, (hsrc e t u) ▸ h.1.2⟩
-    simp only [gateTgtSys, dite_eq_right hT, gateSrcSys, dite_eq_right hD, SPComp.pure_bind]
-    exact rHoare_ret fun _ _ hh => ⟨hh, trivial, rfl⟩
+  have h := realizesSim_of_gate_dom g pub hterm enter pe hPre hsrc
+    (gateTgtSys enter Pre srcRun tgtRes leakRun exit t₀) 0 (fun t e hT _ => ?_)
+    (fun t e hT => by simp only [gateTgtSys, dite_eq_right hT]) u₀
+  · simpa using h
+  rw [gateTgtSys_step_of_dom enter Pre srcRun tgtRes leakRun exit t₀ t e hT,
+    congrFun (realObs_eq_idealObs g pub hpub htgt) ⟨enter e t, hT⟩]
+  simp only [idealObs, SPComp.map, SPComp.pure_bind, hpe]
+  exact rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, trivial, rfl⟩)
 
 end Gate
 
