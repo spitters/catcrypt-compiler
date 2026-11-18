@@ -3184,6 +3184,7 @@ def pkgModules16 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrFuelMemF,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.TwoAddrLegalize,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VInstr,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VShaSpec,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.X86Backend.VecImage,

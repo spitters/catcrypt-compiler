@@ -933,6 +933,7 @@ CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulCurve25519Fragment
 CatCrypt.Crypto.SecureCompilation.X86Backend.ToLprogFaithfulShift
 CatCrypt.Crypto.SecureCompilation.X86Backend.TreehashChainEmit
 CatCrypt.Crypto.SecureCompilation.X86Backend.VInstrTest
+CatCrypt.Crypto.SecureCompilation.X86Backend.VShaSpec
 CatCrypt.Crypto.SecureCompilation.X86Backend.ValidateLowering
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecAsmZmm
 CatCrypt.Crypto.SecureCompilation.X86Backend.VecKernelLinkedFn
