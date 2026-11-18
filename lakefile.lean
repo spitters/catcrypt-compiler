@@ -547,6 +547,7 @@ def pkgModules3 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.Primitives.HMAC_BLAKE2s,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.HMAC_SHA512,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.Keccak,
+    Lake.Glob.one `CatCrypt.Crypto.Primitives.KeccakArray,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.KeccakSponge,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.Poly1305,
     Lake.Glob.one `CatCrypt.Crypto.Primitives.RandomOracle,
