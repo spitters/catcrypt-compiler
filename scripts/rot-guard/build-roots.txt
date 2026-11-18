@@ -185,10 +185,9 @@ CatCrypt.Crypto.Pairing.HashToCurveBLS12381
 CatCrypt.Crypto.Pairing.LeafProvenDenote
 CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
-CatCrypt.Crypto.Primitives.AES
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
-CatCrypt.Crypto.Primitives.KeccakSponge
+CatCrypt.Crypto.Primitives.KeccakArray
 CatCrypt.Crypto.Primitives.Poly1305
 CatCrypt.Crypto.Primitives.RandomOracle
 CatCrypt.Crypto.Primitives.SHA256Rounds
@@ -415,8 +414,6 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
 CatCrypt.Crypto.SecureCompilation.HashTemplate.AesBitslice
-CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2sLinked
-CatCrypt.Crypto.SecureCompilation.HashTemplate.ChaCha
 CatCrypt.Crypto.SecureCompilation.HashTemplate.ChaChaLinked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Gf128
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedAbi
