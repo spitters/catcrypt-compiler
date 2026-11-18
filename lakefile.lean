@@ -1393,6 +1393,7 @@ def pkgModules7 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontFields,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontJac,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontLinked,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LegalizeBy,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.Haxc.LinkedKernel,
