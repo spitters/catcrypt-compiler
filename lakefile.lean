@@ -1230,6 +1230,7 @@ def pkgModules6 : Array Lake.Glob := #[
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.GenericFieldEmitValue,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.GenericKernelRealization,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.GenericNttEmitValue,
+    Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.AesBitslice,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked,
     Lake.Glob.one `CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2LinkedData,

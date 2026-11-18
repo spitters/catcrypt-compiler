@@ -11,49 +11,39 @@ public import CatCrypt.Crypto.Primitives.AES128
 public import Std.Tactic.BVDecide
 
 /-!
-# The AES round on the high `catCryptDialect`: GF(2⁸) capability + MixColumns / AddRoundKey
+# Byte-level building blocks for the AES round on `catCryptDialect`
 
-The AES round (FIPS-197 §5.1) is built natively as straight-line
-`Com catCryptDialect` programs over the high (MLIR/prime-IR-aligned) crypto-SSA
-dialect, and each program is proved to *denote* to the committed FIPS-197 spec
-in `CatCrypt.Crypto.Primitives.AES128`.
+Reference functions and `denote` lemmas on bytes (`BitVec 8`, the dialect type `.sword 8`)
+for straight-line `Com catCryptDialect` programs of the AES round (FIPS-197 §5.1). The module
+defines no program.
 
-## GF(2⁸) capability — MLIR / prime-IR aligned
-
-GF(2⁸) is the Rijndael binary polynomial field `𝔽₂[x] / (x⁸+x⁴+x³+x+1)`
-(reduction polynomial `0x11b`). The same field and reduction modulus already
-underlie the committed `clmul`/`gf2p8affineqb` SIMD ops and the bit-serial
-`FieldEmitGoldenGf256.gf256mul`. Here the field is added to the **high** dialect
-*additively* — no new `CatCryptOp` constructor is introduced. The two field
-generators AES needs (`xtime = ×x mod 0x11b`, and `×3 = ×x ⊕ id`) are expressed
-out of the dialect's existing word alphabet:
+The multiplications by `x` and by `x + 1` in GF(2⁸) = `𝔽₂[x] / (x⁸ + x⁴ + x³ + x + 1)`, the
+coefficients of MixColumns, are written in the dialect's word operations without a branch:
 
 ```
-xtime b  =  (b ≪ 1) ⊕ (mask(b₇) ∧ 0x1b)        -- branch-free conditional reduce
+xtime b  =  (b ≪ 1) ⊕ ((0 - ((b ≫ 7) ∧ 1)) ∧ 0x1b)
 mul3  b  =  xtime b ⊕ b
 ```
 
-where `mask(b₇)` is the all-ones-or-zero mask of the top bit `b₇`, built from the
-dialect's `bitToSword` of `b ≫ 7`'s low bit — i.e. exactly the LLVM
-`(0 - sext(b₇)) : i8` mask pattern. Every op is one of `bvShiftL`, `bvShiftR`,
-`bvAnd`, `bvXor`, `bvConst` already in `CatCryptOp`. This is the GF(2⁸)
-*multiply-by-constant* capability — the MixColumns MDS coefficients are `{01,02,03}`,
-so `xtime`/`mul3`/`id` are exactly what MixColumns needs.
+## Main definitions
 
-## Components, each `denote = spec`
+* `T8`: the byte type of the dialect.
+* `xtimeW`, `mul3W`: the branch-free multiplications by `x` and by `x + 1` on `BitVec 8`.
+* `shlW`, `shrW`, `andW`, `subW`, `xorW`: the denotations of the byte operations `bvShiftL`,
+  `bvShiftR`, `bvAnd`, `bvSub` and `bvXor` of `catCryptDialect`.
 
-* `xtimeCom`     — `denote = (AES128.xtime _).toBitVec`     (GF(2⁸) ×2)
-* `mul3Com`      — `denote = (AES128.mul3 _).toBitVec`      (GF(2⁸) ×3)
-* `mixColOutCom` — the four MixColumns output bytes, `denote = (AES128.mixColumn …).i`
-* `addRoundKeyCom` — `denote = (a ⊕ k)` (AddRoundKey is a byte XOR)
+## Main results
 
-ShiftRows is a pure lane permutation (no arithmetic) and AddRoundKey is `bvXor`;
-the GF(2⁸) `xtime`/`mul3` + MixColumns witness is the main result,
-since the MDS multiply is the only non-ALU-trivial part of the round. SubBytes is
-the S-box table; its dialect handling is via `memrefGetDyn` (runtime-index table
-lookup) and is discussed in the final section.
+* `xtimeW_eq_spec`, `mul3W_eq_spec`: `xtimeW` and `mul3W` are `AES128.xtime` and `AES128.mul3`
+  along `UInt8.toBitVec`.
+* `shlW_of_lt`, `shrW_of_lt`: below the width, the shift denotations are the plain shifts.
+* `denote_var_bvConst`, `denote_var_bvShiftL`, `denote_var_bvShiftR`, `denote_var_bvAnd`,
+  `denote_var_bvSub`, `denote_var_bvXor`: the denotation of a program whose first binding is
+  one byte operation.
+* `lookup_here_extend`, `lookup_there_extend`: variable lookup in an extended valuation.
 
-All goals closed.
+The bitsliced round, SubBytes included, is the template `HashTemplate.AesBitslice` on
+`jasminDialect`.
 -/
 
 @[expose] public section
