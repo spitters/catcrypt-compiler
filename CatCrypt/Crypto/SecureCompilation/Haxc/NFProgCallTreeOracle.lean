@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeContracts
+public import CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnFrame
 public import CatCryptCore.Relational.Rules
 
 /-!
@@ -16,7 +17,9 @@ at the answer relation `contractRAC`, which fixes the source answer of a call of
 `l` to its meaning `l.sem args`, and at a skip clause that continues a skipped source event at the
 answer of the meanings `linkHandler m`. This module states the relation at an answer predicate
 `A` of the linked functions: the answer relation `contractRACA A m` asks `A l e a` of the source
-answer in place of the equation, and the tree relation `RuttFA` continues a skipped source event
+answer in place of the equation and the frame contract `LinkedFn.frameContract` of the target
+answer in place of the contract, adding the facts of the meaning only at the answer of the
+meaning (`contractRACA_sem_iff`), and the tree relation `RuttFA` continues a skipped source event
 at every answer the skip predicate `SkipAns A m` admits. At the meaning predicate `SemAns` the
 statement is `R3StatementFG` (`r3StatementFA_sem_iff`); at the typing predicate `TypedAns`, an
 answer that decodes at the result type of the linked function, it is the statement at oracle
@@ -39,6 +42,7 @@ For a source handler in `SPComp`, a skipped event whose computation is discardab
 
 ## Main results
 
+* `contractRACA_sem_iff`: at the meaning predicate, `contractRACA` is `contractRAC`.
 * `ruttFA_iff_ruttF`: at the answers of a pure handler, `RuttFA` is `RuttF`.
 * `r3StatementFA_sem_iff`, `r3StatementFA_mono`, `r3StatementFG_of_r3StatementFA_typed`: the
   meaning instance, monotonicity in the predicate, and the oracle statement implies
@@ -67,6 +71,10 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (contractRAC)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeContract (contractREG)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeContracts (R3StatementFG)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeCallsLinked (contractRun)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnContract
+  (CallVar entryRegs entryAt_of_pre holds_entryAt)
+open CatCrypt.Crypto.SecureCompilation.X86Backend.LinkedFnFrame (framePost_of_contractPost)
 open _root_.Hax
 
 /-! ## Answer predicates -/
@@ -88,18 +96,61 @@ theorem typedAns_of_semAns {l : LinkedFn} {e : linkSig.Event} {a : linkSig.Resp 
   intro v hv
   exact l.sem_res _ v (by rw [← hv]; exact h.symm)
 
-/-- **The answer relation of the separation contracts at an answer predicate** `A`: the relation
-    `contractRAC` with `A l e₁ a₁` in place of the equation of the source answer with the
-    meaning. -/
+/-- **The answer relation of the separation contracts at an answer predicate** `A`: the source
+    answer satisfies `A l e₁`, and a value answer `v` is read back from a target return state
+    that is a return state of the run relation of the frame contract of `l`. When `v` is the
+    meaning of `l` at the arguments, the return state also satisfies the postcondition `l.post`
+    of the record and holds `v` in the read-back from the entry registers of every logical
+    variable whose resources hold at the entry, which with the frame contract gives the
+    contract of `l` (`contractRACA_sem_iff`). -/
 def contractRACA (A : AnsPred) (m : HaxModule) (e₁ : linkSig.Event) (e₂ : (kSig AState).Event)
     (a₁ : linkSig.Resp e₁) (a₂ : (kSig AState).Resp e₂) : Prop :=
   ∃ l, m.linked.find? (·.name == LinkCall.name e₁) = some l ∧ A l e₁ a₁ ∧
     ∀ v, (a₁ : Option Value) = some v → ∃ s', (a₂ : Option AState) = some s' ∧
-      l.post (KCall.entry e₂) s' ∧ l.layout.ResultOf (KCall.entry e₂) s' v ∧
-      ∀ a, (l.contract.pre a).holds (KCall.entry e₂) →
-        (l.contract.post a).holds s' ∧
-        SepLogic.Footprinted.AgreeOn (l.contract.writes a (KCall.entry e₂))ᶜ
-          (KCall.entry e₂) s'
+      l.layout.ResultOf (KCall.entry e₂) s' v ∧
+      contractRun l.frameContract () (KCall.entry e₂) () s' ∧
+      (l.sem (LinkCall.args e₁) = some v → l.post (KCall.entry e₂) s' ∧
+        ∀ a, (l.entryAt a).holds (KCall.entry e₂) → l.layout.ResultOf (entryRegs a.rv) s' v)
+
+/-- **At the meaning predicate, `contractRACA` is `contractRAC`**, at events related by
+    `contractREG`. -/
+theorem contractRACA_sem_iff {m : HaxModule} {e₁ : linkSig.Event} {e₂ : (kSig AState).Event}
+    {a₁ : linkSig.Resp e₁} {a₂ : (kSig AState).Resp e₂} (he : contractREG m e₁ e₂) :
+    contractRACA SemAns m e₁ e₂ a₁ a₂ ↔ contractRAC m e₁ e₂ a₁ a₂ := by
+  obtain ⟨-, l', hl', -, hargs⟩ := he
+  have hvals : ∀ {l : LinkedFn}, m.linked.find? (·.name == LinkCall.name e₁) = some l →
+      ∀ {a : CallVar}, (l.entryAt a).holds (KCall.entry e₂) → a.vals = LinkCall.args e₁ := by
+    intro l hl a ha
+    rw [hl] at hl'
+    cases hl'
+    rw [hargs]
+    exact (holds_entryAt ha).2.2.1.symm
+  constructor
+  · rintro ⟨l, hl, ha, hv⟩
+    refine ⟨l, hl, ha, fun v hv' => ?_⟩
+    obtain ⟨s', hs', hres, hrun, hsem⟩ := hv v hv'
+    obtain ⟨hpost, hra⟩ := hsem (ha.symm.trans hv')
+    refine ⟨s', hs', hpost, hres, fun a hpre => ?_⟩
+    obtain ⟨⟨-, hsp, hret⟩, hag⟩ := hrun.2 a (entryAt_of_pre hpre)
+    have hsv : l.sem a.vals = some v := by
+      rw [hvals hl (entryAt_of_pre hpre), ← ha, hv']
+    exact ⟨⟨trivial, hsp, hret, v, hsv, hra a (entryAt_of_pre hpre)⟩, hag⟩
+  · rintro ⟨l, hl, ha, hv⟩
+    refine ⟨l, hl, ha, fun v hv' => ?_⟩
+    obtain ⟨s', hs', hpost, hres, hall⟩ := hv v hv'
+    have hpre : ∀ a, (l.entryAt a).holds (KCall.entry e₂) →
+        (l.contract.pre a).holds (KCall.entry e₂) := by
+      intro a hea
+      refine ⟨by simp, hea, ?_⟩
+      rw [hvals hl hea, ← ha, hv']
+      rfl
+    refine ⟨s', hs', hres, ⟨rfl, fun a hea => ?_⟩, fun _ => ⟨hpost, fun a hea => ?_⟩⟩
+    · obtain ⟨hp, hag⟩ := hall a (hpre a hea)
+      exact ⟨framePost_of_contractPost hp, hag⟩
+    · obtain ⟨w, hw, hr⟩ := (hall a (hpre a hea)).1.2.2.2
+      rw [hvals hl hea, ← ha, hv'] at hw
+      cases hw
+      exact hr
 
 /-- `contractRACA` is antitone in the answer predicate. -/
 theorem contractRACA_mono {A A' : AnsPred} (hA : ∀ l e a, A l e a → A' l e a) {m : HaxModule}
@@ -248,13 +299,15 @@ theorem r3StatementFA_sem_iff : R3StatementFA SemAns ↔ R3StatementFG := by
     exact ⟨pc, Q, sym, hd, fun sa hreg env henv fuelC fuel =>
       ruttFA_iff_ruttF.mp ((hrel sa hreg env henv fuelC fuel).imp
         (fun _ _ ha => skipAns_sem_iff.mpr ha) (fun _ _ he => he)
-        (fun _ _ _ _ _ ha => ha) (fun _ _ hr => hr) (fun _ hf => hf))⟩
+        (fun _ _ _ _ he ha => (contractRACA_sem_iff he).mpr ha) (fun _ _ hr => hr)
+        (fun _ hf => hf))⟩
   · intro h m σ fname P bytes hc hnd hk
     obtain ⟨pc, Q, sym, hd, hrel⟩ := h m σ fname P bytes hc hnd hk
     exact ⟨pc, Q, sym, hd, fun sa hreg env henv fuelC fuel =>
       (ruttFA_iff_ruttF.mpr (hrel sa hreg env henv fuelC fuel)).imp
         (fun _ _ ha => skipAns_sem_iff.mp ha) (fun _ _ he => he)
-        (fun _ _ _ _ _ ha => ha) (fun _ _ hr => hr) (fun _ hf => hf)⟩
+        (fun _ _ _ _ he ha => (contractRACA_sem_iff he).mp ha) (fun _ _ hr => hr)
+        (fun _ hf => hf)⟩
 
 /-- **The statement at oracle contexts implies `R3StatementFG`.** -/
 theorem r3StatementFG_of_r3StatementFA_typed (h : R3StatementFA TypedAns) : R3StatementFG :=

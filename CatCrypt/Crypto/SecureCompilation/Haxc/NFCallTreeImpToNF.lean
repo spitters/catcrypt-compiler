@@ -24,8 +24,8 @@ the prefix followed by the tree of the filling (`treeAt_plug`). Events are relat
 `ImpRA` (the source answer the encoding of the target answer at the result type), a source
 leaf that is a value by `LeafRel` (a target valuation related to the final environment whose
 result variable encodes the value), and every other source leaf is failed (`SrcFail`). The
-source event of a call `repeat` has no target event: its answer, at the source handler, is the
-array the target builds (`RepeatCalls`), and the relation skips it (`RuttS`).
+source event of a call `repeat` has no target event: every answer that the skip predicate admits
+is the array the target builds (`RepeatCallsA`), and the relation skips it (`RuttSA`).
 
 ## Main definitions
 
@@ -59,7 +59,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (LeafCall leafSig linkReader
   opTree)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeANorm (LeafP)
 open _root_.Hax.InlineLocalClosures (frameOk)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc bind_ret)
@@ -160,18 +160,18 @@ def SrcFail (r : Outcome × Env) : Prop := ∀ v, r.1 ≠ .val v
 
 /-- **The relation of the trees of an expression and of an output**: from every environment
     related to a valuation by `EnvRel σ`, the source tree of `e` at the fuel `fuel` and the tree
-    of the prefix of `o` at the target fuel `tf` are related by `RuttS` at the source handler
-    `h₁`, the events related by `ImpRE`, the answers by `ImpRA`, the leaves by `LeafRel o`, a
+    of the prefix of `o` at the target fuel `tf` are related by `RuttSA` at the skip predicate
+    `Sk`, the events related by `ImpRE`, the answers by `ImpRA`, the leaves by `LeafRel o`, a
     source leaf that is not a value failed. -/
-def RelT (h₁ : ∀ e : linkSig.Event, linkSig.Resp e) (tE : TreeCallEnv leafSig nfDialect)
+def RelT (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop) (tE : TreeCallEnv leafSig nfDialect)
     (fuel tf : Nat) (e : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (o : Out Γ) : Prop :=
   ∀ (env : Env) (V : Valuation Γ), EnvRel σ env V →
-    RuttS h₁ ImpRE ImpRA (LeafRel o) SrcFail (denoteT evTable fuel e env)
+    RuttSA Sk ImpRE ImpRA (LeafRel o) SrcFail (denoteT evTable fuel e env)
       (preTreeAt linkReader tE tf o.pre V)
 
 section Lemmas
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- **A value continuation**: a source tree related to the tree of the prefix of `o`, followed by
     a continuation related at every value leaf to the target continuation, and whose failed
@@ -180,30 +180,30 @@ theorem ruttS_valK {Γ : Ctxt nfDialect} {o : Out Γ} {R₁ β : Type}
     {RR : R₁ → Option β → Prop} {Fail : R₁ → Prop}
     {t₁ : CallTree linkSig (Outcome × Env)} {t₂ : CallTree leafSig (Option (Valuation o.Δ))}
     {K₁ : Outcome × Env → CallTree linkSig R₁} {K₂ : Valuation o.Δ → CallTree leafSig (Option β)}
-    (h : RuttS h₁ ImpRE ImpRA (LeafRel o) SrcFail t₁ t₂)
+    (h : RuttSA Sk ImpRE ImpRA (LeafRel o) SrcFail t₁ t₂)
     (hk : ∀ e1 W, EnvRel o.σ e1 W →
-      RuttS h₁ ImpRE ImpRA RR Fail (K₁ (.val (enc o.t (o.res.lookup W)), e1)) (K₂ W))
-    (hf : ∀ r, SrcFail r → ∀ t, RuttS h₁ ImpRE ImpRA RR Fail (K₁ r) t) :
-    RuttS h₁ ImpRE ImpRA RR Fail (t₁.bind K₁) (obind t₂ K₂) := by
+      RuttSA Sk ImpRE ImpRA RR Fail (K₁ (.val (enc o.t (o.res.lookup W)), e1)) (K₂ W))
+    (hf : ∀ r, SrcFail r → ∀ t, RuttSA Sk ImpRE ImpRA RR Fail (K₁ r) t) :
+    RuttSA Sk ImpRE ImpRA RR Fail (t₁.bind K₁) (obind t₂ K₂) := by
   unfold obind
-  refine RuttS.bind h ?_ hf
+  refine RuttSA.bind h ?_ hf
   rintro ⟨o1, e1⟩ s₂ ⟨v, W, h1, rfl, hrel, rfl⟩
   dsimp only at h1
   subst h1
   exact hk e1 W hrel
 
 /-- A relation of trees carries a property of the leaves of the target tree. -/
-theorem ruttS_tgtLeaf {E₁ E₂ : EventSig} {g₁ : ∀ e : E₁.Event, E₁.Resp e}
+theorem ruttS_tgtLeaf {E₁ E₂ : EventSig} {S₁ : (e : E₁.Event) → E₁.Resp e → Prop}
     {RE : E₁.Event → E₂.Event → Prop}
     {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
     {R₁ R₂ : Type} {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop} {Q : R₂ → Prop}
-    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttS g₁ RE RA RR Fail t₁ t₂)
-    (hQ : LeafP Q t₂) : RuttS g₁ RE RA (fun a b => RR a b ∧ Q b) Fail t₁ t₂ := by
+    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttSA S₁ RE RA RR Fail t₁ t₂)
+    (hQ : LeafP Q t₂) : RuttSA S₁ RE RA (fun a b => RR a b ∧ Q b) Fail t₁ t₂ := by
   induction h with
   | ret h => cases hQ with | ret hq => exact .ret ⟨h, hq⟩
   | fail h => exact .fail h
   | vis he _ ih => cases hQ with | vis hQ => exact .vis he fun a₁ a₂ ha => ih a₁ a₂ ha (hQ a₂)
-  | skip _ ih => exact .skip (ih hQ)
+  | skip _ ih => exact .skip fun a ha => ih a ha hQ
 
 /-- The leaves of `obind` satisfy a property that holds of `none` and of the leaves of the
     continuation. -/
@@ -298,7 +298,7 @@ end Forms
 
 section Straight
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- One binding of an operation without event, whose value encodes the source value of a
     source leaf at the same environment, relates the trees. -/
@@ -308,7 +308,7 @@ theorem relT_bind1N (fuel tf : Nat) (e : ImpExpr) (tgt : Option String) {Γ : Ct
     (h : ∀ env V, EnvRel σ env V → ∃ x,
       nfDenoteOp NfLeafTable.empty op (Expr.lookupArgs args V) = some x ∧
       denoteT evTable fuel e env = .ret (.val (enc op.ret x), env)) :
-    RelT h₁ tE fuel tf e σ (bind1N tgt σ op args) := by
+    RelT Sk tE fuel tf e σ (bind1N tgt σ op args) := by
   intro env V hrel
   obtain ⟨x, hx, he⟩ := h env V hrel
   rw [he, preTreeAt_bind1N tE tf tgt σ op args V hop, hx]
@@ -317,7 +317,7 @@ theorem relT_bind1N (fuel tf : Nat) (e : ImpExpr) (tgt : Option String) {Γ : Ct
 /-- A literal relates the trees. -/
 theorem litOut_relT (fuel tf : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
     (σ : NfEnv Γ) (l : ImpLit) {o : Out Γ} (h : litOut tgt σ l = some o) :
-    RelT h₁ tE fuel tf (.lit l) σ o := by
+    RelT Sk tE fuel tf (.lit l) σ o := by
   have hs : ∀ env, denoteT evTable fuel (.lit l) env = .ret (.val (Value.ofLit l), env) :=
     fun env => NFCallTreeRepeatCount.denoteT_lit_run evTable fuel l env
   cases l with
@@ -343,7 +343,7 @@ theorem litOut_relT (fuel tf : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
 
 /-- An atom relates the trees. -/
 theorem atomOut_relT (fuel tf : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a : ImpExpr)
-    {o : Out Γ} (h : atomOut σ a = some o) : RelT h₁ tE fuel tf a σ o := by
+    {o : Out Γ} (h : atomOut σ a = some o) : RelT Sk tE fuel tf a σ o := by
   cases a with
   | var x =>
     simp only [atomOut, Option.map_eq_some_iff] at h
@@ -356,7 +356,7 @@ theorem atomOut_relT (fuel tf : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) (a : 
 
 /-- The unit value relates the trees. -/
 theorem unitVal_relT (fuel tf : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
-    (σ : NfEnv Γ) : RelT h₁ tE fuel tf .unitVal σ (bind1N tgt σ .constUnit .nil) :=
+    (σ : NfEnv Γ) : RelT Sk tE fuel tf .unitVal σ (bind1N tgt σ .constUnit .nil) :=
   relT_bind1N fuel tf _ tgt σ _ _ (fun _ => rfl) fun env V _ =>
     ⟨(), rfl, by rw [denoteT]; rfl⟩
 
@@ -365,18 +365,18 @@ theorem unitVal_relT (fuel tf : Nat) (tgt : Option String) {Γ : Ctxt nfDialect}
 theorem ruttS_keep {R₂ : Type} {RR : Outcome × Env → R₂ → Prop}
     (K : Outcome × Env → CallTree linkSig (Outcome × Env))
     (hK : ∀ o e1, (∀ v, o ≠ .val v) → K (o, e1) = .ret (o, e1)) :
-    ∀ r, SrcFail r → ∀ t, RuttS h₁ ImpRE ImpRA RR SrcFail (K r) t := by
+    ∀ r, SrcFail r → ∀ t, RuttSA Sk ImpRE ImpRA RR SrcFail (K r) t := by
   rintro ⟨o, e1⟩ hf t
   rw [hK o e1 hf]
   exact .fail hf
 
 /-- A sequence of related outputs relates the trees. -/
 theorem seq_relT (fuel tf : Nat) {a b : ImpExpr} {Γ : Ctxt nfDialect} {σ : NfEnv Γ}
-    {oa : Out Γ} (ha : RelT h₁ tE fuel tf a σ oa) {ob : Out oa.Δ}
-    (hb : RelT h₁ tE fuel tf b oa.σ ob) : RelT h₁ tE fuel tf (.seq a b) σ (oa.comp ob) := by
+    {oa : Out Γ} (ha : RelT Sk tE fuel tf a σ oa) {ob : Out oa.Δ}
+    (hb : RelT Sk tE fuel tf b oa.σ ob) : RelT Sk tE fuel tf (.seq a b) σ (oa.comp ob) := by
   intro env V hrel
   rw [denoteT_seq_runIf]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf (oa.pre.append ob.pre) V)
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf (oa.pre.append ob.pre) V)
   rw [preTreeAt_append]
   refine ruttS_valK (ha env V hrel) (fun e1 W hrel1 => ?_) (ruttS_keep _ ?_)
   · simp only [enc_isControlFlow, Bool.false_eq_true, ite_false]
@@ -389,12 +389,12 @@ theorem seq_relT (fuel tf : Nat) {a b : ImpExpr} {Γ : Ctxt nfDialect} {σ : NfE
 /-- A binding of a related output, followed by an output related from the environment of
     names with the bound name, relates the trees. -/
 theorem letBind_relT (fuel tf : Nat) (x : String) {v b : ImpExpr} {Γ : Ctxt nfDialect}
-    {σ : NfEnv Γ} {ov : Out Γ} (hv : RelT h₁ tE fuel tf v σ ov) {ob : Out ov.Δ}
-    (hb : RelT h₁ tE fuel tf b ((x, ⟨ov.t, ov.res⟩) :: ov.σ) ob) :
-    RelT h₁ tE fuel tf (.letBind x v b) σ (ov.comp ob) := by
+    {σ : NfEnv Γ} {ov : Out Γ} (hv : RelT Sk tE fuel tf v σ ov) {ob : Out ov.Δ}
+    (hb : RelT Sk tE fuel tf b ((x, ⟨ov.t, ov.res⟩) :: ov.σ) ob) :
+    RelT Sk tE fuel tf (.letBind x v b) σ (ov.comp ob) := by
   intro env V hrel
   rw [NFCallTreeANorm.denoteT_letBind_runIf]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf (ov.pre.append ob.pre) V)
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf (ov.pre.append ob.pre) V)
   rw [preTreeAt_append]
   refine ruttS_valK (hv env V hrel) (fun e1 W hrel1 => ?_) (ruttS_keep _ ?_)
   · simp only [enc_isControlFlow, Bool.false_eq_true, ite_false]
@@ -406,12 +406,12 @@ theorem letBind_relT (fuel tf : Nat) (x : String) {v b : ImpExpr} {Γ : Ctxt nfD
 
 /-- An assignment of a related output relates the trees. -/
 theorem assign_relT (fuel tf : Nat) (x : String) (tgt : Option String) {r : ImpExpr}
-    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hr : RelT h₁ tE fuel tf r σ o) :
-    RelT h₁ tE fuel tf (.assign x r) σ
+    {Γ : Ctxt nfDialect} {σ : NfEnv Γ} {o : Out Γ} (hr : RelT Sk tE fuel tf r σ o) :
+    RelT Sk tE fuel tf (.assign x r) σ
       (o.comp (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil)) := by
   intro env V hrel
   rw [denoteT_assign_runIf]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf
     (o.pre.append (bind1N tgt ((x, ⟨o.t, o.res⟩) :: o.σ) .constUnit .nil).pre) V)
   rw [preTreeAt_append]
   refine ruttS_valK (hr env V hrel) (fun e1 W hrel1 => ?_) (ruttS_keep _ ?_)
@@ -448,7 +448,7 @@ def ArgsRel {Γ : Ctxt nfDialect} (oa : ArgsOut Γ) (r : Option (List Value) × 
 
 section Args
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- **A list of arguments relates the trees**, for a translation `A` of lists built from a
     translation `F` of its elements as `impArgsNF` and `argsOut` are, when `F` relates the trees
@@ -462,10 +462,10 @@ theorem args_relT (fuel tf : Nat)
         ⟨os.Δ, o.t :: os.as, o.pre.append os.pre, os.σ, .cons (os.pre.wk o.res) os.vs⟩)
     (es : List ImpExpr)
     (H : ∀ e ∈ es, ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}, F σ e = some o →
-      RelT h₁ tE fuel tf e σ o) :
+      RelT Sk tE fuel tf e σ o) :
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, A σ es = some oa →
     ∀ (env : Env) (V : Valuation Γ), EnvRel σ env V →
-      RuttS h₁ ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
+      RuttSA Sk ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
         (denoteArgsT evTable fuel es env) (preTreeAt linkReader tE tf oa.pre V) := by
   induction es with
   | nil =>
@@ -480,12 +480,12 @@ theorem args_relT (fuel tf : Nat)
     simp only [Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
     obtain ⟨o, ho, os, hos, rfl⟩ := h
     rw [NFCallTreeANorm.denoteArgsT_cons_run]
-    show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf (o.pre.append os.pre) V)
+    change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf (o.pre.append os.pre) V)
     rw [preTreeAt_append]
     refine ruttS_valK (H e List.mem_cons_self σ ho env V hrel) (fun e1 W1 hrel1 => ?_) ?_
     · simp only [enc_isControlFlow, Bool.false_eq_true, ite_false]
       rw [← bind_ret (preTreeAt linkReader tE tf os.pre W1)]
-      refine RuttS.bind (ruttS_tgtLeaf (ih (fun e' he' => H e' (List.mem_cons_of_mem _ he')) o.σ
+      refine RuttSA.bind (ruttS_tgtLeaf (ih (fun e' he' => H e' (List.mem_cons_of_mem _ he')) o.σ
         hos e1 W1 hrel1) (preTreeAt_wk linkReader tE tf os.pre W1)) ?_ ?_
       · rintro ⟨m, e2⟩ s₂ ⟨⟨W2, rfl, hm, hrel2⟩, hwk⟩
         dsimp only at hm hrel2
@@ -507,10 +507,10 @@ theorem args_relT (fuel tf : Nat)
 theorem impArgsNF_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : Nat)
     (es : List ImpExpr)
     (H : ∀ e ∈ es, ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
-      impToNF sigOf none σ e = some o → RelT h₁ tE fuel tf e σ o) :
+      impToNF sigOf none σ e = some o → RelT Sk tE fuel tf e σ o) :
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, impArgsNF sigOf σ es = some oa →
     ∀ (env : Env) (V : Valuation Γ), EnvRel σ env V →
-      RuttS h₁ ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
+      RuttSA Sk ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
         (denoteArgsT evTable fuel es env) (preTreeAt linkReader tE tf oa.pre V) :=
   args_relT fuel tf (impToNF sigOf none) (impArgsNF sigOf) (fun σ => by rw [impArgsNF])
     (fun σ e es => by rw [impArgsNF]) es H
@@ -519,7 +519,7 @@ theorem impArgsNF_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf :
 theorem argsOut_relT (fuel tf : Nat) (es : List ImpExpr) :
     ∀ {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {oa : ArgsOut Γ}, argsOut σ es = some oa →
     ∀ (env : Env) (V : Valuation Γ), EnvRel σ env V →
-      RuttS h₁ ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
+      RuttSA Sk ImpRE ImpRA (ArgsRel oa) (fun r => r.1 = none)
         (denoteArgsT evTable fuel es env) (preTreeAt linkReader tE tf oa.pre V) :=
   args_relT fuel tf atomOut argsOut (fun σ => by rw [argsOut]) (fun σ e es => by rw [argsOut]) es
     fun e _ _ σ _ h => atomOut_relT fuel tf σ e h
@@ -544,18 +544,18 @@ theorem appCall_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : N
     (tgt : Option String) (f : String) (args : List ImpExpr) {Γ : Ctxt nfDialect}
     (σ : NfEnv Γ)
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
-      impToNF sigOf none σ' e = some o' → RelT h₁ tE fuel tf e σ' o')
+      impToNF sigOf none σ' e = some o' → RelT Sk tE fuel tf e σ' o')
     {oa : ArgsOut Γ} (hoa : impArgsNF sigOf σ args = some oa) (r : NfTy) :
-    RelT h₁ tE fuel tf (.app f args) σ
+    RelT Sk tE fuel tf (.app f args) σ
       ⟨r :: oa.Δ, r, oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil),
         oa.σ.mapV .there, .here⟩ := by
   intro env V hrel
   rw [NFCallTreeANorm.denoteT_app_run]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf
     (oa.pre.append (.var (mkEN tgt (.call f oa.as r) oa.vs) .nil)) V)
   rw [preTreeAt_append]
   unfold obind
-  refine RuttS.bind (impArgsNF_relT sigOf fuel tf args HA σ hoa env V hrel) ?_ ?_
+  refine RuttSA.bind (impArgsNF_relT sigOf fuel tf args HA σ hoa env V hrel) ?_ ?_
   · rintro ⟨m, e1⟩ s₂ ⟨W, rfl, hm, hrel1⟩
     dsimp only at hm hrel1
     subst hm
@@ -619,22 +619,22 @@ theorem tupleOut_tree (tf : Nat) :
 /-- A tuple of atoms relates the trees. -/
 theorem tuple_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : Nat)
     (tgt : Option String) (es : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
-    (h : impToNF sigOf tgt σ (.tuple es) = some o) : RelT h₁ tE fuel tf (.tuple es) σ o := by
+    (h : impToNF sigOf tgt σ (.tuple es) = some o) : RelT Sk tE fuel tf (.tuple es) σ o := by
   simp only [impToNF, Option.map_eq_some_iff] at h
   obtain ⟨oa, hoa, rfl⟩ := h
   intro env V hrel
   rw [NFCallTreeANorm.denoteT_tuple_run]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf
     (oa.pre.append (tupleOut tgt oa.as oa.vs).2.1) V)
   rw [preTreeAt_append]
   unfold obind
-  refine RuttS.bind (argsOut_relT fuel tf es σ hoa env V hrel) ?_ ?_
+  refine RuttSA.bind (argsOut_relT fuel tf es σ hoa env V hrel) ?_ ?_
   · rintro ⟨m, e1⟩ s₂ ⟨W, rfl, hm, hrel1⟩
     dsimp only at hm hrel1
     subst hm
     rw [tupleKT_some]
     obtain ⟨W2, hW2, henc⟩ := tupleOut_tree (tE := tE) tf tgt oa.as oa.vs W
-    show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf (tupleOut tgt oa.as oa.vs).2.1 W)
+    change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf (tupleOut tgt oa.as oa.vs).2.1 W)
     rw [hW2]
     exact .ret ⟨_, W2, rfl, rfl, hrel1.mapV _ (preTreeAt_wk_of_ret hW2), henc.symm⟩
   · rintro ⟨m, e1⟩ hm t
@@ -713,17 +713,18 @@ theorem projOut_tree (tE : TreeCallEnv leafSig nfDialect) (tf : Nat) (tgt : Opti
     | _ => simp [projOut] at h
 
 /-- A projection of a related output relates the trees. -/
-theorem proj_relT {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+theorem proj_relT {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop}
+    {tE : TreeCallEnv leafSig nfDialect}
     (sigOf : String → List NfTy → Option NfTy) (fuel tf : Nat) (tgt : Option String)
     (e : ImpExpr) (i : Nat) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (h : impToNF sigOf tgt σ (.proj e i) = some o)
-    (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → RelT h₁ tE fuel tf e σ oe) :
-    RelT h₁ tE fuel tf (.proj e i) σ o := by
+    (he : ∀ {oe : Out Γ}, impToNF sigOf none σ e = some oe → RelT Sk tE fuel tf e σ oe) :
+    RelT Sk tE fuel tf (.proj e i) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h
   obtain ⟨oe, hoe, op, hop, rfl⟩ := h
   intro env V hrel
   rw [denoteT_proj_runIf]
-  show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf (oe.pre.append op.pre) V)
+  change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf (oe.pre.append op.pre) V)
   rw [preTreeAt_append]
   refine ruttS_valK (he hoe env V hrel) (fun e1 W1 hrel1 => ?_) (ruttS_keep _ ?_)
   · simp only [enc_isControlFlow, Bool.false_eq_true, ite_false]
@@ -737,17 +738,29 @@ theorem proj_relT {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallE
 
 /-! ## The call `repeat` and the calls -/
 
+/-- **The builtin `repeat` on words, at a skip predicate.** Every answer `some v` that `Sk`
+    admits at the event `repeat [x, N]` with an integer `x` and a count `N ≥ 0` is the array of
+    `N` copies of `x`. -/
+def RepeatCallsA (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop) : Prop :=
+  ∀ (x N : Int) (v : Value), 0 ≤ N → Sk ⟨"repeat", [.int x, .int N]⟩ (some v) →
+    v = .array (List.replicate N.toNat (.int x))
+
+/-- At the answers of a handler, `RepeatCallsA` is `RepeatCalls`. -/
+theorem repeatCallsA_iff_repeatCalls {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} :
+    RepeatCallsA (fun e a => a = h₁ e) ↔ RepeatCalls fun f vals => h₁ ⟨f, vals⟩ :=
+  ⟨fun hR x N v hN hb => hR x N v hN hb.symm, fun hR x N v hN hb => hR x N v hN hb.symm⟩
+
 section Calls
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
-/-- **A call `repeat [x, N]` with a literal count `N ≥ 0` relates the trees**, when the source
-    handler answers `repeat` as `RepeatCalls` states: the source event is skipped at the answer
-    of the source handler, and the target builds the array without event. -/
-theorem repeat_relT (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (fuel tf : Nat)
+/-- **A call `repeat [x, N]` with a literal count `N ≥ 0` relates the trees**, when every answer
+    of `repeat` that the skip predicate admits is as `RepeatCallsA` states: the source event is
+    skipped at every admitted answer, and the target builds the array without event. -/
+theorem repeat_relT (hR : RepeatCallsA Sk) (fuel tf : Nat)
     (tgt : Option String) (x : ImpExpr) {N : Int} (hN : 0 ≤ N) {Γ : Ctxt nfDialect}
     (σ : NfEnv Γ) {o : Out Γ} (h : repeatOut tgt σ x N = some o) :
-    RelT h₁ tE fuel tf (.app "repeat" [x, .lit (.int N)]) σ o := by
+    RelT Sk tE fuel tf (.app "repeat" [x, .lit (.int N)]) σ o := by
   simp only [repeatOut, Option.bind_eq_some_iff] at h
   obtain ⟨⟨Δ, t, pre, σ₁, res⟩, hox, h⟩ := h
   split at h
@@ -757,7 +770,7 @@ theorem repeat_relT (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (fuel tf
     cases h
     intro env V hrel
     rw [NFCallTreeANorm.denoteT_app_run, NFCallTreeANorm.denoteArgsT_cons_run, bind_assoc]
-    show RuttS _ _ _ _ _ _ (preTreeAt linkReader tE tf
+    change RuttSA _ _ _ _ _ _ (preTreeAt linkReader tE tf
       (pre.append (bind1N tgt σ₁ (.arrRepeat N.toNat (.word 64)) (.cons res .nil)).pre) V)
     rw [preTreeAt_append]
     refine ruttS_valK (o := ⟨Δ, .word 64, pre, σ₁, res⟩) (atomOut_relT fuel tf σ x hox env V hrel)
@@ -767,8 +780,8 @@ theorem repeat_relT (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (fuel tf
       simp only [CallTree.bind, Value.ofLit, Value.isControlFlow, Bool.false_eq_true, ite_false,
         NFCallTreeANorm.denoteArgsT_nil_run, Option.map_some]
       rw [appKT_evTable, preTreeAt_bind1N tE tf tgt σ₁ _ _ W1 fun _ => rfl]
-      refine .skip ?_
-      cases hb : h₁ ⟨"repeat", [enc (.word 64) (res.lookup W1), .int N]⟩ with
+      refine .skip fun a hb => ?_
+      cases a with
       | none => exact .fail fun v h => by cases h
       | some w =>
         have hw := hR _ N w hN hb
@@ -782,13 +795,13 @@ theorem repeat_relT (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (fuel tf
   · cases h
 
 /-- **A call relates the trees**, when the front relates the trees of its arguments and the
-    source handler answers `repeat` as `RepeatCalls` states. -/
-theorem app_relT (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩)
+    skip predicate admits answers of `repeat` as `RepeatCallsA` states. -/
+theorem app_relT (hR : RepeatCallsA Sk)
     (sigOf : String → List NfTy → Option NfTy) (fuel tf : Nat) (tgt : Option String)
     (f : String) (args : List ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (HA : ∀ e ∈ args, ∀ {Γ' : Ctxt nfDialect} (σ' : NfEnv Γ') {o' : Out Γ'},
-      impToNF sigOf none σ' e = some o' → RelT h₁ tE fuel tf e σ' o')
-    (h : impToNF sigOf tgt σ (.app f args) = some o) : RelT h₁ tE fuel tf (.app f args) σ o := by
+      impToNF sigOf none σ' e = some o' → RelT Sk tE fuel tf e σ' o')
+    (h : impToNF sigOf tgt σ (.app f args) = some o) : RelT Sk tE fuel tf (.app f args) σ o := by
   rcases impToNF_app_cases sigOf tgt σ h with ⟨x, N, hr, hro⟩ | ⟨-, oa, hoa, r, -, rfl⟩
   · obtain ⟨rfl, rfl, hN, -⟩ := repeatArgs?_eq_some hr
     exact repeat_relT hR fuel tf tgt x hN σ hro

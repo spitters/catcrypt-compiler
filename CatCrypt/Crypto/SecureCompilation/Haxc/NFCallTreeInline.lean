@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.Hax.NFInline
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubstTable
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRefinesTA
 
 /-!
 # Inlining of calls at the level of call trees
@@ -24,7 +25,7 @@ Two consequences follow.
 * At the call events (`nfProgTree`) and a library without bodies of operations, the tree of
   `inline? L p` is the substitution `substT (inlineSubst L fuel)` of the tree of `p`: each call
   the library inlines is replaced by the tree of its body, every other call is kept as its
-  event (`nfProgTree_inline?`). `RuttS.substT` then transfers a relation of the trees of `p`.
+  event (`nfProgTree_inline?`). `RuttSA.substT` then transfers a relation of the trees of `p`.
 * The soundness of a library becomes a relation of trees (`InlineLib.TreeSound`): the tree of
   the body of a call refines the tree of the call, and the tree of the body of an operation the
   tree of the reader. Under it the tree of `p` is refined by the tree of `inline? L p`
@@ -44,7 +45,8 @@ Two consequences follow.
   and the call environment of the library.
 * `substT_treeAt`, `nfProgTree_inline?`: substitution in the tree of a program, and the inlined
   call tree as a substitution.
-* `interp_inlineSubst`: the substituted tree of a call interprets to the run of the body.
+* `interp_inlineSubst`: the leaves of the substituted tree of a call along the answers of a
+  handler are the run of the body.
 * `RefinesT.treeAt`, `refinesT_treeAt_inline?`, `refinesT_treeAt_inlineIter`: refinement of the
   tree under refined readers and call environments, and of inlining under a sound library.
 -/
@@ -60,7 +62,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubst (substT substT_vis)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubstTable (substT_bind)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 open Ctxt (Var Valuation)
 open MultiBlockLowering (hvAppend)
 
@@ -333,32 +335,32 @@ theorem treeAt_inline? {L : InlineLib d} {ex : ExprReader E d} (hex : ex.RenameI
 /-- **Refined readers and call environments give a refined tree**: when every tree of `ex` is
     refined by the tree of `ex'` and every call tree of `tE` by the one of `tE'`, the tree of a
     program at `ex` and `tE` is refined by its tree at `ex'` and `tE'`. -/
-theorem RefinesT.treeAt (h₁ : ∀ e : E.Event, E.Resp e) {ex ex' : ExprReader E d}
+theorem RefinesT.treeAt (Sk : (e : E.Event) → E.Resp e → Prop) {ex ex' : ExprReader E d}
     {tE tE' : TreeCallEnv E d}
     (hex : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) (V : Valuation Γ),
-      RefinesT h₁ (ex e V) (ex' e V))
-    (htE : ∀ f as rs a, RefinesT h₁ (tE.call f as rs a) (tE'.call f as rs a)) (fuel : Nat)
+      RefinesTA Sk (ex e V) (ex' e V))
+    (htE : ∀ f as rs a, RefinesTA Sk (tE.call f as rs a) (tE'.call f as rs a)) (fuel : Nat)
     {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
-    ∀ V : Valuation Γ, RefinesT h₁ (NFProgCallTree.treeAt ex tE fuel p V)
+    ∀ V : Valuation Γ, RefinesTA Sk (NFProgCallTree.treeAt ex tE fuel p V)
       (NFProgCallTree.treeAt ex' tE' fuel p V) := by
   induction p with
-  | ret vs => intro V; exact RefinesT.refl _
-  | var e k ih => intro V; exact RefinesT.obind (hex e V) fun _ => ih _
+  | ret vs => intro V; exact RefinesTA.refl _
+  | var e k ih => intro V; exact RefinesTA.obind (hex e V) fun _ => ih _
   | forLoop count inits body k ihb ihk =>
     intro V
-    exact RefinesT.obind (RefinesT.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
+    exact RefinesTA.obind (RefinesTA.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
   | ifThenElse cond thn els k iht ihe ihk =>
     intro V
-    refine RefinesT.obind ?_ fun _ => ihk _
+    refine RefinesTA.obind ?_ fun _ => ihk _
     split
     · exact iht V
     · exact ihe V
   | whileLoop inits body k ihb ihk =>
     intro V
-    exact RefinesT.obind (RefinesT.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
-  | call f args k ih => intro V; exact RefinesT.obind (htE _ _ _ _) fun _ => ih _
+    exact RefinesTA.obind (RefinesTA.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
+  | call f args k ih => intro V; exact RefinesTA.obind (htE _ _ _ _) fun _ => ih _
 
-/-- **A library is sound for trees** at the source handler `h₁`, the reader `ex`, the call
+/-- **A library is sound for trees** at the skip predicate `Sk`, the reader `ex`, the call
     environment `tE` and the fuel `fuel`: the tree of an expression of an operation the library
     has a body for is refined by the tree of the body at its argument values, read at its
     result, and the tree of a call the library has a body for is refined by the tree of the
@@ -367,55 +369,55 @@ theorem RefinesT.treeAt (h₁ : ∀ e : E.Event, E.Resp e) {ex ex' : ExprReader 
     `InlineLib.Sound`: a successful source run of the call is a run of the body with the same
     events and result. -/
 structure _root_.CatCrypt.Crypto.SecureCompilation.VIR.InlineLib.TreeSound
-    (h₁ : ∀ e : E.Event, E.Resp e) (L : InlineLib d) (ex : ExprReader E d)
+    (Sk : (e : E.Event) → E.Resp e → Prop) (L : InlineLib d) (ex : ExprReader E d)
     (tE : TreeCallEnv E d) (fuel : Nat) : Prop where
   /-- The tree of the body of an operation refines the tree of its expression. -/
   op : ∀ (o : d.Op) b, L.op o = some b → ∀ {Γ : Ctxt d}
     (args : HVector (fun t => Var Γ t) (DialectSignature.sig o)) (V : Valuation Γ),
-    RefinesT h₁ (ex ⟨o, rfl, args⟩ V)
+    RefinesTA Sk (ex ⟨o, rfl, args⟩ V)
       (obind (NFProgCallTree.treeAt ex tE fuel b (Expr.lookupArgs args V))
         fun r => .ret (some r.head))
   /-- The tree of the body of a symbol refines the tree of its call. -/
   call : ∀ f as rs b, L.call f as rs = some b → ∀ a,
-    RefinesT h₁ (tE.call f as rs a) (NFProgCallTree.treeAt ex tE fuel b a)
+    RefinesTA Sk (tE.call f as rs a) (NFProgCallTree.treeAt ex tE fuel b a)
 
 /-- **Inlining refines the tree** under a library sound for trees: the tree of `p` is refined
     by the tree of `inline? L p`, up to skipped source events. -/
-theorem refinesT_treeAt_inline? {h₁ : ∀ e : E.Event, E.Resp e} {L : InlineLib d}
+theorem refinesT_treeAt_inline? {Sk : (e : E.Event) → E.Resp e → Prop} {L : InlineLib d}
     {ex : ExprReader E d} (hex : ex.RenameInv) {tE : TreeCallEnv E d} {fuel : Nat}
-    (hL : L.TreeSound h₁ ex tE fuel) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
+    (hL : L.TreeSound Sk ex tE fuel) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
     {p' : NFProg d Γ ts} (hq : NFProg.inline? L p = some p') (V : Valuation Γ) :
-    RefinesT h₁ (NFProgCallTree.treeAt ex tE fuel p V)
+    RefinesTA Sk (NFProgCallTree.treeAt ex tE fuel p V)
       (NFProgCallTree.treeAt ex tE fuel p' V) := by
   rw [treeAt_inline? hex tE fuel p hq]
-  refine RefinesT.treeAt h₁ ?_ ?_ fuel p V
+  refine RefinesT.treeAt Sk ?_ ?_ fuel p V
   · intro Γ t e V
     obtain ⟨o, rfl, args⟩ := e
     simp only [inlineReader]
     split
     · exact hL.op o _ ‹_› args V
-    · exact RefinesT.refl _
+    · exact RefinesTA.refl _
   · intro f as rs a
     simp only [inlineEnv]
     split
     · exact hL.call f as rs _ ‹_› a
-    · exact RefinesT.refl _
+    · exact RefinesTA.refl _
 
 /-- **Repeated inlining refines the tree** under a library sound for trees. -/
-theorem refinesT_treeAt_inlineIter {h₁ : ∀ e : E.Event, E.Resp e} {L : InlineLib d}
+theorem refinesT_treeAt_inlineIter {Sk : (e : E.Event) → E.Resp e → Prop} {L : InlineLib d}
     {ex : ExprReader E d} (hex : ex.RenameInv) {tE : TreeCallEnv E d} {fuel : Nat}
-    (hL : L.TreeSound h₁ ex tE fuel) {Γ : Ctxt d} {ts : List d.Ty} :
+    (hL : L.TreeSound Sk ex tE fuel) {Γ : Ctxt d} {ts : List d.Ty} :
     ∀ (n : Nat) (p : NFProg d Γ ts) (V : Valuation Γ),
-      RefinesT h₁ (NFProgCallTree.treeAt ex tE fuel p V)
+      RefinesTA Sk (NFProgCallTree.treeAt ex tE fuel p V)
         (NFProgCallTree.treeAt ex tE fuel (NFProg.inlineIter L n p) V)
-  | 0, p, V => RefinesT.refl _
+  | 0, p, V => RefinesTA.refl _
   | n + 1, p, V => by
     simp only [NFProg.inlineIter]
     split
     · rename_i q hq
       exact (refinesT_treeAt_inline? hex hL p hq V).trans
         (refinesT_treeAt_inlineIter hex hL n q V)
-    · exact RefinesT.refl _
+    · exact RefinesTA.refl _
 
 /-! ## The inlined call tree as a substitution -/
 
@@ -430,7 +432,7 @@ def inlineSubst (L : InlineLib d) (fuel : Nat) :
 
 /-- **The inlined call tree is a substitution of the call tree**: for a library without bodies
     of operations, the call tree of `inline? L p` is the call tree of `p` in which every call
-    the library has a body for is replaced by the call tree of the body. With `RuttS.substT`,
+    the library has a body for is replaced by the call tree of the body. With `RuttSA.substT`,
     a relation of the call trees of `p` transfers to the inlined program. -/
 theorem nfProgTree_inline? {L : InlineLib d} (hL : ∀ o, L.op o = none) (fuel : Nat)
     {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) {p' : NFProg d Γ ts}
@@ -446,15 +448,17 @@ theorem nfProgTree_inline? {L : InlineLib d} (hL : ∀ o, L.op o = none) (fuel :
   · intro f as rs a
     exact (NFCallTreeAnfPick.bind_ret _).symm
 
-/-- The substituted tree of a call interprets under the handler of `Ec` to the run of the body
-    at `Ec` where the library has one, and to the callee of `Ec` otherwise. This is the
-    consistency hypothesis of `RuttS.substT` for `inlineSubst`. -/
+/-- Every leaf that the substituted tree of a call returns along the answers of the handler of
+    `Ec` is the run of the body at `Ec` where the library has one, and the callee of `Ec`
+    otherwise. This is the consistency hypothesis of `RuttSA.substT` for `inlineSubst`. -/
 theorem interp_inlineSubst (Ec : CallEnv d) (L : InlineLib d) (fuel : Nat)
-    (c : (nfCallSig d).Event) :
-    interp (callHandler Ec) (inlineSubst L fuel c) =
-      match L.call c.name c.argTys c.resTys with
-      | some b => b.denoteAt Ec fuel c.args
-      | none => callHandler Ec c := by
+    (c : (nfCallSig d).Event) (a : (nfCallSig d).Resp c) :
+    RetsA (fun e a => a = callHandler Ec e) (inlineSubst L fuel c) a →
+      a = match L.call c.name c.argTys c.resTys with
+        | some b => b.denoteAt Ec fuel c.args
+        | none => callHandler Ec c := by
+  intro ha
+  rw [retsA_eq_iff.mp ha]
   simp only [inlineSubst, inlineEnv]
   cases L.call c.name c.argTys c.resTys with
   | none => rfl

@@ -6,12 +6,13 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeANorm2
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 
 /-!
 # `aNormalizeTotal` refines the reading at the level of call trees
 
 At every tree table and fuel, under the source condition `aNormTDenoteOk e`, the call tree of
-`e` from an environment is related by `RuttS` at equal events and answers to the call tree of
+`e` from an environment is related by `RuttSA` at equal events and answers to the call tree of
 `aNormalizeTotal e` from the same environment: a leaf of `e` whose outcome is an error is a
 failed leaf, and every other leaf of `e` is matched by a leaf with the same outcome. The
 normaliser binds the arguments of a call before the call and reads a variable argument after
@@ -47,7 +48,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run tm_pure_run
   denoteT_var_run denoteT_var_run_none)
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree (Rutt)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA ruttSA_eqTrans)
 open CatCrypt.Crypto.Hax (prependBindings splitLetBinds bindRhs floatLet hoistAt anormName
   prependBindings_append prependBindings_cons prependBindings_nil splitLetBinds_letBind ARel
   AnormBelow anormName_below anormName_inj isVar isVar_eq_true aNormTBody aNormTArgs
@@ -781,9 +782,9 @@ theorem bindTails_relT {Fail : Outcome × Env → Prop} (e : ImpExpr) :
     `aNormTDenoteOk e`, from every environment, the call tree of `e` is related to the call tree
     of `aNormalizeTotal e` at equal events and answers: a leaf of `e` whose outcome is an error
     is a failed leaf, and every other leaf of `e` is matched by a leaf with the same outcome. -/
-theorem aNormalizeTotal_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat)
+theorem aNormalizeTotal_relT (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) (fuel : Nat)
     (e : ImpExpr) (h : aNormTDenoteOk e = true) (env : Env) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂.1 = r₁.1)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂.1 = r₁.1)
       (fun r => ∃ m, r.1 = .err m)
       (denoteT bt fuel e env) (denoteT bt fuel (aNormalizeTotal e) env) := by
   have hok : ∀ n, (fun n => (List.range (aNormalizeTotalCount e)).all
@@ -794,8 +795,8 @@ theorem aNormalizeTotal_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable 
   have hN := aNormTBody_relT bt hok (bindTails e) h 0 (Nat.le_refl _) env fuel env env
     ⟨fun _ _ => rfl, fun j hj => absurd hj (Nat.not_lt_zero _)⟩
   have hB := bindTails_relT bt fuel (Fail := fun r : Outcome × Env => ∃ m, r.1 = .err m) e env
-  refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans
-    (fun r₀ r₁ h01 hf => ?_) (RuttS.of_rutt hB) (RuttS.of_rutt hN))
+  refine RuttSA.mono ?_ (ruttSA_eqTrans
+    (fun r₀ r₁ h01 hf => ?_) (RuttSA.of_rutt hB) (RuttSA.of_rutt hN))
   · rintro r₀ r₂ ⟨r₁, h01, h12⟩
     exact h12.1.trans h01
   · obtain ⟨m, hm⟩ := hf

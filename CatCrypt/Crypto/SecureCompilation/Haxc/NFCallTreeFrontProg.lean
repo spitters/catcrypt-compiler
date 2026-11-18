@@ -14,7 +14,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubstTable
 
 The source program `nfSrcProgC fs σ te` of the front is the translation `impToNF` of the body
 `nfBody te`. At the tree table `evTable`, in which every call is an event, the call tree of the
-extraction `te` and the call tree of the program are related by `RuttS` at the relations
+extraction `te` and the call tree of the program are related by `RuttSA` at the relations
 `ImpRE`, `ImpRA` of the translation: the body stage (`NFCallTreeFrontBody.nfBody_relT`) composed
 with the translation (`NFCallTreeImpToNF.impToNF_relT`) and the read-back of the result variable
 of the output. A value leaf of the source that is not a control-flow value is the encoding of the
@@ -46,7 +46,7 @@ open CatCrypt.Crypto.Hax.ImpToNF
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (leafSig linkReader)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA ruttSA_eqTrans)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeImpToNF (evTable ImpRE ImpRA LeafRel SrcFail
   preTreeAt treeAt_plug impToNF_relT)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubst (substT)
@@ -84,29 +84,29 @@ def ProgOut (t : NfTy) (r : Outcome × Env) (o : Option (HVector NfTy.denote [t]
 
 /-- **The extraction and the source program of the front at `evTable`.** Let `nfSrcProgC fs σ te`
     return `q`, the extraction have call-free arguments at the calls of its inlined closures
-    (`spineArgsOk`), and the source handler `h₁` answer `repeat` as the table of `repeat` calls.
-    From a source environment and a valuation of the entry related by `EntryVals`, at a target
-    fuel at least the source fuel, the call tree of `te` at `evTable` and the call tree of the
-    program are related by `RuttS` at `ImpRE`, `ImpRA` and `ProgOut`, the source leaves that are
-    not values failed. -/
+    (`spineArgsOk`), and the skip predicate `Sk` admit answers of `repeat` as `RepeatCallsA`
+    states. From a source environment and a valuation of the entry related by `EntryVals`, at a
+    target fuel at least the source fuel, the call tree of `te` at `evTable` and the call tree of
+    the program are related by `RuttSA Sk` at `ImpRE`, `ImpRA` and `ProgOut`, the source leaves
+    that are not values failed. -/
 theorem srcProg_relT (fs : List CrateFn) (σ : AbiLayout) (te : TExpr)
     {q : Σ t : NfTy, NFProg nfDialect (entryCtx (NFToRoute.abiEntry σ)) [t]}
     (hq : nfSrcProgC fs σ te = some q)
     (_hs : NFCallTreeInlineSpine.spineArgsOk te.erase = true)
-    (h₁ : ∀ e : linkSig.Event, linkSig.Resp e)
-    (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩) (tE : TreeCallEnv leafSig nfDialect)
+    (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop)
+    (hR : NFCallTreeImpToNF.RepeatCallsA Sk) (tE : TreeCallEnv leafSig nfDialect)
     (fuel tf : Nat) (hft : fuel ≤ tf) (env : Env)
     (V : Valuation (entryCtx (NFToRoute.abiEntry σ)))
     (hV : EntryVals env (NFToRoute.abiEntry σ) V) :
-    RuttS h₁ ImpRE ImpRA (ProgOut q.1) (fun r => ¬ ∃ v, r.1 = .val v)
+    RuttSA Sk ImpRE ImpRA (ProgOut q.1) (fun r => ¬ ∃ v, r.1 = .val v)
       (nfTree evTable fuel te.erase env) (treeAt linkReader tE tf q.2 V) := by
   unfold nfSrcProgC at hq
   split at hq
   · rename_i hok
     obtain ⟨o, ho, rfl⟩ := Option.map_eq_some_iff.mp hq
-    have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel te hok env
-    have hI := impToNF_relT _ h₁ hR tE (nfBody te) none _ ho fuel tf hft env V (entryEnv_rel hV)
-    have hI' : RuttS h₁ ImpRE ImpRA (ProgOut o.t) SrcFail
+    have hB := NFCallTreeFrontBody.nfBody_relT Sk evTable fuel te hok env
+    have hI := impToNF_relT _ Sk hR tE (nfBody te) none _ ho fuel tf hft env V (entryEnv_rel hV)
+    have hI' : RuttSA Sk ImpRE ImpRA (ProgOut o.t) SrcFail
         (denoteT evTable fuel (nfBody te) env) (treeAt linkReader tE tf o.prog V) := by
       rw [Out.prog, treeAt_plug, ← bind_ret (denoteT evTable fuel (nfBody te) env)]
       refine NFCallTreeImpToNF.ruttS_obindK hI (fun r W hr => .ret ?_) ?_
@@ -119,7 +119,7 @@ theorem srcProg_relT (fs : List CrateFn) (σ : AbiLayout) (te : TExpr)
         exact ⟨_, rfl, henc⟩
       · rintro r w ⟨v, W, -, hW, -⟩
         exact ⟨W, hW⟩
-    refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans ?_ hB hI')
+    refine RuttSA.mono ?_ (ruttSA_eqTrans ?_ hB hI')
     · rintro r₀ o' ⟨r₁, h01, h12⟩ v hv hcf
       rcases h01 with h | ⟨w, -, h, -⟩
       · exact h12 v (h.trans hv) hcf

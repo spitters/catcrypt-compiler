@@ -43,9 +43,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run t
   denoteT_lit_run denoteT_var_run denoteT_var_run_none)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeWhileTrue (lift_bind_run)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
 
-variable {E : EventSig} {h₁ : ∀ e : E.Event, E.Resp e}
+variable {E : EventSig} {Sk : (e : E.Event) → E.Resp e → Prop}
 
 /-! ## Trees at an environment -/
 
@@ -267,7 +266,7 @@ theorem AgreeR.ext {K : List String} {ρ : Env} {n : String} (hn : n ∉ K) :
 theorem callT_ref (bt : TreeTable E) (fuel₀ : Nat) (f : String) (ps : List String)
     (body : ImpExpr) (ρ : Env) (hbody : isPure body = true) (args : List ImpExpr)
     (hnc : ∀ a, a ∈ args → noCalls a = true) (hlen : args.length = ps.length) (fuel : Nat) :
-    RelT h₁ (AgreeR (captures ps body) ρ) (AgreeR (captures ps body) ρ) IsErr
+    RelT Sk (AgreeR (captures ps body) ρ) (AgreeR (captures ps body) ρ) IsErr
       (denoteT bt fuel (subst ps args body))
       (denoteT (closureTableT bt fuel₀ f ps body ρ) fuel (.app f args)) := by
   rintro e₁ e₂ ⟨rfl, hA⟩
@@ -291,8 +290,8 @@ theorem callT_ref (bt : TreeTable E) (fuel₀ : Nat) (f : String) (ps : List Str
 
 /-- One tree performed on both sides, followed by related continuations. -/
 theorem RelT.bind_lift {α β : Type} {P Q : Env → Env → Prop} {bad : β → Prop}
-    (t : CallTree E α) {k₁ k₂ : α → TM E β} (hk : ∀ a, RelT h₁ P Q bad (k₁ a) (k₂ a)) :
-    RelT h₁ P Q bad (StateT.lift t >>= k₁) (StateT.lift t >>= k₂) := by
+    (t : CallTree E α) {k₁ k₂ : α → TM E β} (hk : ∀ a, RelT Sk P Q bad (k₁ a) (k₂ a)) :
+    RelT Sk P Q bad (StateT.lift t >>= k₁) (StateT.lift t >>= k₂) := by
   intro e₁ e₂ hp
   rw [lift_bind_run, lift_bind_run]
   exact NFCallTreeAnfPick.ruttS_bind_same t fun a => hk a e₁ e₂ hp
@@ -321,9 +320,9 @@ theorem armsT_ref {K : List String} {ρ : Env} {bt₁ bt₂ : TreeTable E} (g : 
     (arms : List (ImpPat × ImpExpr))
     (hK : ∀ pa, pa ∈ arms → ∀ x, x ∈ patVars pa.1 → K.contains x = false)
     (ih : ∀ pa, pa ∈ arms → ∀ fuel,
-      RelT h₁ (AgreeR K ρ) (AgreeR K ρ) IsErr (denoteT bt₁ fuel (g pa.2)) (denoteT bt₂ fuel pa.2))
+      RelT Sk (AgreeR K ρ) (AgreeR K ρ) IsErr (denoteT bt₁ fuel (g pa.2)) (denoteT bt₂ fuel pa.2))
     (fuel : Nat) (v : Value) :
-    RelT h₁ (AgreeR K ρ) (AgreeR K ρ) IsErr
+    RelT Sk (AgreeR K ρ) (AgreeR K ρ) IsErr
       (denoteMatchArmsT bt₁ fuel v (arms.map fun (p, e) => (p, g e)))
       (denoteMatchArmsT bt₂ fuel v arms) := by
   induction arms with
@@ -352,7 +351,7 @@ theorem armsT_ref {K : List String} {ρ : Env} {bt₁ bt₂ : TreeTable E} (g : 
 theorem denoteT_inlineCalls (bt : TreeTable E) (fuel₀ : Nat) (f : String) (ps : List String)
     (body : ImpExpr) (ρ : Env) (hbody : isPure body = true) (e : ImpExpr) :
     noBind (captures ps body) e = true → argsFree f e = true → ∀ fuel,
-      RelT h₁ (AgreeR (captures ps body) ρ) (AgreeR (captures ps body) ρ) IsErr
+      RelT Sk (AgreeR (captures ps body) ρ) (AgreeR (captures ps body) ρ) IsErr
         (denoteT bt fuel (inlineCalls f ps body e))
         (denoteT (closureTableT bt fuel₀ f ps body ρ) fuel e) := by
   induction e using ImpExpr.ind with

@@ -41,7 +41,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (LeafCall leafSig linkReader
   opTree)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeANorm (LeafP)
 open _root_.Hax.InlineLocalClosures (frameOk)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc bind_ret)
@@ -52,7 +52,7 @@ open MultiBlockLowering (hvAppend)
 
 section Cond
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- The leaves of a tree satisfy a family of properties when they satisfy each. -/
 theorem leafP_all {E : EventSig} {R ι : Type} {P : ι → R → Prop} (t : CallTree E R)
@@ -62,17 +62,17 @@ theorem leafP_all {E : EventSig} {R ι : Type} {P : ι → R → Prop} (t : Call
   | vis e c ih => exact .vis fun a => ih a fun i => by cases h i with | vis hi => exact hi a
 
 /-- A relation of trees carries a property of the leaves of the source tree. -/
-theorem ruttS_srcLeaf {E₁ E₂ : EventSig} {g₁ : ∀ e : E₁.Event, E₁.Resp e}
+theorem ruttS_srcLeaf {E₁ E₂ : EventSig} {S₁ : (e : E₁.Event) → E₁.Resp e → Prop}
     {RE : E₁.Event → E₂.Event → Prop}
     {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
     {R₁ R₂ : Type} {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop} {P : R₁ → Prop}
-    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttS g₁ RE RA RR Fail t₁ t₂)
-    (hP : LeafP P t₁) : RuttS g₁ RE RA (fun a b => RR a b ∧ P a) Fail t₁ t₂ := by
+    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttSA S₁ RE RA RR Fail t₁ t₂)
+    (hP : LeafP P t₁) : RuttSA S₁ RE RA (fun a b => RR a b ∧ P a) Fail t₁ t₂ := by
   induction h with
   | ret h => cases hP with | ret hp => exact .ret ⟨h, hp⟩
   | fail h => exact .fail h
   | vis he _ ih => cases hP with | vis hP => exact .vis he fun a₁ a₂ ha => ih a₁ a₂ ha (hP a₁)
-  | skip _ ih => cases hP with | vis hP => exact .skip (ih (hP _))
+  | skip _ ih => cases hP with | vis hP => exact .skip fun a ha => ih a ha (hP a)
 
 /-- The leaves of the reading of an expression that binds no name of `σc` outside `xs`, whose
     outcome is not an error, keep those names. -/
@@ -115,16 +115,16 @@ def ArmRel {Γc : Ctxt nfDialect} (σc : NfEnv Γc) (Vc : Valuation Γc) (xs : L
     outside `xs`. -/
 theorem condArm_relT (fuel tf : Nat) (e : ImpExpr) {Γc : Ctxt nfDialect} (σc : NfEnv Γc)
     (xs : List String) (cs : List NfTy) {o : Out Γc} (rets : HVector (fun t => Var o.Δ t) cs)
-    (hrets : varsAt o.σ xs cs = some rets) (hS : RelT h₁ tE fuel tf e σc o)
+    (hrets : varsAt o.σ xs cs = some rets) (hS : RelT Sk tE fuel tf e σc o)
     (hfr : ∀ x, x ∉ xs → ∀ q, σc.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) e = true)
     (env : Env) (Vc : Valuation Γc) (hrel : EnvRel σc env Vc) {rs : List NfTy}
     (X : HVector (fun t => Var o.Δ t) rs) :
-    RuttS h₁ ImpRE ImpRA (ArmRel σc Vc xs cs o rets X) SrcFail (denoteT evTable fuel e env)
+    RuttSA Sk ImpRE ImpRA (ArmRel σc Vc xs cs o rets X) SrcFail (denoteT evTable fuel e env)
       (treeAt linkReader tE tf (o.pre.plug (.ret X)) Vc) := by
   rw [treeAt_plug, ← bind_ret (denoteT evTable fuel e env)]
   unfold obind
-  refine RuttS.bind (ruttS_srcLeaf (hS env Vc hrel) (keeps_leafP e σc xs hfr fuel env)) ?_ ?_
+  refine RuttSA.bind (ruttS_srcLeaf (hS env Vc hrel) (keeps_leafP e σc xs hfr fuel env)) ?_ ?_
   · rintro ⟨o1, e1⟩ s₂ ⟨⟨v, W, h1, rfl, hrelW, hv⟩, hkeep⟩
     dsimp only at h1 hrelW hkeep ⊢
     refine .ret ⟨v, W, h1, rfl, hv, CarriedRel.of_varsAt hrelW xs cs hrets, fun y hy t u hl => ?_⟩
@@ -195,13 +195,13 @@ theorem ruttS_obindK {S α R₁ β : Type} {RR' : S → Option α → Prop} {Fai
     {RR : R₁ → Option β → Prop} {Fail : R₁ → Prop}
     {t₁ : CallTree linkSig S} {t₂ : CallTree leafSig (Option α)}
     {K₁ : S → CallTree linkSig R₁} {K₂ : α → CallTree leafSig (Option β)}
-    (h : RuttS h₁ ImpRE ImpRA RR' Fail' t₁ t₂)
-    (hk : ∀ r x, RR' r (some x) → RuttS h₁ ImpRE ImpRA RR Fail (K₁ r) (K₂ x))
+    (h : RuttSA Sk ImpRE ImpRA RR' Fail' t₁ t₂)
+    (hk : ∀ r x, RR' r (some x) → RuttSA Sk ImpRE ImpRA RR Fail (K₁ r) (K₂ x))
     (hR : ∀ r w, RR' r w → ∃ x, w = some x)
-    (hf : ∀ r, Fail' r → ∀ t, RuttS h₁ ImpRE ImpRA RR Fail (K₁ r) t) :
-    RuttS h₁ ImpRE ImpRA RR Fail (t₁.bind K₁) (obind t₂ K₂) := by
+    (hf : ∀ r, Fail' r → ∀ t, RuttSA Sk ImpRE ImpRA RR Fail (K₁ r) t) :
+    RuttSA Sk ImpRE ImpRA RR Fail (t₁.bind K₁) (obind t₂ K₂) := by
   unfold obind
-  refine RuttS.bind h (fun r w hr => ?_) hf
+  refine RuttSA.bind h (fun r w hr => ?_) hf
   obtain ⟨x, rfl⟩ := hR r w hr
   exact hk r x hr
 
@@ -220,19 +220,19 @@ end Cond
 
 section CondRelT
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- **A conditional relates the trees**, when the front relates the trees of its condition and
     of its arms. -/
 theorem cond_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : Nat)
     (tgt : Option String) (c a b : ImpExpr) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ}
     (h : impToNF sigOf tgt σ (.ifThenElse c a b) = some o)
-    (hc : ∀ {oc : Out Γ}, impToNF sigOf none σ c = some oc → RelT h₁ tE fuel tf c σ oc)
+    (hc : ∀ {oc : Out Γ}, impToNF sigOf none σ c = some oc → RelT Sk tE fuel tf c σ oc)
     (ha : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ},
-      impToNF sigOf none σ' a = some o' → RelT h₁ tE fuel tf a σ' o')
+      impToNF sigOf none σ' a = some o' → RelT Sk tE fuel tf a σ' o')
     (hb : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ},
-      impToNF sigOf none σ' b = some o' → RelT h₁ tE fuel tf b σ' o') :
-    RelT h₁ tE fuel tf (.ifThenElse c a b) σ o := by
+      impToNF sigOf none σ' b = some o' → RelT Sk tE fuel tf b σ' o') :
+    RelT Sk tE fuel tf (.ifThenElse c a b) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff] at h
   obtain ⟨oc, hoc, h⟩ := h
   have hC := hc hoc
@@ -389,7 +389,7 @@ end While
 
 section WhileRel
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- The step of the `while` loop of the front at an unset flag returns the flag and the
     carried tuple. -/
@@ -446,14 +446,14 @@ theorem whileTrips_relT (g : String) (body : ImpExpr) {Γ : Ctxt nfDialect} (V :
     (ob : Out (cs ++ Γ)) (rets : HVector (fun t => Var ob.Δ t) cs) (σB : NfEnv (cs ++ Γ))
     (Inv : Env → Valuation (d := nfDialect) cs → Prop)
     (HG : ∀ e acc, Inv e acc → e g = some (.bool (gV.lookup (hvAppend acc V))))
-    (HB : ∀ fuel', fuel' ≤ tf → RelT h₁ tE fuel' tf body σB ob)
+    (HB : ∀ fuel', fuel' ≤ tf → RelT Sk tE fuel' tf body σB ob)
     (HE : ∀ e acc, Inv e acc → EnvRel σB e (hvAppend acc V))
     (KP : Env → Outcome × Env → Prop)
     (HK : ∀ fuel' e, LeafP (KP e) (denoteT evTable fuel' body e))
     (HI : ∀ e acc e2 W v, Inv e acc → KP e (.val v, e2) → EnvRel ob.σ e2 W →
       Inv e2 (Expr.lookupArgs rets W)) :
     ∀ (n m : Nat), n ≤ m → m ≤ tf → ∀ e acc, Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
         SrcFail (denoteWhileT evTable n (.var g) body e)
         (owhileIter (fun acc => treeAt linkReader tE tf (whileOutStep cs gV ob rets)
           (hvAppend acc V)) m acc) := by
@@ -470,13 +470,13 @@ theorem whileTrips_relT (g : String) (body : ImpExpr) {Γ : Ctxt nfDialect} (V :
     cases hb : gV.lookup (hvAppend acc V) with
     | false =>
       simp only [Bool.false_eq_true, ite_false]
-      show RuttS _ _ _ _ _ _ (obind (treeAt linkReader tE tf (whileOutStep cs gV ob rets)
+      change RuttSA _ _ _ _ _ _ (obind (treeAt linkReader tE tf (whileOutStep cs gV ob rets)
         (hvAppend acc V)) _)
       rw [treeAt_whileOutStep_false tf cs gV ob rets acc V hb]
       exact .ret ⟨acc, rfl, rfl, hinv⟩
     | true =>
       simp only [ite_true]
-      show RuttS _ _ _ _ _ _ (obind (treeAt linkReader tE tf (whileOutStep cs gV ob rets)
+      change RuttSA _ _ _ _ _ _ (obind (treeAt linkReader tE tf (whileOutStep cs gV ob rets)
         (hvAppend acc V)) _)
       rw [treeAt_whileOutStep_true tf cs gV ob rets _ hb, obind_assoc]
       simp only [obind_ret_some]
@@ -505,8 +505,8 @@ theorem whileFold_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf :
     (h : impToNF sigOf tgt σ (.whileFold (.var g) body) = some o)
     (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ},
       impToNF sigOf none σ' body = some o' → ∀ fuel' tf', fuel' ≤ tf' →
-        RelT h₁ tE fuel' tf' body σ' o') :
-    RelT h₁ tE fuel tf (.whileFold (.var g) body) σ o := by
+        RelT Sk tE fuel' tf' body σ' o') :
+    RelT Sk tE fuel tf (.whileFold (.var g) body) σ o := by
   simp only [impToNF] at h
   have hlen : ((condCarried σ body body).map (·.1)).length =
       (entriesVars (condCarried σ body body)).1.length := by
@@ -540,7 +540,7 @@ theorem whileFold_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf :
       fun v => Var.shiftApp (d := nfDialect) cs v) e (hvAppend acc V) := fun e acc hinv =>
     EnvRel.whileEnv σ xs cs hlen (headVars cs) _ (by rw [lookupArgs_headVars]; exact hinv.1)
       hinv.2 (fun t v => Var.lookup_shiftApp cs acc v V)
-  have hT := whileTrips_relT (h₁ := h₁) (tE := tE) g body V tf pv ob rets _ Inv
+  have hT := whileTrips_relT (Sk := Sk) (tE := tE) g body V tf pv ob rets _ Inv
     (fun e acc hinv => hB e acc hinv g _ pv hg) (fun fuel' hf => HB _ hob fuel' tf hf) hB
     (fun e r => ∀ y, _root_.Hax.InlineLocalClosures.IsErr r.1 ∨ y ∈ xs ∨ σ.lookup y = none ∨
       r.2 y = e y)
@@ -556,7 +556,7 @@ theorem whileFold_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf :
         · exact hk.trans (hinv.2 y hy t u hl)⟩)
     fuel tf hle le_rfl env _ ⟨hcar env V hrel, fun x _ t v hl => hrel x t v hl⟩
   rw [NFCallTreeWhileTrue.denoteT_whileFold, ← bind_ret (denoteWhileT evTable fuel _ body env)]
-  show RuttS _ _ _ _ _ _ (obind (owhileIter _ tf _) _)
+  change RuttSA _ _ _ _ _ _ (obind (owhileIter _ tf _) _)
   refine ruttS_obindK hT (fun r accF hr => ?_) (fun r w ⟨_, _, hw, _⟩ => ⟨_, hw⟩)
     (fun r hf t => .fail hf)
   obtain ⟨accF', h1, hacc, hinvF⟩ := hr

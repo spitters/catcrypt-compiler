@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 
 /-!
 # Substitution of trees for events
@@ -16,17 +16,18 @@ of `t` by the tree `σ e`, whose leaves are the answers to `e`, and continues at
 the interpretation of `t` in the monad of call trees. An event kept as it is has the tree
 `.vis e .ret`.
 
-Two trees related by `RuttS` stay related under substitution when the substituted trees of related
-events are related, their leaves by the answer relation, and when the source substitution is
-consistent with the source handlers: the interpretation of the substituted tree of a source event
-under the new source handler is the answer of the old source handler, so that a skipped source
-event becomes a skipped source tree.
+Two trees related by `RuttSA` stay related under substitution when the substituted trees of
+related events are related, their leaves by the answer relation, and when the source substitution
+is consistent with the skip predicates: every leaf that the substituted tree of a source event
+returns along answers admitted by the new skip predicate is admitted by the old one, so that a
+skipped source event becomes a skipped source tree. At the answers of handlers this is the
+consistency `interp h₁' (σ₁ e) = h₁ e` (`retsA_eq_iff`, `ruttSA_iff_ruttS`).
 
 ## Main results
 
 * `substT`: the substitution of trees for the events of a tree.
 * `interp_substT`: interpreting a substituted tree interprets the substituted trees.
-* `RuttS.substT`: substitution keeps `RuttS`.
+* `RuttSA.substT`: substitution keeps `RuttSA`.
 -/
 
 @[expose] public section
@@ -36,7 +37,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubst
 
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA RetsA)
 
 /-- **Substitution of trees for events**: every event `e` of the tree is replaced by the tree
     `σ e` over the events `E'`, and the continuation runs at its leaf. -/
@@ -64,14 +65,14 @@ theorem interp_substT {E E' : EventSig} {R : Type} (σ : ∀ e : E.Event, CallTr
   | ret r => rfl
   | vis e k ih => rw [substT_vis, interp_bind, ih]; rfl
 
-/-- **Substitution keeps `RuttS`.** Let `t₁` and `t₂` be related by `RuttS` at the source
-    handler `h₁`. Substitute `σ₁` in `t₁` and `σ₂` in `t₂`. When the substituted trees of related
-    events are related by `RuttS` at the new relations, their leaves by the answer relation and
-    none of their source leaves failed, and when the interpretation of the substituted tree of
-    every source event under the new source handler `h₁'` is the answer of `h₁`, the substituted
-    trees are related at the new relations of events and answers. -/
-theorem RuttS.substT {E₁ E₂ E₁' E₂' : EventSig} {R₁ R₂ : Type}
-    {h₁ : ∀ e : E₁.Event, E₁.Resp e} {h₁' : ∀ e : E₁'.Event, E₁'.Resp e}
+/-- **Substitution keeps `RuttSA`.** Let `t₁` and `t₂` be related by `RuttSA` at the skip
+    predicate `Sk`. Substitute `σ₁` in `t₁` and `σ₂` in `t₂`. When the substituted trees of related
+    events are related by `RuttSA` at the skip predicate `Sk'` and the new relations, their leaves
+    by the answer relation and none of their source leaves failed, and when every leaf that the
+    substituted tree of a source event returns along answers admitted by `Sk'` is admitted by `Sk`,
+    the substituted trees are related at `Sk'` and the new relations of events and answers. -/
+theorem RuttSA.substT {E₁ E₂ E₁' E₂' : EventSig} {R₁ R₂ : Type}
+    {Sk : (e : E₁.Event) → E₁.Resp e → Prop} {Sk' : (e : E₁'.Event) → E₁'.Resp e → Prop}
     {RE : E₁.Event → E₂.Event → Prop}
     {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
     {RE' : E₁'.Event → E₂'.Event → Prop}
@@ -79,20 +80,17 @@ theorem RuttS.substT {E₁ E₂ E₁' E₂' : EventSig} {R₁ R₂ : Type}
     {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop}
     {σ₁ : ∀ e : E₁.Event, CallTree E₁' (E₁.Resp e)} {σ₂ : ∀ e : E₂.Event, CallTree E₂' (E₂.Resp e)}
     (hσ : ∀ e₁ e₂, RE e₁ e₂ →
-      RuttS h₁' RE' RA' (RA e₁ e₂) (fun _ => False) (σ₁ e₁) (σ₂ e₂))
-    (hh : ∀ e₁, interp h₁' (σ₁ e₁) = h₁ e₁)
-    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttS h₁ RE RA RR Fail t₁ t₂) :
-    RuttS h₁' RE' RA' RR Fail (substT σ₁ t₁) (substT σ₂ t₂) := by
+      RuttSA Sk' RE' RA' (RA e₁ e₂) (fun _ => False) (σ₁ e₁) (σ₂ e₂))
+    (hh : ∀ e₁ a, RetsA Sk' (σ₁ e₁) a → Sk e₁ a)
+    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttSA Sk RE RA RR Fail t₁ t₂) :
+    RuttSA Sk' RE' RA' RR Fail (substT σ₁ t₁) (substT σ₂ t₂) := by
   induction h with
   | ret h => exact .ret h
   | fail h => exact .fail h
   | vis he _ ih =>
-    exact NFProgCallTree.RuttS.bind (hσ _ _ he) (fun a₁ a₂ ha => ih a₁ a₂ ha)
-      (fun _ hf => hf.elim)
+    exact RuttSA.bind (hσ _ _ he) (fun a₁ a₂ ha => ih a₁ a₂ ha) (fun _ hf => hf.elim)
   | @skip e₁ k₁ t₂ _ ih =>
     rw [substT_vis]
-    refine NFProgCallTree.RuttS.skip_bind (σ₁ e₁) ?_
-    rw [hh]
-    exact ih
+    exact RuttSA.skip_bind (σ₁ e₁) fun a ha => ih a (hh _ _ ha)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubst

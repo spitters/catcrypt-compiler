@@ -44,7 +44,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (LeafCall leafSig linkReader
   opTree)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeANorm (LeafP)
 open _root_.Hax.InlineLocalClosures (frameOk)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc bind_ret)
@@ -55,7 +55,7 @@ open MultiBlockLowering (hvAppend)
 
 section ForRel
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- The continuation of a trip of `denoteForLoopT` after the body. -/
 def forBodyK (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr) :
@@ -91,14 +91,14 @@ theorem forTrips_relT (i : String) (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt n
     (Inv : Env → Valuation (d := nfDialect) cs → Prop) (tf : Nat)
     (HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs), k < 2 ^ 64 →
       lo + (k : Int) < h → f ≤ tf → Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
           w = some acc' ∧ Inv r.2 acc') SrcFail
         (denoteT evTable f body (e.extend i (.int (lo + k))))
         (treeAt linkReader tE tf bodyP
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)))) :
     ∀ (m k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs),
       (h - (lo + k)).toNat = m → k + m < 2 ^ 64 → f ≤ tf → Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
         SrcFail (denoteForLoopT evTable f i (lo + k) h body e)
         (ofoldl (fun a j => treeAt linkReader tE tf bodyP
           (hvAppend a (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V₃)))
@@ -227,7 +227,7 @@ end ForRel
 
 section LoopOut
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- **The counted loop of the front relates the trees.** Let the tree of the prefix `pre₀` be
     one leaf at `V₃`, related by `σ₃` to `env`, with `lo` in `loV` and the trip count
@@ -244,7 +244,7 @@ theorem loopOut_relT (tf : Nat) (body : ImpExpr) (tgt : Option String)
     (rec : ∀ {Δ : Ctxt nfDialect}, NfEnv Δ → Option (Out Δ)) {o : Out Γ}
     (h₀ : loopOut tgt pre₀ σ₃ loV tripV rev i xs cs inits rec = some o)
     (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ}, rec σ' = some o' →
-      ∀ fuel', fuel' ≤ tf → RelT h₁ tE fuel' tf body σ' o')
+      ∀ fuel', fuel' ≤ tf → RelT Sk tE fuel' tf body σ' o')
     (hlen : xs.length = cs.length)
     (hfr : ∀ x, x ∉ xs → x ≠ i → ∀ q, σ₃.lookup x = some q →
       frameOk (fun _ => true) (fun n => n != x) (fun _ => true) body = true)
@@ -260,19 +260,19 @@ theorem loopOut_relT (tf : Nat) (body : ImpExpr) (tgt : Option String)
       (bodyP : NFProg nfDialect (cs ++ NfTy.word 64 :: Γ₃) cs),
       (∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs), k < 2 ^ 64 →
         lo + (k : Int) < h → f ≤ tf → Inv e acc →
-        RuttS h₁ ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
+        RuttSA Sk ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
             w = some acc' ∧ Inv r.2 acc') SrcFail
           (denoteT evTable f body
             (e.extend i (.int (ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64))))))
           (treeAt linkReader tE tf bodyP
             (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)))) →
       Inv env (Expr.lookupArgs inits V₃) →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
         SrcFail src
         (ofoldl (fun a j => treeAt linkReader tE tf bodyP
           (hvAppend a (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V₃)))
           (List.range' 0 (h - lo).toNat) (Expr.lookupArgs inits V₃))) :
-    RuttS h₁ ImpRE ImpRA (LeafRel o) SrcFail src (preTreeAt linkReader tE tf o.pre V) := by
+    RuttSA Sk ImpRE ImpRA (LeafRel o) SrcFail src (preTreeAt linkReader tE tf o.pre V) := by
   simp only [loopOut, Option.bind_eq_some_iff, Option.map_eq_some_iff] at h₀
   obtain ⟨ob, hob, rets, hrets, rfl⟩ := h₀
   let Inv : Env → Valuation (d := nfDialect) cs → Prop := fun e acc =>
@@ -291,7 +291,7 @@ theorem loopOut_relT (tf : Nat) (body : ImpExpr) (tgt : Option String)
       (fun h => hx (h ▸ List.mem_cons_self)) q hq
   have HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs), k < 2 ^ 64 →
       lo + (k : Int) < h → f ≤ tf → Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
           w = some acc' ∧ Inv r.2 acc') SrcFail
         (denoteT evTable f body
           (e.extend i (.int (ctrVal lo k (rev.map fun m => (m.lookup V₃ : BitVec 64))))))
@@ -335,13 +335,13 @@ theorem loopOut_relT (tf : Nat) (body : ImpExpr) (tgt : Option String)
       rw [Env.extend_other _ _ _ _ hxi]
       exact hinv.2 x hx hxi t u hl
   have hfold := HL Inv _ HS ⟨hcar, fun x _ _ t v hl => hrel x t v hl⟩
-  show RuttS _ _ _ _ _ src (preTreeAt linkReader tE tf (pre₀.append (.forLoop tripV inits
+  change RuttSA _ _ _ _ _ src (preTreeAt linkReader tE tf (pre₀.append (.forLoop tripV inits
     ((NFPre.append (ctrOut cs i (loopEnv σ₃ i xs cs (headVars cs)
       fun v => Var.shiftApp (d := nfDialect) cs v.there) loV rev).pre ob.pre).plug (.ret rets))
     (bind1N tgt (loopEnv σ₃ i xs cs (headVars cs) fun v => Var.shiftApp cs v)
       .constUnit .nil).pre)) V)
   rw [preTreeAt_append, hpre, obind_ret_some]
-  show RuttS _ _ _ _ _ src (obind (ofoldl _ (List.range (tripV.lookup V₃).toNat) _) _)
+  change RuttSA _ _ _ _ _ src (obind (ofoldl _ (List.range (tripV.lookup V₃).toNat) _) _)
   rw [htrip, BitVec.toNat_ofNat, Nat.mod_eq_of_lt hM, List.range_eq_range', ← bind_ret src]
   refine ruttS_obindK hfold (fun r accF hr => ?_) (fun r w ⟨_, _, hw, _⟩ => ⟨_, hw⟩)
     (fun r hfl t => .fail hfl)
@@ -488,8 +488,8 @@ theorem forFold_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : N
     (h : impToNF sigOf tgt σ (.forFold i lo hi body) = some o)
     (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ},
       impToNF sigOf none σ' body = some o' → ∀ fuel' tf', fuel' ≤ tf' →
-        RelT h₁ tE fuel' tf' body σ' o') :
-    RelT h₁ tE fuel tf (.forFold i lo hi body) σ o := by
+        RelT Sk tE fuel' tf' body σ' o') :
+    RelT Sk tE fuel tf (.forFold i lo hi body) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff] at h
   obtain ⟨eLo, hLoE, oHi, hHi, hL⟩ := h
   split at hL
@@ -539,7 +539,7 @@ theorem forFold_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf : N
     (by omega) hz0 (by omega) (fun _ h => by cases h) _ fun Inv bodyP HS hinv => ?_
   · rw [preTreeAt_append, preTreeAt_append, hLo]
     exact (congrArg (fun t => obind t _) hW2).trans hTrip
-  · have := forTrips_relT (h₁ := h₁) (tE := tE) i body z hInt _ bodyP Inv tf
+  · have := forTrips_relT (Sk := Sk) (tE := tE) i body z hInt _ bodyP Inv tf
       (fun k f e acc hk hkh hf hinv => HS k f e acc hk hkh hf hinv) ((hInt - z).toNat) 0
       fuel env _ (by simp) (by omega) hle hinv
     rwa [Nat.cast_zero, Int.add_zero] at this
@@ -551,7 +551,7 @@ end LoopOut
 
 section ForRevRel
 
-variable {h₁ : ∀ e : linkSig.Event, linkSig.Resp e} {tE : TreeCallEnv leafSig nfDialect}
+variable {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop} {tE : TreeCallEnv leafSig nfDialect}
 
 /-- The continuation of a trip of `denoteForLoopRevT` after the body. -/
 def revBodyK (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr) :
@@ -609,14 +609,14 @@ theorem revTrips_relT (i : String) (body : ImpExpr) (lo h : Int) {Γ₃ : Ctxt n
     (Inv : Env → Valuation (d := nfDialect) cs → Prop) (tf : Nat)
     (HS : ∀ (k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs), k < 2 ^ 64 →
       lo + (k : Int) < h → f ≤ tf → Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ v acc', r.1 = .val v ∧ v.isControlFlow = false ∧
           w = some acc' ∧ Inv r.2 acc') SrcFail
         (denoteT evTable f body (e.extend i (.int (h - 1 - k))))
         (treeAt linkReader tE tf bodyP
           (hvAppend acc (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 k) V₃)))) :
     ∀ (m k f : Nat) (e : Env) (acc : Valuation (d := nfDialect) cs),
       (h - k - lo).toNat = m → k + m < 2 ^ 64 → f ≤ tf → Inv e acc →
-      RuttS h₁ ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
+      RuttSA Sk ImpRE ImpRA (fun r w => ∃ accF, r.1 = .val .unit ∧ w = some accF ∧ Inv r.2 accF)
         SrcFail (denoteForLoopRevT evTable f i lo (h - k) body e)
         (ofoldl (fun a j => treeAt linkReader tE tf bodyP
           (hvAppend a (HVector.cons (t := NfTy.word 64) (BitVec.ofNat 64 j) V₃)))
@@ -678,8 +678,8 @@ theorem forFoldRev_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf 
     (h : impToNF sigOf tgt σ (.forFoldRev i lo hi body) = some o)
     (HB : ∀ {Δ : Ctxt nfDialect} (σ' : NfEnv Δ) {o' : Out Δ},
       impToNF sigOf none σ' body = some o' → ∀ fuel' tf', fuel' ≤ tf' →
-        RelT h₁ tE fuel' tf' body σ' o') :
-    RelT h₁ tE fuel tf (.forFoldRev i lo hi body) σ o := by
+        RelT Sk tE fuel' tf' body σ' o') :
+    RelT Sk tE fuel tf (.forFoldRev i lo hi body) σ o := by
   simp only [impToNF, Option.bind_eq_some_iff] at h
   obtain ⟨eLo, hLoE, oHi, hHi, hL⟩ := h
   split at hL
@@ -763,7 +763,7 @@ theorem forFoldRev_relT (sigOf : String → List NfTy → Option NfTy) (fuel tf 
   · have hcv : ∀ k : Nat, z + (k : Int) < hInt →
         ctrVal z k (some (BitVec.ofNat 64 (hInt - z).toNat - 1)) = hInt - 1 - k :=
       fun k hk => ctrVal_trip z hInt k (by omega) hk _ fun _ hm => (Option.some.inj hm).symm
-    have := revTrips_relT (h₁ := h₁) (tE := tE) i body z hInt _ bodyP Inv tf
+    have := revTrips_relT (Sk := Sk) (tE := tE) i body z hInt _ bodyP Inv tf
       (fun k f e acc hk hkh hf hinv => by
         have := HS k f e acc hk hkh hf hinv
         erw [hcv k hkh] at this
@@ -779,8 +779,8 @@ end ForRevRel
 /-- **The front relates the call trees.** For every expression `e` the front translates from
     `σ`, every source fuel `fuel` and every target fuel `tf ≥ fuel`, the source tree of `e` at
     the tree table `evTable` and the tree of the prefix of the output are related by `RelT`, at
-    every source handler that answers `repeat` as `RepeatCalls` states and every tree call
-    environment of the target.
+    every skip predicate that admits answers of `repeat` as `RepeatCallsA` states and every tree
+    call environment of the target.
 
     The target fuel bounds only the iterations of `NFProg.whileLoop`. One fuel serves every
     branch: a source loop at the fuel `fuel` runs at most `fuel` trips, each body at a fuel at
@@ -788,10 +788,10 @@ end ForRevRel
     No typing hypothesis on the calls is needed: the answer relation `ImpRA` states that a
     source answer is the encoding of a target answer. -/
 theorem impToNF_relT (sigOf : String → List NfTy → Option NfTy)
-    (h₁ : ∀ e : linkSig.Event, linkSig.Resp e) (hR : RepeatCalls fun f vals => h₁ ⟨f, vals⟩)
+    (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop) (hR : RepeatCallsA Sk)
     (tE : TreeCallEnv leafSig nfDialect) (e : ImpExpr) :
     ∀ (tgt : Option String) {Γ : Ctxt nfDialect} (σ : NfEnv Γ) {o : Out Γ},
-      impToNF sigOf tgt σ e = some o → ∀ fuel tf, fuel ≤ tf → RelT h₁ tE fuel tf e σ o := by
+      impToNF sigOf tgt σ e = some o → ∀ fuel tf, fuel ≤ tf → RelT Sk tE fuel tf e σ o := by
   induction e using ImpExpr.ind
   case lit l => intro tgt Γ σ o h fuel tf _; exact litOut_relT fuel tf tgt σ l h
   case var x => intro tgt Γ σ o h fuel tf _; exact atomOut_relT fuel tf σ _ h

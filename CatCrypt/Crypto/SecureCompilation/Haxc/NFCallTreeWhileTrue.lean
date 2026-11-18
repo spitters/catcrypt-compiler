@@ -14,7 +14,7 @@ public import HaxLean.Phase.WhileTrueFlag
 The rewriting `wtFn g` replaces each `whileFold (lit (bool true)) body` and each
 `whileFoldReturn (lit (bool true)) body` by the loop on a flag variable `g` bound to `true`. At the
 level of call trees, the reading `denoteT` of an expression of the fragment `wtOk g` from an
-environment is related by `RuttS` at equal events and answers to the reading of its rewriting
+environment is related by `RuttSA` at equal events and answers to the reading of its rewriting
 from an environment agreeing off `g`: the leaves have the same outcome and agreeing environments
 (`WtRel`), and no leaf of the first reading is a failed leaf. A right-hand side or an atom of the
 fragment reads as a tree whose events are those of one call with equal arguments, and whose leaves
@@ -43,7 +43,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run t
   denoteT_lit_run denoteT_var_run denoteT_var_run_none)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc ruttS_bind_same
   denoteT_seq_run denoteT_ifThenElse_run denoteT_letBind_run' denoteT_cfBreak_run)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA)
 
 variable {E : EventSig}
 
@@ -148,18 +148,18 @@ theorem val_runT (bt : TreeTable E) (fuel : Nat) {g : String} {v : ImpExpr}
 
 /-! ## The relation of the call trees -/
 
-variable (h₁ : ∀ e : E.Event, E.Resp e)
+variable (Sk : (e : E.Event) → E.Resp e → Prop)
 
 /-- The hypothesis of the rewriting of `e`, over every fuel and every pair of environments
-    agreeing off `g`: the call trees are related by `RuttS` at equal events and answers, with the
+    agreeing off `g`: the call trees are related by `RuttSA` at equal events and answers, with the
     leaves related by `WtRel` and no failed leaf. -/
 def WtIHT (bt : TreeTable E) (g : String) (e : ImpExpr) : Prop :=
   ∀ fuel env1 env2, AgreeOff g env1 env2 →
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => WtRel g env2 r₁ r₂) (fun _ => False)
       (denoteT bt fuel e env1) (denoteT bt fuel (wtFn g e) env2)
 
-variable {h₁}
+variable {Sk}
 
 /-- A relation of leaves at `env2.extend n w` gives one at `env2`, for a name other than `g`. -/
 theorem wtRel_of_extend {g n : String} {env2 : Env} {w : Value} {r1 r2 : Outcome × Env}
@@ -178,7 +178,7 @@ variable {bt : TreeTable E} {g : String}
 
 /-- A value of the fragment that the rewriting leaves unchanged. -/
 theorem val_relT {a : ImpExpr} (ha : valOk g a = true) (hw : wtFn g a = a) :
-    WtIHT h₁ bt g a := by
+    WtIHT Sk bt g a := by
   intro fuel env1 env2 hag
   rw [hw]
   obtain ⟨t, k, e1, e2⟩ := val_runT bt fuel ha hag
@@ -187,7 +187,7 @@ theorem val_relT {a : ImpExpr} (ha : valOk g a = true) (hw : wtFn g a = a) :
 
 /-- A binding of a value of the fragment. -/
 theorem letBind_relT {n : String} {v b : ImpExpr} (hn : n ≠ g) (hv : valOk g v = true)
-    (ihb : WtIHT h₁ bt g b) : WtIHT h₁ bt g (.letBind n v b) := by
+    (ihb : WtIHT Sk bt g b) : WtIHT Sk bt g (.letBind n v b) := by
   intro fuel env1 env2 hag
   obtain ⟨t, k, e1, e2⟩ := val_runT bt fuel hv hag
   simp only [wtFn]
@@ -200,17 +200,17 @@ theorem letBind_relT {n : String} {v b : ImpExpr} (hn : n ≠ g) (hv : valOk g v
     | controlFlow k u => exact .ret (WtRel.refl hag)
     | _ =>
       all_goals
-        exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_extend hn s)
+        exact RuttSA.mono (fun _ _ s => wtRel_of_extend hn s)
           (ihb fuel _ _ (hag.extend n _))
   all_goals exact .ret (WtRel.refl hag)
 
 /-- A sequence. -/
-theorem seq_relT {a b : ImpExpr} (iha : WtIHT h₁ bt g a) (ihb : WtIHT h₁ bt g b) :
-    WtIHT h₁ bt g (.seq a b) := by
+theorem seq_relT {a b : ImpExpr} (iha : WtIHT Sk bt g a) (ihb : WtIHT Sk bt g b) :
+    WtIHT Sk bt g (.seq a b) := by
   intro fuel env1 env2 hag
   simp only [wtFn]
   rw [denoteT_seq_run, denoteT_seq_run]
-  refine NFProgCallTree.RuttS.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
+  refine RuttSA.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
     (iha fuel env1 env2 hag) ?_ (fun _ hf => hf.elim)
   rintro ⟨o1, e1⟩ ⟨o2, e2⟩ ⟨r1, r2, r3⟩
   dsimp only at r1 r2 r3
@@ -220,12 +220,12 @@ theorem seq_relT {a b : ImpExpr} (iha : WtIHT h₁ bt g a) (ihb : WtIHT h₁ bt 
     | controlFlow k w => exact .ret ⟨rfl, r2, r3⟩
     | _ =>
       all_goals
-        exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep r3 s) (ihb fuel e1 e2 r2)
+        exact RuttSA.mono (fun _ _ s => wtRel_of_keep r3 s) (ihb fuel e1 e2 r2)
   all_goals exact .ret ⟨rfl, r2, r3⟩
 
 /-- A conditional on a variable. -/
-theorem ifThenElse_relT {x : String} {t e : ImpExpr} (hx : x ≠ g) (iht : WtIHT h₁ bt g t)
-    (ihe : WtIHT h₁ bt g e) : WtIHT h₁ bt g (.ifThenElse (.var x) t e) := by
+theorem ifThenElse_relT {x : String} {t e : ImpExpr} (hx : x ≠ g) (iht : WtIHT Sk bt g t)
+    (ihe : WtIHT Sk bt g e) : WtIHT Sk bt g (.ifThenElse (.var x) t e) := by
   intro fuel env1 env2 hag
   simp only [wtFn]
   rw [denoteT_ifThenElse_run, denoteT_ifThenElse_run]
@@ -243,7 +243,7 @@ theorem ifThenElse_relT {x : String} {t e : ImpExpr} (hx : x ≠ g) (iht : WtIHT
 
 /-- A function-level return of an atom. -/
 theorem cfBreak_relT {a : ImpExpr} (ha : atomOk g a = true) :
-    WtIHT h₁ bt g (.cfBreak a) := by
+    WtIHT Sk bt g (.cfBreak a) := by
   intro fuel env1 env2 hag
   obtain ⟨o, h1, h2⟩ := atom_runT bt fuel ha hag
   simp only [wtFn]
@@ -293,10 +293,10 @@ theorem forLoopT_succ_run (n : Nat) (i : String) (lo hi : Int) (body : ImpExpr) 
   all_goals rfl
 
 /-- **`forFold` over the rewritten body.** -/
-theorem forLoop_relT {i : String} {body : ImpExpr} (hig : i ≠ g) (ihb : WtIHT h₁ bt g body)
+theorem forLoop_relT {i : String} {body : ImpExpr} (hig : i ≠ g) (ihb : WtIHT Sk bt g body)
     (fuel : Nat) :
     ∀ (lo hi : Int) (env1 env2 : Env), AgreeOff g env1 env2 →
-      RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+      RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
         (fun r₁ r₂ => WtRel g env2 r₁ r₂) (fun _ => False)
         (denoteForLoopT bt fuel i lo hi body env1)
         (denoteForLoopT bt fuel i lo hi (wtFn g body) env2) := by
@@ -319,7 +319,7 @@ theorem forLoop_relT {i : String} {body : ImpExpr} (hig : i ≠ g) (ihb : WtIHT 
     have hk0 : env2 g = some (.bool true) →
         (env2.extend i (.int lo)) g = some (.bool true) :=
       fun hg => by rw [extend_ne _ (Ne.symm hig)]; exact hg
-    refine NFProgCallTree.RuttS.bind (RR' := WtRel g (env2.extend i (.int lo)))
+    refine RuttSA.bind (RR' := WtRel g (env2.extend i (.int lo)))
       (Fail' := fun _ => False) (ihb (n + 1) _ _ (hag.extend i _)) ?_ (fun _ hf => hf.elim)
     rintro ⟨o1, e1⟩ ⟨o2, e2⟩ ⟨r1, r2, r3⟩
     dsimp only at r1 r2 r3
@@ -330,18 +330,18 @@ theorem forLoop_relT {i : String} {body : ImpExpr} (hig : i ≠ g) (ihb : WtIHT 
         cases k with
         | true => exact .ret ⟨rfl, r2, fun hg => r3 (hk0 hg)⟩
         | false =>
-          exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep (fun hg => r3 (hk0 hg)) s)
+          exact RuttSA.mono (fun _ _ s => wtRel_of_keep (fun hg => r3 (hk0 hg)) s)
             (ih (lo + 1) hi e1 e2 r2)
       | _ =>
         all_goals
-          exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep (fun hg => r3 (hk0 hg)) s)
+          exact RuttSA.mono (fun _ _ s => wtRel_of_keep (fun hg => r3 (hk0 hg)) s)
             (ih (lo + 1) hi e1 e2 r2)
     all_goals exact .ret ⟨rfl, r2, fun hg => r3 (hk0 hg)⟩
 
 /-- A `forFold` with atomic bounds. -/
 theorem forFold_relT {i : String} {lo hi body : ImpExpr} (hig : i ≠ g)
-    (hlo : atomOk g lo = true) (hhi : atomOk g hi = true) (ihb : WtIHT h₁ bt g body) :
-    WtIHT h₁ bt g (.forFold i lo hi body) := by
+    (hlo : atomOk g lo = true) (hhi : atomOk g hi = true) (ihb : WtIHT Sk bt g body) :
+    WtIHT Sk bt g (.forFold i lo hi body) := by
   intro fuel env1 env2 hag
   obtain ⟨ol, hl1, hl2⟩ := atom_runT bt fuel hlo hag
   obtain ⟨oh, hh1, hh2⟩ := atom_runT bt fuel hhi hag
@@ -477,9 +477,9 @@ theorem whileLoop_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
     (hQ : ∀ e e' : Env, Q e → (e g = some (.bool true) → e' g = some (.bool true)) → Q e')
     (hc : ∀ (n : Nat) (env1 env2 : Env), AgreeOff g env1 env2 → Q env2 →
       ∃ o, denoteT bt n c1 env1 = .ret (o, env1) ∧ denoteT bt n c2 env2 = .ret (o, env2))
-    (ihb : WtIHT h₁ bt g body) (fuel : Nat) :
+    (ihb : WtIHT Sk bt g body) (fuel : Nat) :
     ∀ (env1 env2 : Env), AgreeOff g env1 env2 → Q env2 →
-      RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+      RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
         (fun r₁ r₂ => WtRel g env2 r₁ r₂) (fun _ => False)
         (denoteWhileT bt fuel c1 body env1) (denoteWhileT bt fuel c2 (wtFn g body) env2) := by
   induction fuel with
@@ -499,7 +499,7 @@ theorem whileLoop_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
         | false => exact .ret (WtRel.refl hag)
         | true =>
           dsimp only
-          refine NFProgCallTree.RuttS.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
+          refine RuttSA.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
             (ihb (n + 1) env1 env2 hag) ?_ (fun _ hf => hf.elim)
           rintro ⟨o1, e1⟩ ⟨o2, e2⟩ ⟨r1, r2, r3⟩
           dsimp only at r1 r2 r3
@@ -511,19 +511,19 @@ theorem whileLoop_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
               cases k with
               | true => exact .ret ⟨rfl, r2, r3⟩
               | false =>
-                exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep r3 s)
+                exact RuttSA.mono (fun _ _ s => wtRel_of_keep r3 s)
                   (ih e1 e2 r2 hq2)
             | _ =>
               all_goals
-                exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep r3 s)
+                exact RuttSA.mono (fun _ _ s => wtRel_of_keep r3 s)
                   (ih e1 e2 r2 hq2)
           all_goals exact .ret ⟨rfl, r2, r3⟩
       | _ => exact .ret (WtRel.refl hag)
     all_goals exact .ret (WtRel.refl hag)
 
 /-- **`while true` on the flag.** -/
-theorem whileTrue_relT {body : ImpExpr} (ihb : WtIHT h₁ bt g body) :
-    WtIHT h₁ bt g (.whileFold (.lit (.bool true)) body) := by
+theorem whileTrue_relT {body : ImpExpr} (ihb : WtIHT Sk bt g body) :
+    WtIHT Sk bt g (.whileFold (.lit (.bool true)) body) := by
   intro fuel env1 env2 hag
   simp only [wtFn, wtLoop]
   rw [denoteT_letBind_run', denoteT_lit_run]
@@ -531,15 +531,15 @@ theorem whileTrue_relT {body : ImpExpr} (ihb : WtIHT h₁ bt g body) :
   rw [denoteT_whileFold, denoteT_whileFold]
   have hag' : AgreeOff g env1 (env2.extend g (.bool true)) := hag.extend_right _
   have hq : (env2.extend g (.bool true)) g = some (.bool true) := Env.extend_same _ _ _
-  exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep (fun _ => hq) s)
-    (whileLoop_relT (h₁ := h₁) (bt := bt) (g := g) (c1 := .lit (.bool true)) (c2 := .var g)
+  exact RuttSA.mono (fun _ _ s => wtRel_of_keep (fun _ => hq) s)
+    (whileLoop_relT (Sk := Sk) (bt := bt) (g := g) (c1 := .lit (.bool true)) (c2 := .var g)
       (fun e => e g = some (.bool true)) (fun _ _ h k => k h)
       (fun n e1 e2 _ h => ⟨.val (.bool true), denoteT_lit_run bt n _ e1,
         denoteT_var_run bt n g e2 _ h⟩) ihb fuel env1 _ hag' hq)
 
 /-- A `whileFold` on a variable other than `g`. -/
-theorem whileVar_relT {x : String} {body : ImpExpr} (hx : x ≠ g) (ihb : WtIHT h₁ bt g body) :
-    WtIHT h₁ bt g (.whileFold (.var x) body) := by
+theorem whileVar_relT {x : String} {body : ImpExpr} (hx : x ≠ g) (ihb : WtIHT Sk bt g body) :
+    WtIHT Sk bt g (.whileFold (.var x) body) := by
   intro fuel env1 env2 hag
   simp only [wtFn, wtLoop]
   rw [denoteT_whileFold, denoteT_whileFold]
@@ -554,9 +554,9 @@ theorem whileLoopR_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
     (hQ : ∀ e e' : Env, Q e → (e g = some (.bool true) → e' g = some (.bool true)) → Q e')
     (hc : ∀ (n : Nat) (env1 env2 : Env), AgreeOff g env1 env2 → Q env2 →
       ∃ o, denoteT bt n c1 env1 = .ret (o, env1) ∧ denoteT bt n c2 env2 = .ret (o, env2))
-    (ihb : WtIHT h₁ bt g body) (fuel : Nat) :
+    (ihb : WtIHT Sk bt g body) (fuel : Nat) :
     ∀ (env1 env2 : Env), AgreeOff g env1 env2 → Q env2 →
-      RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+      RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
         (fun r₁ r₂ => WtRel g env2 r₁ r₂) (fun _ => False)
         (denoteWhileReturnT bt fuel c1 body env1)
         (denoteWhileReturnT bt fuel c2 (wtFn g body) env2) := by
@@ -577,7 +577,7 @@ theorem whileLoopR_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
         | false => exact .ret (WtRel.refl hag)
         | true =>
           dsimp only
-          refine NFProgCallTree.RuttS.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
+          refine RuttSA.bind (RR' := WtRel g env2) (Fail' := fun _ => False)
             (ihb (n + 1) env1 env2 hag) ?_ (fun _ hf => hf.elim)
           rintro ⟨o1, e1⟩ ⟨o2, e2⟩ ⟨r1, r2, r3⟩
           dsimp only at r1 r2 r3
@@ -595,19 +595,19 @@ theorem whileLoopR_relT {c1 c2 body : ImpExpr} (Q : Env → Prop)
                   | true => exact .ret ⟨rfl, r2, r3⟩
                 | _ => exact .ret ⟨rfl, r2, r3⟩
               | false =>
-                exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep r3 s)
+                exact RuttSA.mono (fun _ _ s => wtRel_of_keep r3 s)
                   (ih e1 e2 r2 hq2)
             | _ =>
               all_goals
-                exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep r3 s)
+                exact RuttSA.mono (fun _ _ s => wtRel_of_keep r3 s)
                   (ih e1 e2 r2 hq2)
           all_goals exact .ret ⟨rfl, r2, r3⟩
       | _ => exact .ret (WtRel.refl hag)
     all_goals exact .ret (WtRel.refl hag)
 
 /-- **`while true` with early return on the flag.** -/
-theorem whileTrueR_relT {body : ImpExpr} (ihb : WtIHT h₁ bt g body) :
-    WtIHT h₁ bt g (.whileFoldReturn (.lit (.bool true)) body) := by
+theorem whileTrueR_relT {body : ImpExpr} (ihb : WtIHT Sk bt g body) :
+    WtIHT Sk bt g (.whileFoldReturn (.lit (.bool true)) body) := by
   intro fuel env1 env2 hag
   simp only [wtFn, wtLoopR]
   rw [denoteT_letBind_run', denoteT_lit_run]
@@ -615,15 +615,15 @@ theorem whileTrueR_relT {body : ImpExpr} (ihb : WtIHT h₁ bt g body) :
   rw [denoteT_whileFoldReturn, denoteT_whileFoldReturn]
   have hag' : AgreeOff g env1 (env2.extend g (.bool true)) := hag.extend_right _
   have hq : (env2.extend g (.bool true)) g = some (.bool true) := Env.extend_same _ _ _
-  exact NFProgCallTreeExt.RuttS.mono (fun _ _ s => wtRel_of_keep (fun _ => hq) s)
-    (whileLoopR_relT (h₁ := h₁) (bt := bt) (g := g) (c1 := .lit (.bool true)) (c2 := .var g)
+  exact RuttSA.mono (fun _ _ s => wtRel_of_keep (fun _ => hq) s)
+    (whileLoopR_relT (Sk := Sk) (bt := bt) (g := g) (c1 := .lit (.bool true)) (c2 := .var g)
       (fun e => e g = some (.bool true)) (fun _ _ h k => k h)
       (fun n e1 e2 _ h => ⟨.val (.bool true), denoteT_lit_run bt n _ e1,
         denoteT_var_run bt n g e2 _ h⟩) ihb fuel env1 _ hag' hq)
 
 /-- A `whileFoldReturn` on a variable other than `g`. -/
-theorem whileVarR_relT {x : String} {body : ImpExpr} (hx : x ≠ g) (ihb : WtIHT h₁ bt g body) :
-    WtIHT h₁ bt g (.whileFoldReturn (.var x) body) := by
+theorem whileVarR_relT {x : String} {body : ImpExpr} (hx : x ≠ g) (ihb : WtIHT Sk bt g body) :
+    WtIHT Sk bt g (.whileFoldReturn (.var x) body) := by
   intro fuel env1 env2 hag
   simp only [wtFn, wtLoopR]
   rw [denoteT_whileFoldReturn, denoteT_whileFoldReturn]
@@ -642,7 +642,7 @@ section Fn
 variable {bt : TreeTable E} {g : String}
 
 /-- The hypothesis `WtIHT` of the rewriting of an expression of `wtOk g`. -/
-theorem wtFn_ihT (e : ImpExpr) (h : wtOk g e = true) : WtIHT h₁ bt g e := by
+theorem wtFn_ihT (e : ImpExpr) (h : wtOk g e = true) : WtIHT Sk bt g e := by
   induction e using ImpExpr.ind with
   | letBind n v b _ ihb =>
     simp only [wtOk, Bool.and_eq_true, bne_iff_ne, ne_eq] at h
@@ -699,21 +699,21 @@ end Fn
     environments agreeing off `g`, the call tree of the rewritten expression has the events of
     the call tree of the expression, and its leaves end in the outcome of the expression, in an
     environment agreeing off `g`, with `g` kept bound to `true`. -/
-theorem wtFn_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) {g : String} {e : ImpExpr}
-    (h : wtOk g e = true) (fuel : Nat) (env1 env2 : Env) (hag : AgreeOff g env1 env2) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+theorem wtFn_relT (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) {g : String}
+    {e : ImpExpr} (h : wtOk g e = true) (fuel : Nat) (env1 env2 : Env) (hag : AgreeOff g env1 env2) :
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => WtRel g env2 r₁ r₂) (fun _ => False)
       (denoteT bt fuel e env1) (denoteT bt fuel (wtFn g e) env2) :=
   wtFn_ihT e h fuel env1 env2 hag
 
 /-- **The call trees of an expression and of its rewriting from one environment.** The leaves end
     in the same outcome. -/
-theorem wtFn_relT_same (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) {g : String}
+theorem wtFn_relT_same (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) {g : String}
     {e : ImpExpr} (h : wtOk g e = true) (fuel : Nat) (env : Env) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.1 = r₁.1) (fun _ => False)
       (denoteT bt fuel e env) (denoteT bt fuel (wtFn g e) env) :=
-  NFProgCallTreeExt.RuttS.mono (fun _ _ s => s.out)
-    (wtFn_relT h₁ bt h fuel env env (fun _ _ => rfl))
+  RuttSA.mono (fun _ _ s => s.out)
+    (wtFn_relT Sk bt h fuel env env (fun _ _ => rfl))
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeWhileTrue

@@ -15,7 +15,7 @@ The front rewrites a binding `let y = collect(map(iter(src), |p| body)); k` on t
 spine to a counted loop, its source first bound to a variable when it is not one
 (`inlineMapClosures`). The reading `denoteT` does not evaluate closures: on such a binding it
 reads `src`, calls `iter` on its value, and errs on the closure. So from every environment the
-reading of `e` is related to the reading of `inlineMapClosures e` by `RuttS` at equal events and
+reading of `e` is related to the reading of `inlineMapClosures e` by `RuttSA` at equal events and
 answers and equal leaves, the error leaves of `e` failed: the two trees agree up to the first
 `map` site of the spine, where both read `src` alike and the source then answers the events of
 `iter` by the source handler and errs.
@@ -42,30 +42,31 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run tm_pure_run)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeAnfPick (bind_assoc bind_ret denoteT_seq_run
   denoteT_letBind_run' ruttS_bind_same)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA RetsA)
 
-variable {E : EventSig} (h₁ : ∀ e : E.Event, E.Resp e)
+variable {E : EventSig} (Sk : (e : E.Event) → E.Resp e → Prop)
 
 /-- The relation of the stage: equal events and answers, equal leaves, the error leaves of the
     source failed. -/
 abbrev MapRel (t₁ t₂ : CallTree E (Outcome × Env)) : Prop :=
-  RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂ = r₁)
+  RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂ = r₁)
     (fun r => IsErr r.1) t₁ t₂
 
-/-- **A failing source tree**: related to every target tree, its events answered by the source
-    handler up to a failed leaf. -/
-def SrcFails (t : CallTree E (Outcome × Env)) : Prop := ∀ t₂, MapRel h₁ t t₂
+/-- **A failing source tree**: related to every target tree, its events answered at the answers
+    of the skip predicate up to a failed leaf. -/
+def SrcFails (t : CallTree E (Outcome × Env)) : Prop := ∀ t₂, MapRel Sk t t₂
 
-variable {h₁}
+variable {Sk}
 
 /-- An error leaf fails. -/
-theorem srcFails_err (m : String) (s : Env) : SrcFails h₁ (.ret (.err m, s)) :=
+theorem srcFails_err (m : String) (s : Env) : SrcFails Sk (.ret (.err m, s)) :=
   fun _ => .fail ⟨m, rfl⟩
 
-/-- A sequence fails when its continuation at the interpretation of the prefix fails. -/
+/-- A sequence fails when its continuation at every leaf of the prefix along admitted answers
+    fails. -/
 theorem srcFails_bind {S : Type} (t : CallTree E S) {k : S → CallTree E (Outcome × Env)}
-    (h : SrcFails h₁ (k (interp h₁ t))) : SrcFails h₁ (t.bind k) :=
-  fun t₂ => NFProgCallTree.RuttS.skip_bind t (h t₂)
+    (h : ∀ s, RetsA Sk t s → SrcFails Sk (k s)) : SrcFails Sk (t.bind k) :=
+  fun t₂ => NFProgCallTreeRuttSA.RuttSA.skip_bind t fun s hs => h s hs t₂
 
 /-- **Every leaf of a tree satisfies `P`.** -/
 inductive LeavesP {R : Type} (P : R → Prop) : CallTree E R → Prop
@@ -90,10 +91,10 @@ theorem LeavesP.bind {S R : Type} {P : S → Prop} {Q : R → Prop} {t : CallTre
 
 /-- A tree whose leaves are all errors fails. -/
 theorem srcFails_of_leaves {t : CallTree E (Outcome × Env)} (h : LeavesP (fun r => IsErr r.1) t) :
-    SrcFails h₁ t := by
+    SrcFails Sk t := by
   induction h with
   | ret h => exact fun _ => .fail h
-  | vis _ ih => exact fun t₂ => .skip (ih _ t₂)
+  | vis _ ih => exact fun t₂ => .skip fun a _ => ih a t₂
 
 /-! ## The reading errs at a `map` site -/
 
@@ -168,7 +169,7 @@ theorem denoteT_letBind_errs (bt : TreeTable E) (fuel : Nat) (y : String) (v k :
 /-- **The call trees of `e` and of `inlineMapClosures e` are related**, from every environment,
     at equal events and answers and equal leaves, the error leaves of `e` failed. -/
 theorem inlineMapClosures_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) (env : Env) :
-    MapRel h₁ (denoteT bt fuel e env) (denoteT bt fuel (inlineMapClosures e) env) := by
+    MapRel Sk (denoteT bt fuel e env) (denoteT bt fuel (inlineMapClosures e) env) := by
   unfold inlineMapClosures
   induction e using ImpExpr.ind generalizing env with
   | letBind y v k _ ihk =>
@@ -197,6 +198,7 @@ theorem inlineMapClosures_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) (en
     all_goals exact .ret rfl
   | _ =>
     simp only [nameMapSources, inlineMaps]
-    exact NFProgCallTree.RuttS.refl (RR := fun r₁ r₂ : Outcome × Env => r₂ = r₁) (fun _ => rfl) _
+    exact NFProgCallTreeRuttSA.RuttSA.refl (RR := fun r₁ r₂ : Outcome × Env => r₂ = r₁)
+      (fun _ => rfl) _
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeMapClosure

@@ -7,14 +7,15 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeWhileTrue
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 
 /-!
 # Relational refinement of call-tree readings
 
-The refinement `RefR` of `InlineLocalClosures` at the level of call trees: `RelT h₁ Pre Post bad
+The refinement `RefR` of `InlineLocalClosures` at the level of call trees: `RelT Sk Pre Post bad
 tgt src` relates, from environments related by `Pre`, the call tree of `src` to the call tree of
-`tgt` by `RuttS` at equal events and answers, a leaf of `src` whose result is `bad` being a failed
-leaf and the other leaves being matched by leaves with the same result and final environments
+`tgt` by `RuttSA Sk` at equal events and answers, a leaf of `src` whose result is `bad` being a
+failed leaf and the other leaves being matched by leaves with the same result and final environments
 related by `Post`. The combinators follow those of `RefR`, and the loop readings at tree tables
 are related when their bodies are. An expression without calls (`noCalls` of
 `InlineLocalClosures`) reads as a leaf at every tree table and fuel.
@@ -44,21 +45,21 @@ open _root_.Hax
 open _root_.Hax.InlineLocalClosures (IsErr)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run tm_pure_run)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA)
 
-variable {E : EventSig} (h₁ : ∀ e : E.Event, E.Resp e)
+variable {E : EventSig} (Sk : (e : E.Event) → E.Resp e → Prop)
 
 /-- `tgt` refines `src` from environments related by `Pre`: from `e₁` and `e₂` with
     `Pre e₁ e₂`, the call tree of `src` from `e₂` is related to the call tree of `tgt` from `e₁`
-    by `RuttS` at equal events and answers, a leaf of `src` with a `bad` result being a failed
+    by `RuttSA Sk` at equal events and answers, a leaf of `src` with a `bad` result being a failed
     leaf, and every other leaf matched by a leaf with the same result whose final environment is
     related by `Post` to that of `src`. -/
 def RelT {α : Type} (Pre Post : Env → Env → Prop) (bad : α → Prop) (tgt src : TM E α) : Prop :=
   ∀ e₁ e₂, Pre e₁ e₂ →
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.1 = r₁.1 ∧ Post r₂.2 r₁.2) (fun r => bad r.1) (src e₂) (tgt e₁)
 
-variable {h₁}
+variable {Sk}
 
 section Comb
 
@@ -66,17 +67,17 @@ variable {P Q S : Env → Env → Prop}
 
 /-- Two equal returns. -/
 theorem RelT.pure_mono {α : Type} {bad : α → Prop} (a : α) (h : ∀ e₁ e₂, P e₁ e₂ → Q e₁ e₂) :
-    RelT h₁ P Q bad (Pure.pure a) (Pure.pure a) :=
+    RelT Sk P Q bad (Pure.pure a) (Pure.pure a) :=
   fun e₁ e₂ hp => .ret ⟨rfl, h e₁ e₂ hp⟩
 
 /-- Two equal returns, one relation before and after. -/
 theorem RelT.pure {α : Type} {bad : α → Prop} (a : α) :
-    RelT h₁ P P bad (Pure.pure a) (Pure.pure a) :=
+    RelT Sk P P bad (Pure.pure a) (Pure.pure a) :=
   RelT.pure_mono a fun _ _ h => h
 
 /-- A source that ends at once in a bad result. -/
 theorem RelT.of_bad {α : Type} {bad : α → Prop} {tgt src : TM E α}
-    (h : ∀ env, ∃ a s, src env = .ret (a, s) ∧ bad a) : RelT h₁ P Q bad tgt src := by
+    (h : ∀ env, ∃ a s, src env = .ret (a, s) ∧ bad a) : RelT Sk P Q bad tgt src := by
   intro e₁ e₂ _
   obtain ⟨a, s, hs, hb⟩ := h e₂
   rw [hs]
@@ -84,20 +85,20 @@ theorem RelT.of_bad {α : Type} {bad : α → Prop} {tgt src : TM E α}
 
 /-- Sequencing of related computations. -/
 theorem RelT.bind {α β : Type} {badα : α → Prop} {badβ : β → Prop} {m₁ m₂ : TM E α}
-    {k₁ k₂ : α → TM E β} (hm : RelT h₁ P Q badα m₁ m₂)
-    (hk : ∀ a, ¬ badα a → RelT h₁ Q S badβ (k₁ a) (k₂ a))
+    {k₁ k₂ : α → TM E β} (hm : RelT Sk P Q badα m₁ m₂)
+    (hk : ∀ a, ¬ badα a → RelT Sk Q S badβ (k₁ a) (k₂ a))
     (hb : ∀ a, badα a → ∀ s, ∃ b s', k₂ a s = .ret (b, s') ∧ badβ b) :
-    RelT h₁ P S badβ (m₁ >>= k₁) (m₂ >>= k₂) := by
+    RelT Sk P S badβ (m₁ >>= k₁) (m₂ >>= k₂) := by
   intro e₁ e₂ hP
   rw [tm_bind_run, tm_bind_run]
   have fl : ∀ a s, badα a → ∀ t : CallTree E (β × Env),
-      RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+      RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.1 = r₁.1 ∧ S r₂.2 r₁.2) (fun r => badβ r.1) (k₂ a s) t := by
     intro a s ha t
     obtain ⟨b, s', hs, hbb⟩ := hb a ha s
     rw [hs]
     exact .fail hbb
-  refine NFProgCallTree.RuttS.bind (RR' := fun r₁ r₂ => r₂.1 = r₁.1 ∧ Q r₂.2 r₁.2)
+  refine RuttSA.bind (RR' := fun r₁ r₂ => r₂.1 = r₁.1 ∧ Q r₂.2 r₁.2)
     (Fail' := fun r => badα r.1) (hm e₁ e₂ hP) (fun s₁ s₂ hs => ?_)
     (fun s₁ hf t => fl _ _ hf t)
   obtain ⟨a, x₂⟩ := s₁
@@ -111,43 +112,43 @@ theorem RelT.bind {α β : Type} {badα : α → Prop} {badβ : β → Prop} {m�
 
 /-- Reading the environment on both sides. -/
 theorem RelT.get {α : Type} {bad : α → Prop} {k₁ k₂ : Env → TM E α}
-    (h : ∀ e₁ e₂, P e₁ e₂ → RelT h₁ P Q bad (k₁ e₁) (k₂ e₂)) :
-    RelT h₁ P Q bad (MonadState.get >>= k₁) (MonadState.get >>= k₂) :=
+    (h : ∀ e₁ e₂, P e₁ e₂ → RelT Sk P Q bad (k₁ e₁) (k₂ e₂)) :
+    RelT Sk P Q bad (MonadState.get >>= k₁) (MonadState.get >>= k₂) :=
   fun e₁ e₂ hp => h e₁ e₂ hp e₁ e₂ hp
 
 /-- Setting related environments on both sides. -/
 theorem RelT.set {α : Type} {bad : α → Prop} {s₁ s₂ : Env} (hs : Q s₁ s₂)
-    {k₁ k₂ : PUnit → TM E α} (h : ∀ u, RelT h₁ Q S bad (k₁ u) (k₂ u)) :
-    RelT h₁ P S bad (MonadStateOf.set s₁ >>= k₁) (MonadStateOf.set s₂ >>= k₂) :=
+    {k₁ k₂ : PUnit → TM E α} (h : ∀ u, RelT Sk Q S bad (k₁ u) (k₂ u)) :
+    RelT Sk P S bad (MonadStateOf.set s₁ >>= k₁) (MonadStateOf.set s₂ >>= k₂) :=
   fun _ _ _ => h _ _ _ hs
 
 /-- Updating the environments on both sides, keeping a relation. -/
 theorem RelT.modify_mono {α : Type} {bad : α → Prop} {g₁ g₂ : Env → Env}
     (hg : ∀ e₁ e₂, P e₁ e₂ → Q (g₁ e₁) (g₂ e₂)) {k₁ k₂ : PUnit → TM E α}
-    (h : ∀ u, RelT h₁ Q S bad (k₁ u) (k₂ u)) :
-    RelT h₁ P S bad (_root_.modify g₁ >>= k₁) (_root_.modify g₂ >>= k₂) :=
+    (h : ∀ u, RelT Sk Q S bad (k₁ u) (k₂ u)) :
+    RelT Sk P S bad (_root_.modify g₁ >>= k₁) (_root_.modify g₂ >>= k₂) :=
   fun e₁ e₂ hp => h _ _ _ (hg e₁ e₂ hp)
 
 /-- Extending both environments at the same name by the same value. -/
 theorem RelT.modify_ext {α : Type} {bad : α → Prop} {n : String} {w : Value}
     (hn : ∀ e₁ e₂ w, P e₁ e₂ → P (e₁.extend n w) (e₂.extend n w))
-    {k₁ k₂ : PUnit → TM E α} (h : ∀ u, RelT h₁ P P bad (k₁ u) (k₂ u)) :
-    RelT h₁ P P bad (_root_.modify (fun x => x.extend n w) >>= k₁)
+    {k₁ k₂ : PUnit → TM E α} (h : ∀ u, RelT Sk P P bad (k₁ u) (k₂ u)) :
+    RelT Sk P P bad (_root_.modify (fun x => x.extend n w) >>= k₁)
       (_root_.modify (fun x => x.extend n w) >>= k₂) :=
   RelT.modify_mono (fun e₁ e₂ hp => hn e₁ e₂ w hp) h
 
 /-- Weakening of the relations. -/
 theorem RelT.mono {α : Type} {P' Q' : Env → Env → Prop} {bad : α → Prop} {tgt src : TM E α}
-    (h : RelT h₁ P Q bad tgt src) (hP : ∀ a b, P' a b → P a b) (hQ : ∀ a b, Q a b → Q' a b) :
-    RelT h₁ P' Q' bad tgt src := fun e₁ e₂ hp =>
-  NFProgCallTreeExt.RuttS.mono (fun _ _ h => ⟨h.1, hQ _ _ h.2⟩) (h e₁ e₂ (hP _ _ hp))
+    (h : RelT Sk P Q bad tgt src) (hP : ∀ a b, P' a b → P a b) (hQ : ∀ a b, Q a b → Q' a b) :
+    RelT Sk P' Q' bad tgt src := fun e₁ e₂ hp =>
+  RuttSA.mono (fun _ _ h => ⟨h.1, hQ _ _ h.2⟩) (h e₁ e₂ (hP _ _ hp))
 
 /-- A computation is related to itself from equal environments. -/
 theorem RelT.refl {α : Type} {bad : α → Prop} (m : TM E α) :
-    RelT h₁ (fun e₁ e₂ => e₁ = e₂) (fun e₁ e₂ => e₁ = e₂) bad m m := by
+    RelT Sk (fun e₁ e₂ => e₁ = e₂) (fun e₁ e₂ => e₁ = e₂) bad m m := by
   intro e₁ e₂ h
   subst h
-  exact NFProgCallTree.RuttS.refl (fun _ => ⟨rfl, rfl⟩) _
+  exact RuttSA.refl (fun _ => ⟨rfl, rfl⟩) _
 
 end Comb
 
@@ -180,8 +181,8 @@ variable {R : Env → Env → Prop} {bt₁ bt₂ : TreeTable E}
 /-- The `forFold` reading over related bodies. -/
 theorem forLoopT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopT bt₁ fuel v lo hi b₁)
       (denoteForLoopT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -197,8 +198,8 @@ theorem forLoopT_rel {v : String} {b₁ b₂ : ImpExpr}
 /-- The reversed counted loop over related bodies. -/
 theorem forLoopRevT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopRevT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopRevT bt₁ fuel v lo hi b₁)
       (denoteForLoopRevT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -214,8 +215,8 @@ theorem forLoopRevT_rel {v : String} {b₁ b₂ : ImpExpr}
 /-- The `forLoop` reading over related bodies. -/
 theorem forLoopOrigT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopOrigT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopOrigT bt₁ fuel v lo hi b₁)
       (denoteForLoopOrigT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -231,8 +232,8 @@ theorem forLoopOrigT_rel {v : String} {b₁ b₂ : ImpExpr}
 /-- The `forLoopRev` reading over related bodies. -/
 theorem forLoopRevOrigT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopRevOrigT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopRevOrigT bt₁ fuel v lo hi b₁)
       (denoteForLoopRevOrigT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -249,8 +250,8 @@ theorem forLoopRevOrigT_rel {v : String} {b₁ b₂ : ImpExpr}
 /-- The returning counted loop over related bodies. -/
 theorem forLoopReturnT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopReturnT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopReturnT bt₁ fuel v lo hi b₁)
       (denoteForLoopReturnT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -267,8 +268,8 @@ theorem forLoopReturnT_rel {v : String} {b₁ b₂ : ImpExpr}
 /-- The returning reversed counted loop over related bodies. -/
 theorem forLoopRevReturnT_rel {v : String} {b₁ b₂ : ImpExpr}
     (hv : ∀ e₁ e₂ w, R e₁ e₂ → R (e₁.extend v w) (e₂.extend v w))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel lo hi, RelT h₁ R R IsErr (denoteForLoopRevReturnT bt₁ fuel v lo hi b₁)
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel lo hi, RelT Sk R R IsErr (denoteForLoopRevReturnT bt₁ fuel v lo hi b₁)
       (denoteForLoopRevReturnT bt₂ fuel v lo hi b₂) := by
   intro fuel
   induction fuel with
@@ -284,9 +285,9 @@ theorem forLoopRevReturnT_rel {v : String} {b₁ b₂ : ImpExpr}
 
 /-- The `whileFold` reading over related conditions and bodies. -/
 theorem whileT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
-    (hc : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel, RelT h₁ R R IsErr (denoteWhileT bt₁ fuel c₁ b₁) (denoteWhileT bt₂ fuel c₂ b₂) := by
+    (hc : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel, RelT Sk R R IsErr (denoteWhileT bt₁ fuel c₁ b₁) (denoteWhileT bt₂ fuel c₂ b₂) := by
   intro fuel
   induction fuel with
   | zero => unfold denoteWhileT; simp only [ite_true]; relt_step
@@ -297,9 +298,9 @@ theorem whileT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
 
 /-- The `whileLoop` reading over related conditions and bodies. -/
 theorem whileOrigT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
-    (hc : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel, RelT h₁ R R IsErr (denoteWhileOrigT bt₁ fuel c₁ b₁)
+    (hc : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel, RelT Sk R R IsErr (denoteWhileOrigT bt₁ fuel c₁ b₁)
       (denoteWhileOrigT bt₂ fuel c₂ b₂) := by
   intro fuel
   induction fuel with
@@ -311,9 +312,9 @@ theorem whileOrigT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
 
 /-- The returning `while` reading over related conditions and bodies. -/
 theorem whileReturnT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
-    (hc : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
-    (h : ∀ fuel, RelT h₁ R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
-    ∀ fuel, RelT h₁ R R IsErr (denoteWhileReturnT bt₁ fuel c₁ b₁)
+    (hc : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel c₁) (denoteT bt₂ fuel c₂))
+    (h : ∀ fuel, RelT Sk R R IsErr (denoteT bt₁ fuel b₁) (denoteT bt₂ fuel b₂)) :
+    ∀ fuel, RelT Sk R R IsErr (denoteWhileReturnT bt₁ fuel c₁ b₁)
       (denoteWhileReturnT bt₂ fuel c₂ b₂) := by
   intro fuel
   induction fuel with
@@ -326,8 +327,8 @@ theorem whileReturnT_rel {c₁ c₂ b₁ b₂ : ImpExpr}
 
 /-- The argument readings over related arguments. -/
 theorem argsT_rel (g : ImpExpr → ImpExpr) (args : List ImpExpr) (fuel : Nat)
-    (ih : ∀ a, a ∈ args → RelT h₁ R R IsErr (denoteT bt₁ fuel (g a)) (denoteT bt₂ fuel a)) :
-    RelT h₁ R R (fun o => o = none) (denoteArgsT bt₁ fuel (args.map g))
+    (ih : ∀ a, a ∈ args → RelT Sk R R IsErr (denoteT bt₁ fuel (g a)) (denoteT bt₂ fuel a)) :
+    RelT Sk R R (fun o => o = none) (denoteArgsT bt₁ fuel (args.map g))
       (denoteArgsT bt₂ fuel args) := by
   induction args with
   | nil => simp only [List.map_nil, denoteArgsT]; exact RelT.pure _

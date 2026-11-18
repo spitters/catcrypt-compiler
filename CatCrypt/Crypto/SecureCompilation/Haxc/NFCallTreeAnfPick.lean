@@ -8,6 +8,7 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeFlat
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 public import CatCrypt.Crypto.Hax.HaxFrontPrep
 
 /-!
@@ -16,7 +17,7 @@ public import CatCrypt.Crypto.Hax.HaxFrontPrep
 The front chooses the body among the normal form `a`, its rewriting `ere a` with the
 function-level returns moved into branches, and `tailSome (ere a)` (`anfEPick`). At the level of
 call trees the reading `denoteT` of each candidate is related to the reading of `a` from the same
-environment by `RuttS` at equal events and answers: a leaf of `a` that is not a value is a failed
+environment by `RuttSA` at equal events and answers: a leaf of `a` that is not a value is a failed
 leaf, and a value leaf is matched by a leaf with the same outcome or, where `a` returned
 `controlFlow true v` at function level, the value `v` (`RetRel`). `ere` keeps the final
 environment as well (`ERelT`); `tailSome` keeps the outcome and drops the bindings of the returned
@@ -42,7 +43,7 @@ open CatCrypt.Crypto.Hax (tailSome isSomeRet isSomeRet_eq anfEPick)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeRepeatCount (tm_bind_run tm_pure_run
   denoteT_letBind_run)
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA ruttSA_eqTrans)
 
 variable {E : EventSig}
 
@@ -134,49 +135,49 @@ theorem denoteT_cfBreak_run (bt : TreeTable E) (fuel : Nat) (p : ImpExpr) (env :
 
 /-! ## The relation of the call trees of a body and its rewriting -/
 
-variable (h₁ : ∀ e : E.Event, E.Resp e)
+variable (Sk : (e : E.Event) → E.Resp e → Prop)
 
 /-- **The relation of the call trees of two bodies**: from every environment, the readings are
     related by `RuttS` at equal events and answers; a leaf of the first that is not a value is a
     failed leaf, and a leaf of the first is matched by a leaf with the same environment and an
     outcome related by `RetRel`. -/
 def ERelT (bt : TreeTable E) (fuel : Nat) (x y : ImpExpr) : Prop :=
-  ∀ env, RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+  ∀ env, RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
     (fun r₁ r₂ => r₂.2 = r₁.2 ∧ RetRel r₁.1 r₂.1) (fun r => ¬ ∃ v, r.1 = .val v)
     (denoteT bt fuel x env) (denoteT bt fuel y env)
 
-variable {h₁}
+variable {Sk}
 
 /-- Equal prefixes followed by related continuations are related. -/
 theorem ruttS_bind_same {S R₁ R₂ : Type} {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop}
     (t : CallTree E S) {k₁ : S → CallTree E R₁} {k₂ : S → CallTree E R₂}
-    (hk : ∀ s, RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail (k₁ s) (k₂ s)) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail (t.bind k₁) (t.bind k₂) :=
-  NFProgCallTree.RuttS.bind (RR' := fun s₁ s₂ => s₁ = s₂) (Fail' := fun _ => False)
-    (NFProgCallTree.RuttS.refl (fun _ => rfl) t) (fun s₁ _ hs => hs ▸ hk s₁)
+    (hk : ∀ s, RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail (k₁ s) (k₂ s)) :
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) RR Fail (t.bind k₁) (t.bind k₂) :=
+  RuttSA.bind (RR' := fun s₁ s₂ => s₁ = s₂) (Fail' := fun _ => False)
+    (RuttSA.refl (fun _ => rfl) t) (fun s₁ _ hs => hs ▸ hk s₁)
     (fun _ hf => hf.elim)
 
 /-- A leaf related to itself. -/
 theorem ruttS_ret_self (r : Outcome × Env) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.2 = r₁.2 ∧ RetRel r₁.1 r₂.1) (fun r => ¬ ∃ v, r.1 = .val v)
       (.ret r) (.ret r) :=
   .ret ⟨rfl, Or.inl rfl⟩
 
 /-- A body is related to itself. -/
-theorem ERelT.refl (bt : TreeTable E) (fuel : Nat) (x : ImpExpr) : ERelT h₁ bt fuel x x :=
-  fun _ => NFProgCallTree.RuttS.refl (fun _ => ⟨rfl, Or.inl rfl⟩) _
+theorem ERelT.refl (bt : TreeTable E) (fuel : Nat) (x : ImpExpr) : ERelT Sk bt fuel x x :=
+  fun _ => RuttSA.refl (fun _ => ⟨rfl, Or.inl rfl⟩) _
 
 /-- A body with the readings of `x` is related to `z` when `y` is. -/
 theorem ERelT.trans_eq {bt : TreeTable E} {fuel : Nat} {x y z : ImpExpr}
-    (h : ∀ env, denoteT bt fuel x env = denoteT bt fuel y env) (hyz : ERelT h₁ bt fuel y z) :
-    ERelT h₁ bt fuel x z :=
+    (h : ∀ env, denoteT bt fuel x env = denoteT bt fuel y env) (hyz : ERelT Sk bt fuel y z) :
+    ERelT Sk bt fuel x z :=
   fun env => (h env) ▸ hyz env
 
 /-- A failed leaf: an outcome that is not a value. -/
 theorem ruttS_fail_ret {t₂ : CallTree E (Outcome × Env)} (o : Outcome) (e1 : Env)
     (ho : ∀ v, o ≠ .val v) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.2 = r₁.2 ∧ RetRel r₁.1 r₂.1) (fun r => ¬ ∃ v, r.1 = .val v)
       (.ret (o, e1)) t₂ :=
   .fail fun ⟨v, hv⟩ => ho v hv
@@ -194,7 +195,7 @@ theorem denoteT_seq_assoc (bt : TreeTable E) (fuel : Nat) (a₁ a₂ b : ImpExpr
 
 /-- `seq a b` and `seq a k` are related when `b` and `k` are. -/
 theorem ERelT.seq_congr {bt : TreeTable E} {fuel : Nat} {a b k : ImpExpr}
-    (h : ERelT h₁ bt fuel b k) : ERelT h₁ bt fuel (.seq a b) (.seq a k) := by
+    (h : ERelT Sk bt fuel b k) : ERelT Sk bt fuel (.seq a b) (.seq a k) := by
   intro env
   rw [denoteT_seq_run, denoteT_seq_run]
   refine ruttS_bind_same _ fun p => ?_
@@ -205,7 +206,7 @@ theorem ERelT.seq_congr {bt : TreeTable E} {fuel : Nat} {a b k : ImpExpr}
 
 /-- `seq a b` and `ereSeq a k` are related when `b` and `k` are. -/
 theorem ereSeq_relT {bt : TreeTable E} {fuel : Nat} (a : ImpExpr) :
-    ∀ (b k : ImpExpr), ERelT h₁ bt fuel b k → ERelT h₁ bt fuel (.seq a b) (ereSeq a k) := by
+    ∀ (b k : ImpExpr), ERelT Sk bt fuel b k → ERelT Sk bt fuel (.seq a b) (ereSeq a k) := by
   induction a using ImpExpr.ind with
   | cfBreak p _ =>
     intro b k _ env
@@ -260,7 +261,7 @@ theorem ereSeq_relT {bt : TreeTable E} {fuel : Nat} (a : ImpExpr) :
   | _ => intro b k hbk; exact ERelT.seq_congr hbk
 
 /-- **The call trees of a function body and of its rewriting `ere` are related.** -/
-theorem ere_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) : ERelT h₁ bt fuel e (ere e) := by
+theorem ere_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) : ERelT Sk bt fuel e (ere e) := by
   induction e using ImpExpr.ind with
   | cfBreak p _ =>
     intro env
@@ -317,7 +318,7 @@ theorem denoteT_var_extend (bt : TreeTable E) (fuel : Nat) (n : String) (env : E
     environment; the final environment of `tailSome e` lacks the bindings of the returned
     names. -/
 theorem tailSome_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) (env : Env) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂.1 = r₁.1)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₂.1 = r₁.1)
       (fun _ => False) (denoteT bt fuel e env) (denoteT bt fuel (tailSome e) env) := by
   fun_induction tailSome e generalizing env with
   | case1 n v b h =>
@@ -365,7 +366,7 @@ theorem tailSome_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) (env : Env) 
     rw [denoteT, denoteT]
     exact ih env
   | case6 =>
-    exact NFProgCallTree.RuttS.refl (RR := fun r₁ r₂ : Outcome × Env => r₂.1 = r₁.1)
+    exact RuttSA.refl (RR := fun r₁ r₂ : Outcome × Env => r₂.1 = r₁.1)
       (fun _ => rfl) _
 
 /-! ## The choice -/
@@ -376,16 +377,16 @@ theorem tailSome_relT (bt : TreeTable E) (fuel : Nat) (e : ImpExpr) (env : Env) 
     by a leaf whose outcome is related by `RetRel`. -/
 theorem anfEPick_relT (bt : TreeTable E) (fuel : Nat) (ok : ImpExpr → Bool) (a : ImpExpr)
     (env : Env) :
-    RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => RetRel r₁.1 r₂.1) (fun r => ¬ ∃ v, r.1 = .val v)
       (denoteT bt fuel a env) (denoteT bt fuel (anfEPick ok a) env) := by
   unfold anfEPick
   split
-  · exact NFProgCallTree.RuttS.refl (RR := fun r₁ r₂ : Outcome × Env => RetRel r₁.1 r₂.1)
+  · exact RuttSA.refl (RR := fun r₁ r₂ : Outcome × Env => RetRel r₁.1 r₂.1)
       (fun _ => Or.inl rfl) _
   · split
-    · exact NFProgCallTreeExt.RuttS.mono (fun _ _ h => h.2) (ere_relT bt fuel a env)
-    · refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans
+    · exact RuttSA.mono (fun _ _ h => h.2) (ere_relT bt fuel a env)
+    · refine RuttSA.mono ?_ (ruttSA_eqTrans
         (fun _ _ _ hf => hf.elim) (ere_relT bt fuel a env) (tailSome_relT bt fuel (ere a) env))
       rintro r₀ r₂ ⟨r₁, ⟨-, h01⟩, h12⟩
       rw [h12]

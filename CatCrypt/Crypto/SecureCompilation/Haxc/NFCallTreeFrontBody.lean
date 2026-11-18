@@ -21,13 +21,13 @@ statements (`letsInto`), rewriting `map` over closure literals (`inlineMapClosur
 A-normalisation (`aNormalizeTotal`), reading the literal counts of `repeat`
 (`repeatCountInline`), choosing among the normal form and its rewritings (`anfEPick`) and
 rewriting `while true` loops onto a flag (`wtFn`). Every stage after the first relates the call
-trees of its input and output by `RuttS` at equal events and answers; their composition relates
+trees of its input and output by `RuttSA` at equal events and answers; their composition relates
 the call tree of `inlineSpine e` to the call tree of the body `haxFrontBodyP O e`, a value leaf
 matched by a leaf whose outcome is related by `RetRel`, the other leaves failed.
 
 ## Main results
 
-* `RuttS.mono_fail`: a relation by `RuttS` holds at every larger set of failed source leaves.
+* `RuttSA.mono_fail`: a relation by `RuttSA` holds at every larger set of failed source leaves.
 * `BodyRel.trans`: the relation of the composed stages is transitive.
 * `prepBody_relT`: the call tree of `inlineSpine e` and that of `haxFrontBodyP O e`.
 * `body_relT`: the call tree of `e`, its closures read as internal table entries, and that of
@@ -47,36 +47,37 @@ open _root_.Hax.EarlyReturnElim (RetRel)
 open CatCrypt.Crypto.Hax (haxFrontBodyP haxFrontOkP haxFrontRouteOkP haxFrontAnfEP haxFrontAnf
   haxFrontPrep haxFrontFlag FrontOracle)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
-open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA ruttSA_eqTrans)
 
 variable {E : EventSig}
 
-/-- **Monotonicity in the failed leaves**: trees related by `RuttS` with the failed source leaves
+/-- **Monotonicity in the failed leaves**: trees related by `RuttSA` with the failed source leaves
     `F` are related with every larger set of failed source leaves. -/
-theorem RuttS.mono_fail {E₁ E₂ : EventSig} {R₁ R₂ : Type} {h₁ : ∀ e : E₁.Event, E₁.Resp e}
-    {RE : E₁.Event → E₂.Event → Prop}
+theorem RuttSA.mono_fail {E₁ E₂ : EventSig} {R₁ R₂ : Type}
+    {Sk : (e : E₁.Event) → E₁.Resp e → Prop} {RE : E₁.Event → E₂.Event → Prop}
     {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
     {RR : R₁ → R₂ → Prop} {F F' : R₁ → Prop} (hF : ∀ r, F r → F' r) {t₁ : CallTree E₁ R₁}
-    {t₂ : CallTree E₂ R₂} (h : RuttS h₁ RE RA RR F t₁ t₂) : RuttS h₁ RE RA RR F' t₁ t₂ := by
+    {t₂ : CallTree E₂ R₂} (h : RuttSA Sk RE RA RR F t₁ t₂) : RuttSA Sk RE RA RR F' t₁ t₂ := by
   induction h with
   | ret h => exact .ret h
   | fail h => exact .fail (hF _ h)
   | vis he _ ih => exact .vis he ih
-  | skip _ ih => exact .skip ih
+  | skip _ ih => exact .skip fun a ha => ih a ha
 
 /-- The relation of the composed stages: equal events and answers, value leaves related by
     `RetRel` of the outcomes, the source leaves that are not values failed. -/
-abbrev BodyRel (h₁ : ∀ e : E.Event, E.Resp e) (t₁ t₂ : CallTree E (Outcome × Env)) : Prop :=
-  RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => RetRel r₁.1 r₂.1)
+abbrev BodyRel (Sk : (e : E.Event) → E.Resp e → Prop) (t₁ t₂ : CallTree E (Outcome × Env)) :
+    Prop :=
+  RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => RetRel r₁.1 r₂.1)
     (fun r => ¬ ∃ v, r.1 = .val v) t₁ t₂
 
 /-- A stage relating equal outcomes, its error leaves failed, extends a composed relation. -/
-theorem BodyRel.trans_eqOut {h₁ : ∀ e : E.Event, E.Resp e}
+theorem BodyRel.trans_eqOut {Sk : (e : E.Event) → E.Resp e → Prop}
     {t₀ t₁ t₂ : CallTree E (Outcome × Env)} {F : Outcome × Env → Prop}
-    (hF : ∀ r, F r → ¬ ∃ v, r.1 = .val v) (h01 : BodyRel h₁ t₀ t₁)
-    (h12 : RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
-      (fun r₁ r₂ => r₂.1 = r₁.1) F t₁ t₂) : BodyRel h₁ t₀ t₂ := by
-  refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans ?_ h01 h12)
+    (hF : ∀ r, F r → ¬ ∃ v, r.1 = .val v) (h01 : BodyRel Sk t₀ t₁)
+    (h12 : RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+      (fun r₁ r₂ => r₂.1 = r₁.1) F t₁ t₂) : BodyRel Sk t₀ t₂ := by
+  refine RuttSA.mono ?_ (ruttSA_eqTrans ?_ h01 h12)
   · rintro r₀ r₂ ⟨r₁, h1, h2⟩
     rw [h2]
     exact h1
@@ -87,12 +88,12 @@ theorem BodyRel.trans_eqOut {h₁ : ∀ e : E.Event, E.Resp e}
     · exact ⟨w, h'⟩
 
 /-- A stage relating outcomes by `RetRel` extends a relation of equal outcomes. -/
-theorem BodyRel.of_eqOut_retRel {h₁ : ∀ e : E.Event, E.Resp e}
+theorem BodyRel.of_eqOut_retRel {Sk : (e : E.Event) → E.Resp e → Prop}
     {t₀ t₁ t₂ : CallTree E (Outcome × Env)}
-    (h01 : RuttS h₁ (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
+    (h01 : RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂)
       (fun r₁ r₂ => r₂.1 = r₁.1) (fun r => ¬ ∃ v, r.1 = .val v) t₀ t₁)
-    (h12 : BodyRel h₁ t₁ t₂) : BodyRel h₁ t₀ t₂ := by
-  refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans ?_ h01 h12)
+    (h12 : BodyRel Sk t₁ t₂) : BodyRel Sk t₀ t₂ := by
+  refine RuttSA.mono ?_ (ruttSA_eqTrans ?_ h01 h12)
   · rintro r₀ r₂ ⟨r₁, h1, h2⟩
     rw [← h1]
     exact h2
@@ -101,9 +102,10 @@ theorem BodyRel.of_eqOut_retRel {h₁ : ∀ e : E.Event, E.Resp e}
 
 /-- **The relation of the composed stages is transitive**: `RetRel` composes, and a source leaf
     related to a failed middle leaf is not a value. -/
-theorem BodyRel.trans {h₁ : ∀ e : E.Event, E.Resp e} {t₀ t₁ t₂ : CallTree E (Outcome × Env)}
-    (h01 : BodyRel h₁ t₀ t₁) (h12 : BodyRel h₁ t₁ t₂) : BodyRel h₁ t₀ t₂ := by
-  refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans ?_ h01 h12)
+theorem BodyRel.trans {Sk : (e : E.Event) → E.Resp e → Prop}
+    {t₀ t₁ t₂ : CallTree E (Outcome × Env)}
+    (h01 : BodyRel Sk t₀ t₁) (h12 : BodyRel Sk t₁ t₂) : BodyRel Sk t₀ t₂ := by
+  refine RuttSA.mono ?_ (ruttSA_eqTrans ?_ h01 h12)
   · rintro r₀ r₂ ⟨r₁, h1, h2⟩
     rcases h1 with h1 | ⟨w, hw, h0, h1⟩
     · rcases h2 with h2 | ⟨u, hu, h1', h2⟩
@@ -123,30 +125,30 @@ theorem BodyRel.trans {h₁ : ∀ e : E.Event, E.Resp e} {t₀ t₁ t₂ : CallT
 /-- **The stages after the inlining of closures.** Under the side conditions `haxFrontOkP O e`
     of the front, from every environment the call tree of `inlineSpine e` and the call tree of
     the body `haxFrontBodyP O e` are related by `BodyRel`. -/
-theorem prepBody_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat)
+theorem prepBody_relT (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) (fuel : Nat)
     (O : FrontOracle) (e : ImpExpr) (hok : haxFrontOkP O e = true) (env : Env) :
-    BodyRel h₁ (denoteT bt fuel (inlineSpine e) env) (denoteT bt fuel (haxFrontBodyP O e) env) := by
+    BodyRel Sk (denoteT bt fuel (inlineSpine e) env) (denoteT bt fuel (haxFrontBodyP O e) env) := by
   unfold haxFrontOkP at hok
   simp only [Bool.and_eq_true] at hok
   obtain ⟨hanf, hroute⟩ := hok
   -- steps 1 to 3: bindings moved into statements and `map` sites rewritten
-  have hA := NFCallTreeMapClosure.inlineMapClosures_relT (h₁ := h₁) bt fuel
+  have hA := NFCallTreeMapClosure.inlineMapClosures_relT (Sk := Sk) bt fuel
     (_root_.Hax.LetIntoBranches.letsInto (inlineSpine e)) env
   rw [NFCallTreeLetsInto.denoteT_letsInto] at hA
-  have h3 : BodyRel h₁ (denoteT bt fuel (inlineSpine e) env)
+  have h3 : BodyRel Sk (denoteT bt fuel (inlineSpine e) env)
       (denoteT bt fuel (haxFrontPrep e) env) :=
-    RuttS.mono_fail (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv)
-      (NFProgCallTreeExt.RuttS.mono (fun _ _ h => .inl (congrArg Prod.fst h)) hA)
+    RuttSA.mono_fail (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv)
+      (RuttSA.mono (fun _ _ h => .inl (congrArg Prod.fst h)) hA)
   -- step 4: A-normalisation
-  have h4 : BodyRel h₁ (denoteT bt fuel (inlineSpine e) env)
+  have h4 : BodyRel Sk (denoteT bt fuel (inlineSpine e) env)
       (denoteT bt fuel (haxFrontAnf e) env) :=
     BodyRel.trans_eqOut (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv) h3
-      (NFCallTreeANorm.aNormalizeTotal_relT h₁ bt fuel _ hanf env)
+      (NFCallTreeANorm.aNormalizeTotal_relT Sk bt fuel _ hanf env)
   -- the literal counts of `repeat`, and the choice among the normal form and its rewritings
-  have h5 : BodyRel h₁ (denoteT bt fuel (inlineSpine e) env)
+  have h5 : BodyRel Sk (denoteT bt fuel (inlineSpine e) env)
       (denoteT bt fuel (haxFrontAnfEP O e) env) := by
     refine BodyRel.trans h4 ?_
-    have hP := NFCallTreeAnfPick.anfEPick_relT (h₁ := h₁) bt fuel (haxFrontRouteOkP O)
+    have hP := NFCallTreeAnfPick.anfEPick_relT (Sk := Sk) bt fuel (haxFrontRouteOkP O)
       (CatCrypt.Crypto.Hax.repeatCountInline (haxFrontAnf e)) env
     rw [NFCallTreeRepeatCount.denoteT_repeatCountInline] at hP
     exact hP
@@ -163,26 +165,26 @@ theorem prepBody_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fue
         (haxFrontAnfEP O e) := by simp [haxFrontBodyP, hF]
     rw [hB]
     exact BodyRel.trans_eqOut (fun _ hf => hf.elim) h5
-      (NFCallTreeWhileTrue.wtFn_relT_same h₁ bt hroute.1 fuel env)
+      (NFCallTreeWhileTrue.wtFn_relT_same Sk bt hroute.1 fuel env)
 
 /-- **The body of the front from the source reading.** Under the side condition
     `haxFrontOkP O e`, from every environment the call tree of `e`, its let-bound closures read
     as internal table entries, and the call tree of the body `haxFrontBodyP O e` are related by
     `BodyRel`. -/
-theorem body_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat)
+theorem body_relT (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) (fuel : Nat)
     (O : FrontOracle) (e : ImpExpr) (hok : haxFrontOkP O e = true) (env : Env) :
-    BodyRel h₁ (nfTree bt fuel e env) (denoteT bt fuel (haxFrontBodyP O e) env) :=
+    BodyRel Sk (nfTree bt fuel e env) (denoteT bt fuel (haxFrontBodyP O e) env) :=
   BodyRel.of_eqOut_retRel
-    (RuttS.mono_fail (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv)
-      (NFProgCallTreeExt.RuttS.mono (fun _ _ h => h.1)
-        (NFCallTreeInlineSpine.inlineSpine_relT h₁ bt e fuel env)))
-    (prepBody_relT h₁ bt fuel O e hok env)
+    (RuttSA.mono_fail (fun _ ⟨m, hm⟩ ⟨_, hv⟩ => by rw [hm] at hv; cases hv)
+      (RuttSA.mono (fun _ _ h => h.1)
+        (NFCallTreeInlineSpine.inlineSpine_relT Sk bt e fuel env)))
+    (prepBody_relT Sk bt fuel O e hok env)
 
 /-- **The body `nfBody te` of the front from the source reading of the extraction `te`**,
     under the shape condition `haxFrontShapeOk te` of the extraction. -/
-theorem nfBody_relT (h₁ : ∀ e : E.Event, E.Resp e) (bt : TreeTable E) (fuel : Nat) (te : TExpr)
-    (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk te = true) (env : Env) :
-    BodyRel h₁ (nfTree bt fuel te.erase env) (denoteT bt fuel (nfBody te) env) :=
-  body_relT h₁ bt fuel _ te.erase (CatCrypt.Crypto.Hax.haxFrontOkP_of_shapeOk hok) env
+theorem nfBody_relT (Sk : (e : E.Event) → E.Resp e → Prop) (bt : TreeTable E) (fuel : Nat)
+    (te : TExpr) (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk te = true) (env : Env) :
+    BodyRel Sk (nfTree bt fuel te.erase env) (denoteT bt fuel (nfBody te) env) :=
+  body_relT Sk bt fuel _ te.erase (CatCrypt.Crypto.Hax.haxFrontOkP_of_shapeOk hok) env
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeFrontBody

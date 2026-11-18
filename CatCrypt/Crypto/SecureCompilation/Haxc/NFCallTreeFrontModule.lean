@@ -9,6 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeModule
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeFrontProg
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeInline
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeConsts
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSAComp
 
 /-!
 # The front of a module at the level of call trees
@@ -21,18 +22,24 @@ calls of the functions of the module: a round of inlining substitutes the tree o
 inlined call (`treeAt_inline_crate`), and the answering of the other calls is a substitution
 (`answerOut_eq_substT`).
 
-Substitution keeps a relation of trees (`RuttS.substK`) when the substituted trees of related
+Substitution keeps a relation of trees (`RuttSA.substK`) when the substituted trees of related
 events are related, with a failed source answer allowed wherever the target tree stops at the
 failed target answer (`KillsT`): the source call of a function of the module that fails is related
 to every target tree, since the target program stops at the failed answer of the call.
 
+The relations hold at a skip predicate `Sk` on the answers of the linked calls (`RuttSA`); the
+source events skipped inside a substituted tree are skipped at the leaves that the tree of the
+event returns along answers admitted by `Sk` (`RetsA`). At the answers of the handler
+`linkHandler m` they are relations by `RuttS` (`ruttSA_iff_ruttS`).
+
 ## Main results
 
-* `RuttS.substK`: substitution keeps `RuttS`, with failed answers.
 * `answerOut_eq_substT`, `treeAt_inlineIter_crate`: the target tree as a substitution.
-* `moduleEv_relT`: the relation of the substituted trees of a call, by induction on the depth.
-* `front_relT`: the relation `FrontRET` of the front between the source call tree of the entry of
-  a module and the call tree of the program of `haxToNF`.
+* `moduleEv_relTA`, `moduleEv_relT`: the relation of the substituted trees of a call, by
+  induction on the depth, at a skip predicate and at the handler `linkHandler m`.
+* `front_relTA`, `front_relT`: the relation `FrontRET` of the front between the source call tree
+  of the entry of a module and the call tree of the program of `haxToNF`, at a skip predicate and
+  at the handler `linkHandler m`.
 -/
 
 @[expose] public section
@@ -47,6 +54,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree (TreeCallEnv treeAt obind ofoldl
   owhileIter ExprReader)
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSAComp
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubst (substT substT_ret substT_vis)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeSubstTable (substT_bind)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeEvent (AllEvT)
@@ -111,68 +120,6 @@ def KillsT {R₁ R₂ : Type} (kill : ∀ e : E₂.Event, E₂.Resp e) (G : E₂
   | .ret _ => True
   | .vis e k => G e ∧ (∃ o, k (kill e) = .ret o ∧ ∀ r, RR r o → Fail r)
       ∧ ∀ a, KillsT kill G RR Fail (k a)
-
-/-- A source tree related to a target leaf at which every related source leaf failed is related
-    to every target tree. -/
-theorem RuttS.of_ret_fail {E₁' E₂' : EventSig} {R₁ R₂ : Type} {h₁ : ∀ e : E₁'.Event, E₁'.Resp e}
-    {RE : E₁'.Event → E₂'.Event → Prop}
-    {RA : (e₁ : E₁'.Event) → (e₂ : E₂'.Event) → E₁'.Resp e₁ → E₂'.Resp e₂ → Prop}
-    {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop} {o : R₂} (ho : ∀ r, RR r o → Fail r)
-    {s : CallTree E₁' R₁} (h : RuttS h₁ RE RA RR Fail s (.ret o)) :
-    ∀ t, RuttS h₁ RE RA RR Fail s t := by
-  generalize ht : (CallTree.ret o : CallTree E₂' R₂) = t₂ at h
-  induction h with
-  | ret hr =>
-    cases ht
-    exact fun _ => .fail (ho _ hr)
-  | fail hf => exact fun _ => .fail hf
-  | vis => cases ht
-  | skip _ ih => exact fun t => .skip (ih ht t)
-
-/-- **Substitution keeps `RuttS`, with failed answers.** Let `t₁` and `t₂` be related by `RuttS`
-    at the source handler `h₁`, every event of `t₂` satisfy `G`, and `t₂` stop at the answers
-    `kill` (`KillsT`). Substitute `σ₁` in `t₁` and `σ₂` in `t₂`. When the substituted trees of
-    related events, the target event satisfying `G`, are related at the new relations, a source
-    leaf related by the answer relation to the target leaf or to the answer `kill`, and a source
-    leaf failed when the answer relation relates it to `kill`, and when the interpretation of the
-    substituted tree of every source event under the new source handler `h₁'` is the answer of
-    `h₁`, the substituted trees are related. -/
-theorem RuttS.substK {E₁' E₂' : EventSig} {R₁ R₂ : Type}
-    {h₁ : ∀ e : E₁.Event, E₁.Resp e} {h₁' : ∀ e : E₁'.Event, E₁'.Resp e}
-    {RE : E₁.Event → E₂.Event → Prop}
-    {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
-    {RE' : E₁'.Event → E₂'.Event → Prop}
-    {RA' : (e₁ : E₁'.Event) → (e₂ : E₂'.Event) → E₁'.Resp e₁ → E₂'.Resp e₂ → Prop}
-    {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop}
-    {σ₁ : ∀ e : E₁.Event, CallTree E₁' (E₁.Resp e)} {σ₂ : ∀ e : E₂.Event, CallTree E₂' (E₂.Resp e)}
-    (kill : ∀ e : E₂.Event, E₂.Resp e) {G : E₂.Event → Prop}
-    (hσ : ∀ e₁ e₂, RE e₁ e₂ → G e₂ →
-      RuttS h₁' RE' RA' (fun a₁ a₂ => RA e₁ e₂ a₁ a₂ ∨ RA e₁ e₂ a₁ (kill e₂))
-        (fun a₁ => RA e₁ e₂ a₁ (kill e₂)) (σ₁ e₁) (σ₂ e₂))
-    (hh : ∀ e₁, interp h₁' (σ₁ e₁) = h₁ e₁)
-    {t₁ : CallTree E₁ R₁} {t₂ : CallTree E₂ R₂} (h : RuttS h₁ RE RA RR Fail t₁ t₂) :
-    KillsT kill G RR Fail t₂ → RuttS h₁' RE' RA' RR Fail (substT σ₁ t₁) (substT σ₂ t₂) := by
-  induction h with
-  | ret h => exact fun _ => .ret h
-  | fail h => exact fun _ => .fail h
-  | @vis e₁ e₂ k₁ k₂ he _ ih =>
-    rintro ⟨hG, ⟨o, hko, ho⟩, hK⟩
-    rw [substT_vis, substT_vis]
-    refine NFProgCallTree.RuttS.bind (hσ _ _ he hG) (fun a₁ a₂ ha => ?_) (fun a₁ ha t => ?_)
-    · rcases ha with ha | ha
-      · exact ih a₁ a₂ ha (hK a₂)
-      · have H := ih a₁ (kill e₂) ha (hK _)
-        rw [hko, substT_ret] at H
-        exact RuttS.of_ret_fail ho H _
-    · have H := ih a₁ (kill e₂) ha (hK _)
-      rw [hko, substT_ret] at H
-      exact RuttS.of_ret_fail ho H _
-  | @skip e₁ k₁ t₂ _ ih =>
-    intro hK
-    rw [substT_vis]
-    refine NFProgCallTree.RuttS.skip_bind (σ₁ e₁) ?_
-    rw [hh]
-    exact ih hK
 
 end Kill
 
@@ -419,19 +366,19 @@ open Ctxt (Valuation)
     `crateBody` return the body `b` of the preparation of the function `f` by `nfBody` at the
     argument types `as` and the result type `r`, the extraction of `f` pass `haxFrontShapeOk`
     and have call-free arguments at the calls of its inlined closures (`spineArgsOk`), and the
-    source handler answer `repeat` as the table of `repeat` calls. From the environment binding
-    the names of the parameters to the encodings of the arguments `a`, at a target fuel at least
-    the source fuel, the call tree of the extraction at `evTable` and the tree of `b` at `a` are
-    related by `RuttS` at `ImpRE`, `ImpRA` and `ProgOut r`, the source leaves that are not values
-    failed. -/
+    skip predicate `Sk` admit at `repeat` only the answers of the table of `repeat` calls. From
+    the environment binding the names of the parameters to the encodings of the arguments `a`, at
+    a target fuel at least the source fuel, the call tree of the extraction at `evTable` and the
+    tree of `b` at `a` are related by `RuttSA Sk` at `ImpRE`, `ImpRA` and `ProgOut r`, the source
+    leaves that are not values failed. -/
 theorem callee_relT (fs : List CrateFn) (base : String → List NfTy → Option NfTy) (f : ModFn)
     (hok : CatCrypt.Crypto.Hax.haxFrontShapeOk f.texpr = true)
     (_hs : NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
-    (h₁ : ∀ e : linkSig.Event, linkSig.Resp e) (hR : RepeatCalls fun g vals => h₁ ⟨g, vals⟩)
+    (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop) (hR : NFCallTreeImpToNF.RepeatCallsA Sk)
     (tE : TreeCallEnv leafSig nfDialect) {as : Ctxt nfDialect} {r : NfTy}
     {b : NFProg nfDialect as [r]} (hb : crateBody fs (f.prep nfBody) as r base = some b)
     (fuel tf : Nat) (hft : fuel ≤ tf) (a : Valuation as) :
-    RuttS h₁ ImpRE ImpRA (ProgOut r) (fun x => ¬ ∃ v, x.1 = .val v)
+    RuttSA Sk ImpRE ImpRA (ProgOut r) (fun x => ¬ ∃ v, x.1 = .val v)
       (nfTree evTable fuel f.texpr.erase (paramsEnv (f.params.map (·.1)) (encAll as a)))
       (treeAt linkReader tE tf b a) := by
   unfold crateBody at hb
@@ -443,11 +390,11 @@ theorem callee_relT (fs : List CrateFn) (base : String → List NfTy → Option 
       cases hb
       subst h1 h2
       simp only [cast_eq]
-      have hB := NFCallTreeFrontBody.nfBody_relT h₁ evTable fuel f.texpr hok
+      have hB := NFCallTreeFrontBody.nfBody_relT Sk evTable fuel f.texpr hok
         (paramsEnv (f.params.map (·.1)) (encAll (entryCtx f.params) a))
-      have hI := NFCallTreeImpToNF.impToNF_relT _ h₁ hR tE (nfBody f.texpr) none _ ho fuel tf hft
+      have hI := NFCallTreeImpToNF.impToNF_relT _ Sk hR tE (nfBody f.texpr) none _ ho fuel tf hft
         _ a (CatCrypt.Crypto.Hax.NFInline.entryEnv_rel_paramsEnv f.params a)
-      have hI' : RuttS h₁ ImpRE ImpRA (ProgOut o.t) NFCallTreeImpToNF.SrcFail
+      have hI' : RuttSA Sk ImpRE ImpRA (ProgOut o.t) NFCallTreeImpToNF.SrcFail
           (denoteT evTable fuel (nfBody f.texpr)
             (paramsEnv (f.params.map (·.1)) (encAll (entryCtx f.params) a)))
           (treeAt linkReader tE tf o.prog a) := by
@@ -463,7 +410,7 @@ theorem callee_relT (fs : List CrateFn) (base : String → List NfTy → Option 
           exact ⟨_, rfl, henc⟩
         · rintro r w ⟨v, W, -, hW, -⟩
           exact ⟨W, hW⟩
-      refine NFProgCallTreeExt.RuttS.mono ?_ (NFProgCallTreeFlat.ruttS_eqTrans ?_ hB hI')
+      refine RuttSA.mono ?_ (ruttSA_eqTrans ?_ hB hI')
       · rintro r₀ o' ⟨r₁, h01, h12⟩ v hv hcf
         rcases h01 with h | ⟨w, -, h, -⟩
         · exact h12 v (h.trans hv) hcf
@@ -620,15 +567,42 @@ theorem decRes_of_progOut {t t' : NfTy} {x : Outcome × Env} {w : HVector NfTy.d
 theorem srcFail_of_not_val {x : Outcome × Env} (h : ¬ ∃ v, x.1 = .val v) : srcFail x :=
   fun v hv => (h ⟨v, hv⟩).elim
 
+/-- On a module with no function named `repeat`, a skip predicate admitting at `repeat` only the
+    answers of the table of `repeat` calls among the leaves of the linked tree table admits only
+    those among the leaves of the tree of a call of `refBiT` at every depth. -/
+theorem repeatCallsA_retsA_refBiT {m : HaxModule} {bi : Builtins}
+    {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop}
+    (hfR : m.fns.find? (·.name == "repeat") = none)
+    (hRA : NFCallTreeImpToNF.RepeatCallsA fun e a =>
+      RetsA Sk (linkTreeTable m bi e.name e.args) a) (fuelC k : Nat) :
+    NFCallTreeImpToNF.RepeatCallsA fun e a =>
+      RetsA Sk (refBiT m.fns (linkTreeTable m bi) fuelC k e.name e.args) a := by
+  intro x N v hN hv
+  rw [refBiT_none _ _ _ _ hfR] at hv
+  exact hRA x N v hN hv
+
+/-- At the answers of `linkHandler m`, the leaves of the linked tree table at `repeat` are the
+    answers of the table of `repeat` calls when the table of the linked functions satisfies
+    `RepeatCalls`. -/
+theorem repeatCallsA_retsA_linkTreeTable {m : HaxModule} {bi : Builtins}
+    (hR : RepeatCalls (m.linkTable bi)) :
+    NFCallTreeImpToNF.RepeatCallsA fun e a =>
+      RetsA (fun e a => a = linkHandler m e) (linkTreeTable m bi e.name e.args) a := by
+  intro x N v hN hv
+  refine hR x N v hN ?_
+  rw [← interpTable_linkTreeTable]
+  exact (retsA_eq_iff.mp hv).symm
+
 /-- **A call of no function of a module.** At a leaf call related by `ImpRE` to a source call of
     a name of no function of `m`, typed by `GoodCall`, the source tree of the linked tree table
     and the answered target event are related: a call of a linked function is an event of both,
     related by `FrontRET`; another call is answered on both sides, by `bi` and by the leaf table,
-    at the typing `hax64SigOf` of `bi`. -/
+    at the typing `hax64SigOf` of `bi`. The relation holds at every skip predicate `Sk`. -/
 theorem linkEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
+    {Sk : (e : linkSig.Event) → linkSig.Resp e → Prop}
     {e₀ : linkSig.Event} {e₁ : leafSig.Event} (hE : ImpRE e₀ e₁)
     (hf : m.fns.find? (·.name == e₁.name) = none) (hG : GoodCall m e₁.name e₁.argTys e₁.ret) :
-    RuttS (linkHandler m) (FrontRET m) FrontRA
+    RuttSA Sk (FrontRET m) FrontRA
       (fun a₀ a₁ => ImpRA e₀ e₁ a₀ a₁ ∨ ImpRA e₀ e₁ a₀ none) (fun a₀ => ImpRA e₀ e₁ a₀ none)
       (linkTreeTable m bi (LinkCall.name e₀) (LinkCall.args e₀)) (answerSub m bi e₁) := by
   obtain ⟨g, vals⟩ := e₀
@@ -679,9 +653,15 @@ theorem linkEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64Sig
     by `ImpRA` to the target answer or to the failed answer, a source answer related to the
     failed answer failed. A call of a function at depth `0` is the failed source answer; at a
     positive depth the run of the extraction is related to the inlined body by `callee_relT` and
-    the relation at the smaller depth (`RuttS.substK`). -/
-theorem moduleEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
-    (hR : RepeatCalls (m.linkTable bi)) (hfR : m.fns.find? (·.name == "repeat") = none)
+    the relation at the smaller depth (`RuttSA.substK`). The relations are at the skip predicate
+    `Sk`, which admits at `repeat` only the leaves of the linked tree table that are the answers
+    of the table of `repeat` calls; inside the tree of a call at the depth `k` the skip predicate
+    admits the leaves that the tree at the depth `k` of the event returns along `Sk`. -/
+theorem moduleEv_relTA (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
+    (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop)
+    (hRA : NFCallTreeImpToNF.RepeatCallsA fun e a =>
+      RetsA Sk (linkTreeTable m bi e.name e.args) a)
+    (hfR : m.fns.find? (·.name == "repeat") = none)
     (hfs : ∀ f ∈ m.fns, CatCrypt.Crypto.Hax.haxFrontShapeOk f.texpr = true
       ∧ NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
     (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
@@ -690,7 +670,7 @@ theorem moduleEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64S
     (fuelC tf : Nat) (hft : fuelC ≤ tf) :
     ∀ (k : Nat) (e₀ : linkSig.Event) (e₁ : leafSig.Event), ImpRE e₀ e₁ →
       GoodCall m e₁.name e₁.argTys e₁.ret →
-      RuttS (linkHandler m) (FrontRET m) FrontRA
+      RuttSA Sk (FrontRET m) FrontRA
         (fun a₀ a₁ => ImpRA e₀ e₁ a₀ a₁ ∨ ImpRA e₀ e₁ a₀ none) (fun a₀ => ImpRA e₀ e₁ a₀ none)
         (refBiT m.fns (linkTreeTable m bi) fuelC k (LinkCall.name e₀) (LinkCall.args e₀))
         (substT (answerSub m bi) (inlSubN (m.prepared nfBody) m.linkSig tE tf k e₁)) := by
@@ -728,29 +708,27 @@ theorem moduleEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64S
       have hinl : inlSub (m.prepared nfBody) m.linkSig tE tf e₁ =
           obind (treeAt linkReader tE tf b e₁.args) fun r => .ret (some r.head) := by
         simp only [inlSub, hb]
-      have hRk : RepeatCalls fun g vals =>
-          interp (linkHandler m) (refBiT m.fns (linkTreeTable m bi) fuelC k g vals) := by
-        change RepeatCalls (interpTable (linkHandler m) (refBiT m.fns (linkTreeTable m bi) fuelC k))
-        rw [interpTable_refBiT, interpTable_linkTreeTable]
-        exact refBi_repeatCalls m.fns hR hfR fuelC k
       have hC := callee_relT (m.prepared nfBody) m.linkSig f (hfs f hfm).1 (hfs f hfm).2
-        (fun e => interp (linkHandler m) (refBiT m.fns (linkTreeTable m bi) fuelC k e.name e.args))
-        hRk tE hb' fuelC tf hft e₁.args
-      have hS := RuttS.substK (fun _ => none)
+        (fun e a => RetsA Sk (refBiT m.fns (linkTreeTable m bi) fuelC k e.name e.args) a)
+        (repeatCallsA_retsA_refBiT hfR hRA fuelC k) tE hb' fuelC tf hft e₁.args
+      have hS := RuttSA.substK (fun _ => none)
+        (Sk := fun (e : LinkCall) a =>
+          RetsA Sk (refBiT m.fns (linkTreeTable m bi) fuelC k e.name e.args) a)
         (G := fun e : LeafCall => GoodCall m e.name e.argTys e.ret)
+        (K := KillsT (fun _ => none) _ _ _) (fun _ _ h => h)
         (σ₁ := fun e : LinkCall => refBiT m.fns (linkTreeTable m bi) fuelC k e.name e.args)
         (σ₂ := fun e => substT (answerSub m bi) (inlSubN (m.prepared nfBody) m.linkSig tE tf k e))
-        (fun e₀' e₁' hE' hG' => ih e₀' e₁' hE' hG') (fun _ => rfl)
-        (NFCallTreeFrontBody.RuttS.mono_fail (fun x hx => srcFail_of_not_val hx) hC)
+        (fun e₀' e₁' hE' hG' => ih e₀' e₁' hE' hG') (fun _ _ h => h)
+        (NFCallTreeFrontBody.RuttSA.mono_fail (fun x hx => srcFail_of_not_val hx) hC)
         (killsT_of_goodT (fun x hx => srcFail_of_progOut_none hx)
           (goodT_treeAt (fun f as rs a => by rw [htE]; trivial) tf b (hgood _ _ _ b hb) e₁.args))
       rw [refBiT_succ_some _ _ _ _ hg, hE.2,
         nfTree_eq_substT (refBiT m.fns (linkTreeTable m bi) fuelC k)]
-      change RuttS _ _ _ _ _ _ (substT (answerSub m bi)
+      change RuttSA _ _ _ _ _ _ (substT (answerSub m bi)
         (substT (inlSubN (m.prepared nfBody) m.linkSig tE tf k)
           (inlSub (m.prepared nfBody) m.linkSig tE tf e₁)))
       rw [hinl, substT_substT, NFCallTreeInline.substT_obind]
-      refine NFProgCallTree.RuttS.bind hS (fun x o hx => ?_) (fun x hx t => ?_)
+      refine RuttSA.bind hS (fun x o hx => ?_) (fun x hx t => ?_)
       · cases o with
         | none => exact .ret (Or.inr (decRes_of_srcFail f.res (srcFail_of_progOut_none hx)))
         | some w =>
@@ -760,6 +738,26 @@ theorem moduleEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64S
           · exact Or.inr h
       · rw [decRes_of_srcFail f.res hx]
         exact .fail rfl
+
+/-- **The calls of a module, by induction on the depth, at the handler of the linked
+    functions**: `moduleEv_relTA` at the answers of `linkHandler m`, when the table of the linked
+    functions over `bi` satisfies `RepeatCalls`. -/
+theorem moduleEv_relT (m : HaxModule) (bi : Builtins) (hT : TypedCalls bi hax64SigOf)
+    (hR : RepeatCalls (m.linkTable bi)) (hfR : m.fns.find? (·.name == "repeat") = none)
+    (hfs : ∀ f ∈ m.fns, CatCrypt.Crypto.Hax.haxFrontShapeOk f.texpr = true
+      ∧ NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
+    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → OpOk (GoodCall m) o)
+    {tE : TreeCallEnv leafSig nfDialect} (htE : ∀ f as rs a, tE.call f as rs a = .ret none)
+    (fuelC tf : Nat) (hft : fuelC ≤ tf) :
+    ∀ (k : Nat) (e₀ : linkSig.Event) (e₁ : leafSig.Event), ImpRE e₀ e₁ →
+      GoodCall m e₁.name e₁.argTys e₁.ret →
+      RuttS (linkHandler m) (FrontRET m) FrontRA
+        (fun a₀ a₁ => ImpRA e₀ e₁ a₀ a₁ ∨ ImpRA e₀ e₁ a₀ none) (fun a₀ => ImpRA e₀ e₁ a₀ none)
+        (refBiT m.fns (linkTreeTable m bi) fuelC k (LinkCall.name e₀) (LinkCall.args e₀))
+        (substT (answerSub m bi) (inlSubN (m.prepared nfBody) m.linkSig tE tf k e₁)) :=
+  fun k e₀ e₁ hE hG => ruttSA_iff_ruttS.mp (moduleEv_relTA m bi hT _
+    (repeatCallsA_retsA_linkTreeTable hR) hfR hfs hgood htE fuelC tf hft k e₀ e₁ hE hG)
 
 end Module
 
@@ -807,8 +805,69 @@ theorem spineArgsOk_bindConsts (te : TExpr) :
     entry related to the environment and a target fuel at which the source call tree of the
     entry at the tree table of the module and the call tree of `q` at `linkReader`, with the calls
     other than the calls of the linked functions answered by the leaf table, are related by
-    `RuttS` at `FrontRET`, `FrontRA`, `FrontRR` and `srcFail`. This is the hypothesis `hfront` of
-    `NFProgCallTreeModule.r3FG_of_front`. -/
+    `RuttSA Sk` at `FrontRET`, `FrontRA`, `FrontRR` and `srcFail`, for a skip predicate `Sk` that
+    admits at `repeat` only the leaves of the linked tree table that are the answers of the table
+    of `repeat` calls. -/
+theorem front_relTA {m : HaxModule} {σ : AbiLayout} (tE : TreeCallEnv leafSig nfDialect)
+    (htE : ∀ f as rs a, tE.call f as rs a = .ret none)
+    (hspine : NFCallTreeInlineSpine.spineArgsOk m.entry.erase = true)
+    (hfs : ∀ f ∈ m.fns, NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
+    (hgoodE : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
+      (p : NFProg nfDialect (entryCtx (abiEntry σ)) [q.1]), haxToNF σ m = some q →
+      nfSrcProgC (m.prepared nfBody ++ m.linkedFns) σ (bindConsts σ.consts m.entry)
+        = some ⟨q.1, p⟩ → ∀ o, p.HasOp o → OpOk (GoodCall m) o)
+    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → OpOk (GoodCall m) o)
+    (Sk : (e : linkSig.Event) → linkSig.Resp e → Prop)
+    (hRA : NFCallTreeImpToNF.RepeatCallsA fun e a =>
+      RetsA Sk (linkTreeTable m hax64WExit e.name e.args) a) :
+    ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      haxToNF σ m = some q → ∀ (sa : Ascent.AddrMem.AState), σ.Regions sa → ∀ (env : Env),
+      σ.EnvOf sa env → ∀ (fuelC fuel : Nat), ∃ (V : Ctxt.Valuation (entryCtx (abiEntry σ)))
+        (tf : Nat), EntryVals env (abiEntry σ) V
+        ∧ RuttSA Sk (FrontRET m) FrontRA (FrontRR q.1) srcFail
+          (nfTree (moduleTreeTable m hax64WExit fuelC) fuel m.entry.erase env)
+          (answerOut (keepL m) (leafHandler (tableOf (m.linkTable hax64WExit)))
+            (treeAt linkReader tE tf q.2 V)) := by
+  intro q hq sa _ env henv fuelC fuel
+  obtain ⟨hfs0, hshape, -, p, hp, hinl⟩ := haxToNF_eq_some hq
+  obtain ⟨V, hV⟩ := CatCrypt.Crypto.Hax.ImpToNF.entryVals_of_typed (entryTyped_abiEntry henv)
+  refine ⟨V, max fuel fuelC, hV, ?_⟩
+  have hfR : m.fns.find? (·.name == "repeat") = none := by
+    have h := crateArrOk_find_repeat hfs0
+    rw [HaxModule.prepared, find?_prep] at h
+    exact Option.map_eq_none_iff.mp h
+  have hinl' : CatCrypt.Crypto.Hax.NFInline.crateInline? (m.prepared nfBody) m.depth p m.linkSig
+      = some q.2 := hinl
+  obtain ⟨hok, hq2⟩ := crateInline?_eq_some hinl'
+  have hiter := (Bool.and_eq_true_iff.mp hok).1
+  rw [← NFCallTreeConsts.nfTree_bindConsts_of_envOf _ fuel m.entry henv,
+    nfTree_eq_substT (moduleTreeTable m hax64WExit fuelC), hq2, answerOut_eq_substT,
+    treeAt_inlineIter_crate _ _ htE _ _ m.depth p hiter V, substT_substT]
+  have hsrc := NFCallTreeFrontProg.srcProg_relT (m.prepared nfBody ++ m.linkedFns) σ
+    (bindConsts σ.consts m.entry) hp (by rw [spineArgsOk_bindConsts]; exact hspine)
+    (fun e a => RetsA Sk (moduleTreeTable m hax64WExit fuelC e.name e.args) a)
+    (repeatCallsA_retsA_refBiT hfR hRA fuelC m.depth) tE
+    fuel (max fuel fuelC) (le_max_left _ _) env V hV
+  have hS := RuttSA.substK (fun _ => none)
+    (Sk := fun (e : LinkCall) a => RetsA Sk (moduleTreeTable m hax64WExit fuelC e.name e.args) a)
+    (G := fun e : LeafCall => GoodCall m e.name e.argTys e.ret)
+    (K := KillsT (fun _ => none) _ _ _) (fun _ _ h => h)
+    (σ₁ := fun e : LinkCall => moduleTreeTable m hax64WExit fuelC e.name e.args)
+    (σ₂ := fun e => substT (answerSub m hax64WExit)
+      (inlSubN (m.prepared nfBody) m.linkSig tE (max fuel fuelC) m.depth e))
+    (fun e₀ e₁ hE hG => moduleEv_relTA m hax64WExit CatCrypt.Crypto.Hax.hax64WExit_typedCalls Sk
+      hRA hfR (fun f hf => ⟨hshape f hf, hfs f hf⟩) hgood htE fuelC (max fuel fuelC)
+      (le_max_right _ _) m.depth e₀ e₁ hE hG) (fun _ _ h => h)
+    (NFCallTreeFrontBody.RuttSA.mono_fail (fun x hx => srcFail_of_not_val hx) hsrc)
+    (killsT_of_goodT (fun x hx => srcFail_of_progOut_none hx)
+      (goodT_treeAt (fun f as rs a => by rw [htE]; trivial) (max fuel fuelC) p
+        (hgoodE q p hq hp) V))
+  exact RuttSA.mono (fun _ _ h => h) hS
+
+/-- **The front of a module at the level of call trees, at the handler of the linked
+    functions**: `front_relTA` at the answers of `linkHandler m`, related by `RuttS`. This is the
+    hypothesis `hfront` of `NFProgCallTreeModule.r3FG_of_front`. -/
 theorem front_relT {m : HaxModule} {σ : AbiLayout} (tE : TreeCallEnv leafSig nfDialect)
     (htE : ∀ f as rs a, tE.call f as rs a = .ret none)
     (hspine : NFCallTreeInlineSpine.spineArgsOk m.entry.erase = true)
@@ -827,44 +886,11 @@ theorem front_relT {m : HaxModule} {σ : AbiLayout} (tE : TreeCallEnv leafSig nf
           (nfTree (moduleTreeTable m hax64WExit fuelC) fuel m.entry.erase env)
           (answerOut (keepL m) (leafHandler (tableOf (m.linkTable hax64WExit)))
             (treeAt linkReader tE tf q.2 V)) := by
-  intro q hq sa _ env henv fuelC fuel
-  obtain ⟨hfs0, hshape, hlk, p, hp, hinl⟩ := haxToNF_eq_some hq
-  obtain ⟨V, hV⟩ := CatCrypt.Crypto.Hax.ImpToNF.entryVals_of_typed (entryTyped_abiEntry henv)
-  refine ⟨V, max fuel fuelC, hV, ?_⟩
-  have hfR : m.fns.find? (·.name == "repeat") = none := by
-    have h := crateArrOk_find_repeat hfs0
-    rw [HaxModule.prepared, find?_prep] at h
-    exact Option.map_eq_none_iff.mp h
-  have hR : RepeatCalls (m.linkTable hax64WExit) := linkTable_repeatCalls hlk
-  have hinl' : CatCrypt.Crypto.Hax.NFInline.crateInline? (m.prepared nfBody) m.depth p m.linkSig
-      = some q.2 := hinl
-  obtain ⟨hok, hq2⟩ := crateInline?_eq_some hinl'
-  have hiter := (Bool.and_eq_true_iff.mp hok).1
-  rw [← NFCallTreeConsts.nfTree_bindConsts_of_envOf _ fuel m.entry henv,
-    nfTree_eq_substT (moduleTreeTable m hax64WExit fuelC), hq2, answerOut_eq_substT,
-    treeAt_inlineIter_crate _ _ htE _ _ m.depth p hiter V, substT_substT]
-  have hR1 : RepeatCalls fun g vals =>
-      interp (linkHandler m) (moduleTreeTable m hax64WExit fuelC g vals) := by
-    change RepeatCalls (interpTable (linkHandler m) (moduleTreeTable m hax64WExit fuelC))
-    rw [interpTable_moduleTreeTable]
-    exact CatCrypt.Crypto.Hax.refBi_repeatCalls m.fns hR hfR fuelC m.depth
-  have hsrc := NFCallTreeFrontProg.srcProg_relT (m.prepared nfBody ++ m.linkedFns) σ
-    (bindConsts σ.consts m.entry) hp (by rw [spineArgsOk_bindConsts]; exact hspine)
-    (fun e => interp (linkHandler m) (moduleTreeTable m hax64WExit fuelC e.name e.args)) hR1 tE
-    fuel (max fuel fuelC) (le_max_left _ _) env V hV
-  have hS := RuttS.substK (fun _ => none)
-    (G := fun e : LeafCall => GoodCall m e.name e.argTys e.ret)
-    (σ₁ := fun e : LinkCall => moduleTreeTable m hax64WExit fuelC e.name e.args)
-    (σ₂ := fun e => substT (answerSub m hax64WExit)
-      (inlSubN (m.prepared nfBody) m.linkSig tE (max fuel fuelC) m.depth e))
-    (fun e₀ e₁ hE hG => moduleEv_relT m hax64WExit CatCrypt.Crypto.Hax.hax64WExit_typedCalls hR
-      hfR (fun f hf => ⟨hshape f hf, hfs f hf⟩) hgood htE fuelC (max fuel fuelC)
-      (le_max_right _ _) m.depth e₀ e₁ hE hG) (fun _ => rfl)
-    (NFCallTreeFrontBody.RuttS.mono_fail (fun x hx => srcFail_of_not_val hx) hsrc)
-    (killsT_of_goodT (fun x hx => srcFail_of_progOut_none hx)
-      (goodT_treeAt (fun f as rs a => by rw [htE]; trivial) (max fuel fuelC) p
-        (hgoodE q p hq hp) V))
-  exact NFProgCallTreeExt.RuttS.mono (fun _ _ h => h) hS
+  intro q hq sa hsa env henv fuelC fuel
+  obtain ⟨-, -, hlk, -⟩ := haxToNF_eq_some hq
+  obtain ⟨V, tf, hV, h⟩ := front_relTA tE htE hspine hfs hgoodE hgood _
+    (repeatCallsA_retsA_linkTreeTable (linkTable_repeatCalls hlk)) q hq sa hsa env henv fuelC fuel
+  exact ⟨V, tf, hV, ruttSA_iff_ruttS.mp h⟩
 
 end Front
 
