@@ -212,6 +212,7 @@ CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Guards
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.RangeTests
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedArrays
 CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.ReifiedHax
+CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.XCheckTest
 CatCrypt.Crypto.SecureCompilation.AeneasFront.XCheck
 CatCrypt.Crypto.SecureCompilation.Algebraic.FieldLimbs.MontNoCarry
 CatCrypt.Crypto.SecureCompilation.Algebraic.ModArithToJasminLimbsMont4
