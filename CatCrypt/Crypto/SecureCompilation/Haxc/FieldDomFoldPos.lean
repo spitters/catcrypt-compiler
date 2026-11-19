@@ -11,15 +11,17 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomEntrySlot
 The stage `regionFoldB` of the region gate asks that the cell fold `cellFoldLR` of the code
 behind the prefix succeeds at the cell arrays. The fold reads the code in order, keeping the
 constants that immediate moves `MOV:64 x, $c` (at a register tag) write and forgetting a
-register when an instruction writes it (`kstep`). It turns a load of a cell array at a known
-index into a copy from the cell and an in-place store to a cell array at a known index into a
-copy to the cell, keeps an operation that names no cell array and no cell (`keepB`), an
-instruction of `keepRegB` and the control instructions of `ctlB`. So the fold succeeds when
-each position of the code is one of these five cases, an access whose index register was
-written by an immediate move below it and by no instruction in between (`KnownAt`).
+register when an instruction other than a self move writes it (`kstep`). It turns a load of
+a cell array at a known index into a copy from the cell and an in-place store to a cell array
+at a known index into a copy to the cell, keeps an operation that names no cell array and no
+cell (`keepB`), an instruction of `keepRegB` and the control instructions of `ctlB`. So the
+fold succeeds when each position of the code is one of these five cases, an access whose index
+register was written by an immediate move below it and in between by no instruction other than
+its self move (`KnownAt`).
 
 ## Main definitions
 
+* `selfMovI`: the self move `MOV:64 x, x`.
 * `KnownAt`: the register `x` holds the constant `c` at position `k` of the code.
 * `FoldPos`: the instruction at a position is a load or an in-place store of a cell array at a
   known index below its length, an instruction of `keepRegB`, or a control instruction.
@@ -52,13 +54,16 @@ open CatCrypt.Crypto.SecureCompilation.X86Backend.CellFoldLReg (cellFoldLR foldO
 
 /-! ## 1. Known constants -/
 
+/-- The self move `MOV:64 x, x` at a register tag. -/
+def selfMovI (x : String) : LinstrRM := (.Lopn [.reg x] "MOV:64" [.reg x], .reg none)
+
 /-- **The register `x` holds the constant `c` at position `k` of the code `C`**: an immediate
     move `MOV:64 x, $c` at a register tag lies below `k`, and every instruction between it and
-    `k` is an operation that does not write `x`. -/
+    `k` is an operation that does not write `x` or the self move of `x`. -/
 def KnownAt (C : List LinstrRM) (k : Nat) (x : String) (c : Nat) : Prop :=
   ∃ j < k, C[j]? = some (.Lopn [.reg x] "MOV:64" [.imm c], .reg none) ∧
     ∀ j', j < j' → j' < k → ∀ i, C[j']? = some i →
-      (∃ ds o ss, i.1 = .Lopn ds o ss) ∧ x ∉ dstNames i.1
+      (∃ ds o ss, i.1 = .Lopn ds o ss) ∧ (x ∉ dstNames i.1 ∨ i = selfMovI x)
 
 /-- The constants of the fold after the prefix of length `k`. -/
 def envAt (C : List LinstrRM) (k : Nat) : KEnv := (C.take k).foldl kstepL []
@@ -111,6 +116,11 @@ theorem kval_kstepL {env : KEnv} {i : LinstrRM} {x : String}
     simp only [kval, List.find?_cons, hb] at hf ⊢
     exact hf
 
+/-- The self move keeps every constant. -/
+theorem kval_kstepL_selfMovI (env : KEnv) (x y : String) :
+    kval (kstepL env (selfMovI x)) y = kval env y := by
+  simp [selfMovI, kstepL, kstep]
+
 /-- Operations that do not write `x` keep the constant at `x`. -/
 theorem kval_foldl_kstepL {x : String} :
     ∀ (l : List LinstrRM) (env : KEnv),
@@ -137,13 +147,15 @@ theorem kval_knownAt {C : List LinstrRM} {x : String} {c : Nat} :
   | k + 1, ⟨j, hjk, hj, hmid⟩ => by
       rw [envAt_succ]
       rcases Nat.lt_succ_iff_lt_or_eq.mp hjk with hlt | rfl
-      · have ih := kval_knownAt (k := k) ⟨j, hlt, hj, fun j' h1 h2 i hi => hmid j' h1 (by omega) i hi⟩
+      · have ih := kval_knownAt (k := k)
+          ⟨j, hlt, hj, fun j' h1 h2 i hi => hmid j' h1 (by omega) i hi⟩
         cases hk : C[k]? with
         | none => exact ih
         | some i =>
             dsimp only
-            obtain ⟨hl, hx⟩ := hmid k hlt (by omega) i hk
-            rw [kval_kstepL hl hx, ih]
+            obtain ⟨hl, hx | rfl⟩ := hmid k hlt (by omega) i hk
+            · rw [kval_kstepL hl hx, ih]
+            · rw [kval_kstepL_selfMovI, ih]
       · rw [hj]
         dsimp only
         unfold kstepL kstep

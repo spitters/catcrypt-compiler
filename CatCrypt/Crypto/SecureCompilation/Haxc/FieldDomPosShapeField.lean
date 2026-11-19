@@ -9,7 +9,7 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosShapeHyps
 /-!
 # The shape of the fold class on the field domain
 
-The theorem `fieldDom_foldPos_addSub_of_posShape_noLoadStore` takes the shape `PosShape` of every
+The theorem `fieldDom_foldPos_addSub_of_posShape` takes the shape `PosShape` of every
 instruction of the code behind the prefix of the parts as its hypothesis `hS`. This module proves
 it for the sum and the difference of the field domain.
 
@@ -41,9 +41,9 @@ parameter name, so no scalar operand is a cell array.
   of that code to one name.
 * `fieldDom_isArrB_renOf`: the pairs send no name of the code other than a parameter name to a
   cell array.
-* `fieldDom_posShape`: the hypothesis `hS` of `fieldDom_foldPos_addSub_of_posShape_noLoadStore`.
-* `fieldDom_foldPos_addSub_noLoadStore`: the fold positions of the sum and the difference without
-  the hypothesis `hS`.
+* `fieldDom_posShape`: the hypothesis `hS` of `fieldDom_foldPos_addSub_of_posShape`.
+* `fieldDom_foldPos_addSub`: the fold positions of the sum and the difference from the shape
+  `LoadsChainK` alone.
 -/
 
 set_option autoImplicit false
@@ -414,15 +414,6 @@ theorem posShape_regTag {R : Slots} {i : LinstrRM} (hm : NoMName i) (hp : Plain1
           ⟨.reg nn, List.mem_append.mpr hop, by simp [opNames]⟩))
     | _ => simp [JasminLsemAddrCongr.cellBase] at hy
 
-/-- The replacement `selfNopI` keeps an instruction or is a copy of a register onto itself. -/
-theorem selfNopI_cases (i : LinstrRM) :
-    selfNopI i = i ∨
-      ∃ z, selfNopI i = (.Lopn [.reg z] (withWidthTag 64 "MOV") [.reg z], .reg none) := by
-  unfold selfNopI
-  split
-  · exact .inr ⟨_, rfl⟩
-  · exact .inl rfl
-
 /-- A renaming of names keeps the form `Plain1`. -/
 theorem plain1_renRM (f : String → String) {i : LinstrRM} (h : Plain1 i) :
     Plain1 (renRM f i) := by
@@ -474,7 +465,7 @@ theorem posShape_of_coShape {R : Slots} {n : Nat} {f ρ : String → String} {c 
         by simp [renArr, renStore, renRM, renLinstrR, renOperand, hdb],
         hsc x (by simp [instrNames, opNames]) (fun j => (hj j).1),
         hsc v (by simp [instrNames, opNames]) (fun j => (hj j).2), hlen _⟩)
-  rcases selfNopI_cases (renRM f (renArr ρ c)) with hs | ⟨z, hs⟩
+  rcases selfNopI_eq_or_selfMovI (renRM f (renArr ρ c)) with hs | ⟨z, hs⟩
   · rw [hs, or_self] at hi
     subst hi
     exact main hm
@@ -487,8 +478,8 @@ theorem posShape_of_coShape {R : Slots} {n : Nat} {f ρ : String → String} {c 
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi (fuseMulHiRM)
 
-/-- **The hypothesis `hS` of `fieldDom_foldPos_addSub_of_posShape_noLoadStore`**: on the sum and
-    the difference of the field domain, every instruction of the code behind the prefix of the
+/-- **The hypothesis `hS` of `fieldDom_foldPos_addSub_of_posShape`**: on the sum and the
+    difference of the field domain, every instruction of the code behind the prefix of the
     parts has the shape `PosShape` of the fold class at the cell arrays of the parts. -/
 theorem fieldDom_posShape (h : fieldDomB'' e σ = true) (hA : FieldAddSub e)
     (hB : FieldBody e σ fname b t r cert) :
@@ -537,22 +528,19 @@ theorem fieldDom_posShape (h : fieldDomB'' e σ = true) (hA : FieldAddSub e)
     hlen hii hm
 
 /-- **The fold positions of the sum and the difference of the field domain** from the shape
-    `LoadsChainK` and the absence of a load directly followed by a store in the exported code:
-    `fieldDom_foldPos_addSub_of_posShape_noLoadStore` with its hypothesis `hS` proved by
-    `fieldDom_posShape`. -/
-theorem fieldDom_foldPos_addSub_noLoadStore (h : fieldDomB'' e σ = true)
+    `LoadsChainK` of the legalized chain output: `fieldDom_foldPos_addSub_of_posShape` with its
+    hypothesis `hS` proved by `fieldDom_posShape`. -/
+theorem fieldDom_foldPos_addSub (h : fieldDomB'' e σ = true)
     (hA : FieldAddSub e) (hB : FieldBody e σ fname b t r cert)
     (hL : ∀ (t0 : JasminTy) (q : NFProg jasminDialect (nfCtx σ) [t0])
       (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
       haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
-      NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hC : ∀ (k : Nat) (i j : LinstrRM), r.code[k]? = some i → r.code[k + 1]? = some j →
-      loadB i = true → storeB j = false) :
+      NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q')) :
     ∀ k i, ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
         (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
       FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
         ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
           (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i :=
-  fieldDom_foldPos_addSub_of_posShape_noLoadStore h hA hB hL hC (fieldDom_posShape h hA hB)
+  fieldDom_foldPos_addSub_of_posShape h hA hB hL (fieldDom_posShape h hA hB)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

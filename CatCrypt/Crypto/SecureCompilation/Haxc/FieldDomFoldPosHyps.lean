@@ -29,8 +29,8 @@ index, whose name begins with `r`.
 * `fieldDom_sites_addSub`: the sum and the difference have no site of the multiplication
   fusion.
 * `fieldDom_foldPos_of_loadsChainK`, `fieldDom_foldPos_addSub_of_loadsChainK`: the field
-  fold positions from the shape `LoadsChainK`, the absence of array self-moves, the fold class
-  and, for the product and the square, the conditions of the fusion.
+  fold positions from the shape `LoadsChainK`, the fold class and, for the product and the
+  square, the absence of array self-moves and the conditions of the fusion.
 -/
 
 set_option autoImplicit false
@@ -306,9 +306,9 @@ theorem fieldDom_sites_addSub (h : fieldDomB e σ = true) (hA : FieldAddSub e)
   exact sites_eq_false_of_hiFree (hX.noShadow hEx hcf) hc
 
 /-- **The fold positions of the field domain from the shape `LoadsChainK`** of the legalized
-    chain output, the absence of array self-moves (`hNP`), the conditions of the
-    multiplication fusion at a fusion site (`hF`) and the fold class of the code behind the
-    prefix (`hP`); the condition on the coalescing renaming holds on the field domain
+    chain output, at a fusion site the absence of array self-moves (`hNP`) and the conditions
+    of the multiplication fusion (`hF`), and the fold class of the code behind the prefix
+    (`hP`); the condition on the coalescing renaming holds on the field domain
     (`fieldDom_canonMemrefName_inj`). -/
 theorem fieldDom_foldPos_of_loadsChainK (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert)
@@ -316,12 +316,13 @@ theorem fieldDom_foldPos_of_loadsChainK (h : fieldDomB'' e σ = true)
       (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
       haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
       NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hNP : ∀ k, selfPairB (regionCoParts σ exportReg b t r.code r.res cert).pre.length
-      (liveAt (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)
+    (hNP : (regionCoParts σ exportReg b t r.code r.res cert).sites = true →
+      ∀ k, selfPairB (regionCoParts σ exportReg b t r.code r.res cert).pre.length
+        (liveAt (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)
+          ((regionCoParts σ exportReg b t r.code r.res cert).pre
+            ++ (regionCoParts σ exportReg b t r.code r.res cert).merged).length)
         ((regionCoParts σ exportReg b t r.code r.res cert).pre
-          ++ (regionCoParts σ exportReg b t r.code r.res cert).merged).length)
-      ((regionCoParts σ exportReg b t r.code r.res cert).pre
-        ++ (regionCoParts σ exportReg b t r.code r.res cert).merged) k = false)
+          ++ (regionCoParts σ exportReg b t r.code r.res cert).merged) k = false)
     (hF : (regionCoParts σ exportReg b t r.code r.res cert).sites = true →
       (∀ i ∈ (regionCoParts σ exportReg b t r.code r.res cert).merged, wireOK i.1 = true) ∧
       ∀ (k : Nat) (i : LinstrRM) (x : String) (m : Nat),
@@ -343,20 +344,14 @@ theorem fieldDom_foldPos_of_loadsChainK (h : fieldDomB'' e σ = true)
     (fun hs => (hF hs).1) (fun hs => (hF hs).2) hP
 
 /-- **The fold positions of the sum and the difference of the field domain** from the shape
-    `LoadsChainK`, the absence of array self-moves and the fold class: the sum and the
-    difference have no site of the multiplication fusion. -/
+    `LoadsChainK` and the fold class: the sum and the difference have no site of the
+    multiplication fusion. -/
 theorem fieldDom_foldPos_addSub_of_loadsChainK (h : fieldDomB'' e σ = true) (hA : FieldAddSub e)
     (hB : FieldBody e σ fname b t r cert)
     (hL : ∀ (t0 : JasminTy) (q : NFProg jasminDialect (nfCtx σ) [t0])
       (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
       haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
       NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hNP : ∀ k, selfPairB (regionCoParts σ exportReg b t r.code r.res cert).pre.length
-      (liveAt (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)
-        ((regionCoParts σ exportReg b t r.code r.res cert).pre
-          ++ (regionCoParts σ exportReg b t r.code r.res cert).merged).length)
-      ((regionCoParts σ exportReg b t r.code r.res cert).pre
-        ++ (regionCoParts σ exportReg b t r.code r.res cert).merged) k = false)
     (hP : ∀ (k : Nat) (i : LinstrRM),
       ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
         (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
@@ -366,8 +361,8 @@ theorem fieldDom_foldPos_addSub_of_loadsChainK (h : fieldDomB'' e σ = true) (hA
       FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
         ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
           (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i :=
-  fieldDom_foldPos_of_loadsChainK h hB hL hNP
-    (fun hs => by rw [fieldDom_sites_addSub (fieldDomB_of_fieldDomB'' h) hA hB] at hs; cases hs)
-    hP
+  have hs0 := fieldDom_sites_addSub (fieldDomB_of_fieldDomB'' h) hA hB
+  fieldDom_foldPos_of_loadsChainK h hB hL (fun hs => by rw [hs0] at hs; cases hs)
+    (fun hs => by rw [hs0] at hs; cases hs) hP
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

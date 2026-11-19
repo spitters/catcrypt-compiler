@@ -647,7 +647,7 @@ theorem loadsChainK_export_knownAt {Γ : Ctxt jasminDialect} {ts : List JasminTy
     simp only [LinstrR.Lopn.injEq, List.cons.injEq, LOperand.reg.injEq, and_true] at h0
     refine ⟨c, hc, j, hj, hJ, fun j' h1 _ i hi => ?_⟩
     obtain ⟨o, ss, hi'⟩ := hS j' i hi
-    refine ⟨⟨_, _, _, hi'⟩, ?_⟩
+    refine ⟨⟨_, _, _, hi'⟩, .inl ?_⟩
     rw [hi', h0.1]
     simp only [dstNames, List.flatMap_cons, List.flatMap_nil, List.append_nil,
       JasminLsemExportRewrites.opNames, List.mem_singleton]

@@ -8,8 +8,9 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomPosClass
 /-!
 # Array self-moves of the reference
 
-The hypothesis `hNP` of `fieldDom_foldPos_of_loadsChainK` asks that the code `pre ++ merged`
-of the parts has no pair of `selfPairB` behind the prefix. This module reduces it to the
+The hypothesis `hNP` of `fieldDom_foldPos_of_loadsChainK` asks, at a site of the
+multiplication fusion, that the code `pre ++ merged` of the parts has no pair of `selfPairB`
+behind the prefix. This module reduces it to the
 exported code. The renamings of the parts (`renArr` of the coalescing, `renRM` of the pairs
 and of the merge) keep the shape of a load and of a store, so a pair of an array self-move of
 `merged` is a load directly followed by a store of the code with its result copies. The moves
@@ -34,8 +35,7 @@ followed by a store whose base is a version of the result buffer.
   and their coalesced images are names of the code (`codeName_regionCoCode`,
   `canon_codeName`), the pairs send a name to an allocated name or to itself
   (`allocName_head`), the merge pairs are empty and `selfNopI` adds no name.
-* `fieldDom_foldPos_addSub_of_noLoadStore`, `fieldDom_foldPos_addSub_of_posShape`: the fold
-  positions of the sum and the difference.
+* `fieldDom_foldPos_addSub_of_posShape`: the fold positions of the sum and the difference.
 -/
 
 set_option autoImplicit false
@@ -377,36 +377,6 @@ theorem fieldDom_noSelfPair (h : fieldDomB e σ = true) (hB : FieldBody e σ fna
   rw [hτ]
   exact hR src D m hcp jj hjj
 
-/-- **The fold positions of the sum and the difference of the field domain** from the shape
-    `LoadsChainK`, the conditions of `fieldDom_noSelfPair` and the fold class. -/
-theorem fieldDom_foldPos_addSub_of_noLoadStore (h : fieldDomB'' e σ = true)
-    (hA : FieldAddSub e) (hB : FieldBody e σ fname b t r cert)
-    (hL : ∀ (t0 : JasminTy) (q : NFProg jasminDialect (nfCtx σ) [t0])
-      (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
-      haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
-      NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hC : ∀ (k : Nat) (i j : LinstrRM), r.code[k]? = some i → r.code[k + 1]? = some j →
-      loadB i = true → storeB j = false)
-    (hR : ∀ src D m, regionCopy σ exportReg t none r.code r.res = some (src, D, m) →
-      ∀ jj, jj < m →
-      renOf (regionCoParts σ exportReg b t r.code r.res cert).ps
-          (regionAliasN σ exportReg t r.res (regionCoCode σ exportReg t r.code r.res
-            (regionCopy σ exportReg t none r.code r.res)) src)
-        ≠ renOf (regionCoParts σ exportReg b t r.code r.res cert).ps
-          (regionAliasN σ exportReg t r.res (regionCoCode σ exportReg t r.code r.res
-            (regionCopy σ exportReg t none r.code r.res)) (copyName D jj)))
-    (hP : ∀ (k : Nat) (i : LinstrRM),
-      ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-        (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
-      PosClass (regionCoParts σ exportReg b t r.code r.res cert).cells i) :
-    ∀ k i, ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-        (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
-      FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
-        ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-          (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i :=
-  fieldDom_foldPos_addSub_of_loadsChainK h hA hB hL
-    (fieldDom_noSelfPair (fieldDomB_of_fieldDomB'' h) hB hC hR) hP
-
 /-! ## 5. Names that begin with no `m` -/
 
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportRewrites (instrNames opNames)
@@ -540,25 +510,14 @@ theorem fieldDom_noMName (h : fieldDomB e σ = true) (hB : FieldBody e σ fname 
   · exact hy2c.head_ne_m
 
 /-- **The fold positions of the sum and the difference of the field domain** from the shape
-    `LoadsChainK`, the conditions of `fieldDom_noSelfPair` and the shape `PosShape` of the
-    fold class at every position of the code behind the prefix: no name of that code begins
-    with `m` (`fieldDom_noMName`). -/
+    `LoadsChainK` and the shape `PosShape` of the fold class at every position of the code
+    behind the prefix: no name of that code begins with `m` (`fieldDom_noMName`). -/
 theorem fieldDom_foldPos_addSub_of_posShape (h : fieldDomB'' e σ = true)
     (hA : FieldAddSub e) (hB : FieldBody e σ fname b t r cert)
     (hL : ∀ (t0 : JasminTy) (q : NFProg jasminDialect (nfCtx σ) [t0])
       (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
       haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
       NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hC : ∀ (k : Nat) (i j : LinstrRM), r.code[k]? = some i → r.code[k + 1]? = some j →
-      loadB i = true → storeB j = false)
-    (hR : ∀ src D m, regionCopy σ exportReg t none r.code r.res = some (src, D, m) →
-      ∀ jj, jj < m →
-      renOf (regionCoParts σ exportReg b t r.code r.res cert).ps
-          (regionAliasN σ exportReg t r.res (regionCoCode σ exportReg t r.code r.res
-            (regionCopy σ exportReg t none r.code r.res)) src)
-        ≠ renOf (regionCoParts σ exportReg b t r.code r.res cert).ps
-          (regionAliasN σ exportReg t r.res (regionCoCode σ exportReg t r.code r.res
-            (regionCopy σ exportReg t none r.code r.res)) (copyName D jj)))
     (hS : ∀ (k : Nat) (i : LinstrRM),
       ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
         (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
@@ -568,7 +527,7 @@ theorem fieldDom_foldPos_addSub_of_posShape (h : fieldDomB'' e σ = true)
       FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
         ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
           (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i :=
-  fieldDom_foldPos_addSub_of_noLoadStore h hA hB hL hC hR
+  fieldDom_foldPos_addSub_of_loadsChainK h hA hB hL
     (posClass_parts_of_posShape _
       (fieldDom_noMName (fieldDomB_of_fieldDomB'' h) hB
         (fieldDom_sites_addSub (fieldDomB_of_fieldDomB'' h) hA hB)) hS)

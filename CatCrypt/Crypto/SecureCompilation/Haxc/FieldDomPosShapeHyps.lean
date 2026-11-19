@@ -9,8 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomLoadsKPasses
 /-!
 # The hypotheses of the fold positions on the field domain
 
-The theorem `fieldDom_foldPos_addSub_of_posShape` takes the distinct roots of the result copy
-(`hR`) as a hypothesis. This module proves it on the field domain. At an array result copy
+The theorem `fieldDom_noSelfPair` takes the distinct roots of the result copy (`hR`) as a
+hypothesis. This module proves it on the field domain. At an array result copy
 `(src, D, m)` the coalescing renaming of the code with the result copy sends every version
 `copyName D jj` of the result buffer to `D`, an argument name the exported code never writes,
 and the source `src` to its root in the exported code, which the copy decision found to differ
@@ -22,9 +22,7 @@ makes the renaming by the pairs injective.
 * `regionCopy_resBuf`: the result buffer of an array result copy.
 * `fieldDom_resCopy_alias_ne`: the coalesced source of the result copy is no coalesced version
   of the result buffer.
-* `fieldDom_resCopyRoots`: the hypothesis `hR` of `fieldDom_foldPos_addSub_of_posShape`.
-* `fieldDom_foldPos_addSub_of_posShape_noLoadStore`: the fold positions of the sum and the
-  difference without the hypothesis `hR`.
+* `fieldDom_resCopyRoots`: the hypothesis `hR` of `fieldDom_noSelfPair`.
 -/
 
 set_option autoImplicit false
@@ -135,7 +133,7 @@ theorem fieldDom_resCopy_alias_ne (h : fieldDomB e σ = true)
       exact hsrcD
     | succ k => exact absurd ⟨k, by omega, rfl⟩ hv
 
-/-- **The hypothesis `hR` of `fieldDom_foldPos_addSub_of_posShape`**: on the field domain, at
+/-- **The hypothesis `hR` of `fieldDom_noSelfPair`**: on the field domain, at
     an array result copy `(src, D, m)`, the coalesced source renamed by the pairs is no
     coalesced version `copyName D jj`, `jj < m`, of the result buffer renamed by the pairs.
     Both coalesced names are names of the coalesced code, on which the renaming check `renB`
@@ -173,29 +171,5 @@ theorem fieldDom_resCopyRoots (h : fieldDomB e σ = true) (hB : FieldBody e σ f
     unfold instrNames
     grind [opNames])
   exact fieldDom_resCopy_alias_ne h hB hcp hjj (hR.ren.inj _ _ hn1 hn2 he)
-
-/-- **The fold positions of the sum and the difference of the field domain** from the shape
-    `LoadsChainK`, the absence of a load directly followed by a store in the exported code and
-    the shape `PosShape` at every position of the code behind the prefix. The roots of the
-    result copy differ on the field domain (`fieldDom_resCopyRoots`). -/
-theorem fieldDom_foldPos_addSub_of_posShape_noLoadStore (h : fieldDomB'' e σ = true)
-    (hA : FieldAddSub e) (hB : FieldBody e σ fname b t r cert)
-    (hL : ∀ (t0 : JasminTy) (q : NFProg jasminDialect (nfCtx σ) [t0])
-      (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy) [NarrowWords.wideTy t0]),
-      haxEntry.chainNF (Hax.HaxModule.single e) σ = some ⟨t0, q⟩ →
-      NarrowWords.narrowPrep q = some q' → LoadsChainK (fun _ => none) (legalizeRegion q'))
-    (hC : ∀ (k : Nat) (i j : LinstrRM), r.code[k]? = some i → r.code[k + 1]? = some j →
-      loadB i = true → storeB j = false)
-    (hS : ∀ (k : Nat) (i : LinstrRM),
-      ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-        (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
-      PosShape (regionCoParts σ exportReg b t r.code r.res cert).cells i) :
-    ∀ k i, ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-        (regionCoParts σ exportReg b t r.code r.res cert).pre.length)[k]? = some i →
-      FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
-        ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
-          (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i :=
-  fieldDom_foldPos_addSub_of_posShape h hA hB hL hC
-    (fieldDom_resCopyRoots (fieldDomB_of_fieldDomB'' h) hB) hS
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomComplete

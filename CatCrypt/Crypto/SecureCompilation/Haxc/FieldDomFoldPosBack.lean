@@ -31,6 +31,8 @@ it writes.
 * `knownAt_of_getElem?`, `idxKnown_of_getElem?`: transport along a position-preserving map.
 * `idxKnown_append`, `idxKnown_resCopyCode`, `idxKnown_movesOf`: appended code.
 * `idxKnown_map_renArr`, `idxKnown_map_renRM`: renamings of array positions and of names.
+* `idxKnown_mapIdx_selfNopI`, `idxKnown_selfNop_drop`: the replacement of array self-moves by
+  self moves of their index registers.
 * `knownAt_expI`, `idxKnown_expI`: expansions by position.
 * `foldPos_of_posClass`, `foldPos_of_idxKnown`: the fold positions from `IdxKnown` and
   `PosClass`.
@@ -39,8 +41,8 @@ it writes.
   known indices, and the pairs send no other name to an access index.
 * `fieldDom_foldPos_of_back`: the field `foldPos` of `FieldDomOpen` from the shape
   `LoadsChainK` of the legalized chain output, the coalescing renaming at the access indices,
-  the absence of array self-moves, the names of the fusion sites and the fold class of the
-  code behind the prefix.
+  at fusion sites the absence of array self-moves and the names of the sites, and the fold
+  class of the code behind the prefix.
 -/
 
 set_option autoImplicit false
@@ -72,20 +74,26 @@ def IdxKnown (C : List LinstrRM) : Prop :=
     ∃ c < m, KnownAt C k x c
 
 /-- **A known constant along a position-preserving map** `g`: the move of the constant into
-    `x` is sent to the move into `x'`, and an operation that does not write `x` to an
-    operation that does not write `x'`. -/
+    `x` is sent to the move into `x'`, the self move of `x` to the self move of `x'`, and an
+    operation that does not write `x` to an operation that does not write `x'` or to the self
+    move of `x'`. -/
 theorem knownAt_of_getElem? {C C' : List LinstrRM} (g : Nat → LinstrRM → LinstrRM)
     (hC : ∀ j, C'[j]? = (C[j]?).map (g j)) {k : Nat} {x x' : String} {c : Nat}
     (hmov : ∀ j < k, g j (.Lopn [.reg x] "MOV:64" [.imm c], .reg none)
       = (.Lopn [.reg x'] "MOV:64" [.imm c], .reg none))
+    (hself : ∀ j < k, g j (selfMovI x) = selfMovI x')
     (hop : ∀ j < k, ∀ i, C[j]? = some i → (∃ ds o ss, i.1 = .Lopn ds o ss) →
-      x ∉ dstNames i.1 → (∃ ds o ss, (g j i).1 = .Lopn ds o ss) ∧ x' ∉ dstNames (g j i).1)
+      x ∉ dstNames i.1 → (∃ ds o ss, (g j i).1 = .Lopn ds o ss) ∧
+        (x' ∉ dstNames (g j i).1 ∨ g j i = selfMovI x'))
     (h : KnownAt C k x c) : KnownAt C' k x' c := by
   obtain ⟨j, hj, hJ, hmid⟩ := h
   refine ⟨j, hj, by rw [hC, hJ, Option.map_some, hmov j hj], fun j' h1 h2 i hi => ?_⟩
   rw [hC] at hi
   obtain ⟨i0, hi0, rfl⟩ := Option.map_eq_some_iff.mp hi
-  exact hop j' (by omega) i0 hi0 (hmid j' h1 h2 i0 hi0).1 (hmid j' h1 h2 i0 hi0).2
+  obtain ⟨hl, hn | rfl⟩ := hmid j' h1 h2 i0 hi0
+  · exact hop j' (by omega) i0 hi0 hl hn
+  · rw [hself j' (by omega)]
+    exact ⟨⟨_, _, _, rfl⟩, .inr rfl⟩
 
 /-- **Known indices along a position-preserving map** `g`: every access of the image comes
     from an access of the same length whose index `f` sends to the new index, and the known
@@ -189,7 +197,7 @@ theorem idxKnown_resCopyCode (src D : String) (m : Nat) : IdxKnown (resCopyCode 
         have h0 := getElem?_resCopyCode src D (m := m) (j := j) (i := 1) hj (by omega)
         rw [h0] at hi
         cases hi
-        refine ⟨⟨_, _, _, rfl⟩, ?_⟩
+        refine ⟨⟨_, _, _, rfl⟩, .inl ?_⟩
         simp [dstNames, JasminLsemExportRewrites.opNames, copyIdx, copyTmp]
 
 /-! ## 3. Renamings -/
@@ -220,6 +228,11 @@ theorem lopn_renArr (ρ : String → String) {i : LinstrRM} (h : ∃ ds o ss, i.
     ∃ ds o ss, (renArr ρ i).1 = .Lopn ds o ss :=
   RegionExportDefInitSort.isLopn_renArr ρ h
 
+/-- The renaming of the array positions keeps a self move. -/
+theorem renArr_selfMovI (ρ : String → String) (x : String) :
+    renArr ρ (selfMovI x) = selfMovI x := by
+  simp [selfMovI, renArr, renCallW, LprogIsa.shadowCall?]
+
 /-- **Known indices along a renaming of the array positions** that sends no other name to an
     access index. -/
 theorem idxKnown_renArr {C C' : List LinstrRM} (ρ : Nat → LinstrRM → String → String)
@@ -230,9 +243,10 @@ theorem idxKnown_renArr {C C' : List LinstrRM} (ρ : Nat → LinstrRM → String
   refine idxKnown_of_getElem? (fun j i => renArr (ρ j i) i) hC id
     (fun j i x m _ ha => ⟨x, rfl, accIdx_of_renArr _ ha⟩) ?_ h
   intro k i x0 m c hk ha hK
-  refine knownAt_of_getElem? _ hC (fun j _ => RegionExportDefInitSort.renArr_movImmI _ x0 c) ?_ hK
+  refine knownAt_of_getElem? _ hC (fun j _ => RegionExportDefInitSort.renArr_movImmI _ x0 c)
+    (fun j _ => renArr_selfMovI _ x0) ?_ hK
   intro j _ i' _ hl hn
-  refine ⟨lopn_renArr _ hl, fun hm => ?_⟩
+  refine ⟨lopn_renArr _ hl, .inl fun hm => ?_⟩
   rcases dstNames_renArr _ i' x0 hm with h1 | ⟨y, hy, he⟩
   · exact hn h1
   · exact hn (hx k i x0 m hk ha j i' y he.symm ▸ hy)
@@ -278,10 +292,10 @@ theorem idxKnown_map_renRM {C : List LinstrRM} (f : String → String)
   refine idxKnown_of_getElem? (fun _ i => renRM f i) hC f
     (fun j i x m _ ha => accIdx_of_renRM f ha) ?_ h
   intro k i x0 m c hk ha hK
-  refine knownAt_of_getElem? _ hC (fun j _ => rfl) ?_ hK
+  refine knownAt_of_getElem? _ hC (fun j _ => rfl) (fun j _ => rfl) ?_ hK
   intro j _ i' _ hl hn
   obtain ⟨ds, o, ss, he⟩ := hl
-  refine ⟨⟨_, _, _, by simp only [renRM, he, renLinstrR]; rfl⟩, fun hm => ?_⟩
+  refine ⟨⟨_, _, _, by simp only [renRM, he, renLinstrR]; rfl⟩, .inl fun hm => ?_⟩
   simp only [renRM, dstNames_renLinstrR, List.mem_map] at hm
   obtain ⟨y, hy, he'⟩ := hm
   exact hn (hinj k i x0 m hk ha y he' ▸ hy)
@@ -293,6 +307,49 @@ theorem selfNop_eq_of_noPair {k0 : Nat} {Lr : Nat → List String} {B : List Lin
   intro k
   simp only [selfNop, List.getElem?_mapIdx, h]
   cases B[k]? <;> simp
+
+/-- The replacement `selfNopI` keeps an instruction or is the self move of a register. -/
+theorem selfNopI_eq_or_selfMovI (i : LinstrRM) :
+    selfNopI i = i ∨ ∃ z, selfNopI i = selfMovI z := by
+  unfold selfNopI
+  split
+  · exact .inr ⟨_, rfl⟩
+  · exact .inl rfl
+
+/-- **Replacing positions by `selfNopI` keeps known indices**, at every choice of positions. -/
+theorem idxKnown_mapIdx_selfNopI (P : Nat → Bool) {C : List LinstrRM} (h : IdxKnown C) :
+    IdxKnown (C.mapIdx fun k i => if P k then selfNopI i else i) := by
+  have hC : ∀ j, (C.mapIdx fun k i => if P k then selfNopI i else i)[j]? =
+      (C[j]?).map fun i => if P j then selfNopI i else i := fun j => List.getElem?_mapIdx
+  refine idxKnown_of_getElem? (fun j i => if P j then selfNopI i else i) hC id
+    (fun j i x m _ ha => ⟨x, rfl, ?_⟩) ?_ h
+  · split at ha
+    · rcases selfNopI_eq_or_selfMovI i with hs | ⟨z, hs⟩
+      · rwa [hs] at ha
+      · rw [hs] at ha
+        exact absurd ha not_accIdx_reg
+    · exact ha
+  · intro k i x0 m c _ _ hK
+    refine knownAt_of_getElem? _ hC (fun j _ => by split <;> rfl) (fun j _ => by split <;> rfl)
+      ?_ hK
+    intro j _ i' _ hl hn
+    split
+    · rcases selfNopI_eq_or_selfMovI i' with hs | ⟨z, hs⟩
+      · rw [hs]
+        exact ⟨hl, .inl hn⟩
+      · rw [hs]
+        refine ⟨⟨_, _, _, rfl⟩, ?_⟩
+        by_cases hz : z = x0
+        · exact .inr (hz ▸ rfl)
+        · exact .inl (by simp [selfMovI, dstNames, JasminLsemExportRewrites.opNames, Ne.symm hz])
+    · exact ⟨hl, .inl hn⟩
+
+/-- **`selfNop` behind a prefix keeps known indices.** -/
+theorem idxKnown_selfNop_drop {A B : List LinstrRM} (Lr : Nat → List String)
+    (h : IdxKnown B) : IdxKnown ((selfNop A.length Lr (A ++ B)).drop A.length) := by
+  unfold selfNop
+  rw [List.mapIdx_append, List.drop_left' (List.length_mapIdx ..)]
+  exact idxKnown_mapIdx_selfNopI _ h
 
 /-! ## 4. Expansions by position -/
 
@@ -329,11 +386,13 @@ theorem pcI_mono (C : List LinstrRM) {j j' : Nat} (h : j ≤ j') : pcI e C j ≤
   rw [hs, expI_append, List.length_append]
   omega
 
-/-- **A known constant through an expansion** that keeps the move of the constant and expands
-    each operation that does not write `x` into operations that do not write `x`. -/
+/-- **A known constant through an expansion** that keeps the move of the constant and the
+    self move of `x` and expands each operation that does not write `x` into operations that
+    do not write `x`. -/
 theorem knownAt_expI {C : List LinstrRM} {k : Nat} {x : String} {c : Nat}
     (hmov : ∀ j, e j (.Lopn [.reg x] "MOV:64" [.imm c], .reg none)
       = [(.Lopn [.reg x] "MOV:64" [.imm c], .reg none)])
+    (hself : ∀ j, e j (selfMovI x) = [selfMovI x])
     (hop : ∀ j i, C[j]? = some i → (∃ ds o ss, i.1 = .Lopn ds o ss) → x ∉ dstNames i.1 →
       ∀ i' ∈ e j i, (∃ ds o ss, i'.1 = .Lopn ds o ss) ∧ x ∉ dstNames i'.1)
     (h : KnownAt C k x c) : KnownAt (expI e C 0) (pcI e C k) x c := by
@@ -366,16 +425,22 @@ theorem knownAt_expI {C : List LinstrRM} {k : Nat} {x : String} {c : Nat}
       by_contra hc
       have := pcI_mono e C (show k ≤ j' by omega)
       omega
-    obtain ⟨hl, hn⟩ := hmid j' hjj hjk' i hj'
-    exact hop j' i hj' hl hn i' (List.mem_of_getElem? he)
+    obtain ⟨hl, hn | rfl⟩ := hmid j' hjj hjk' i hj'
+    · obtain ⟨hl', hn'⟩ := hop j' i hj' hl hn i' (List.mem_of_getElem? he)
+      exact ⟨hl', .inl hn'⟩
+    · have hm := List.mem_of_getElem? he
+      rw [hself, List.mem_singleton] at hm
+      subst hm
+      exact ⟨⟨_, _, _, rfl⟩, .inr rfl⟩
 
-/-- **Known indices through an expansion** that keeps each access and each move of a
-    constant, and that expands each operation not writing an access index into operations
-    not writing it. -/
+/-- **Known indices through an expansion** that keeps each access, each move of a constant
+    and each self move, and that expands each operation not writing an access index into
+    operations not writing it. -/
 theorem idxKnown_expI {C : List LinstrRM}
     (hacc : ∀ j i i' x m, C[j]? = some i → i' ∈ e j i → AccIdx i' x m → e j i = [i])
     (hmov : ∀ j x c, e j (.Lopn [.reg x] "MOV:64" [.imm c], .reg none)
       = [(.Lopn [.reg x] "MOV:64" [.imm c], .reg none)])
+    (hself : ∀ j x, e j (selfMovI x) = [selfMovI x])
     (hop : ∀ x, (∃ (k : Nat) (i : LinstrRM) (m : Nat), C[k]? = some i ∧ AccIdx i x m) →
       ∀ (j : Nat) (i : LinstrRM), C[j]? = some i →
       (∃ ds o ss, i.1 = .Lopn ds o ss) → x ∉ dstNames i.1 →
@@ -388,7 +453,8 @@ theorem idxKnown_expI {C : List LinstrRM}
   rw [hE] at he
   obtain ⟨rfl, rfl⟩ : r = 0 ∧ i = ins := by cases r <;> simp_all
   obtain ⟨c, hc, hK⟩ := h j i x m hj hac
-  exact ⟨c, hc, knownAt_expI e (fun j' => hmov j' x c) (hop x ⟨j, i, m, hj, hac⟩) hK⟩
+  exact ⟨c, hc, knownAt_expI e (fun j' => hmov j' x c) (fun j' => hself j' x)
+    (hop x ⟨j, i, m, hj, hac⟩) hK⟩
 
 end Exp
 
@@ -401,6 +467,12 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi (expI fuseE fuseS
 theorem fuseE_movImm (L : List (Option String)) (j : Nat) (x : String) (c : Nat) :
     fuseE L j (.Lopn [.reg x] "MOV:64" [.imm c], .reg none)
       = [(.Lopn [.reg x] "MOV:64" [.imm c], .reg none)] := by
+  unfold fuseE fuseSiteExp
+  split <;> rfl
+
+/-- The fusion keeps a self move. -/
+theorem fuseE_selfMovI (L : List (Option String)) (j : Nat) (x : String) :
+    fuseE L j (selfMovI x) = [selfMovI x] := by
   unfold fuseE fuseSiteExp
   split <;> rfl
 
@@ -459,7 +531,7 @@ theorem idxKnown_fuseMulHiRM {C : List LinstrRM} (hw : ∀ i ∈ C, wireOK i.1 =
     (h : IdxKnown C) : IdxKnown (fuseMulHiRM C) := by
   rw [fuseMulHiRM_eq C hw]
   refine idxKnown_expI _ (fun j i i' x m _ _ ha => ?_) (fun j x c => fuseE_movImm _ j x c)
-    ?_ h
+    (fun j x => fuseE_selfMovI _ j x) ?_ h
   · exact fuseE_of_mem_acc _ j (by assumption) ha
   · rintro x ⟨k, i0, m, hk, ha⟩ j i _ hl hn i' hi'
     obtain ⟨h1, h2⟩ := fuseE_dst (fuseLo C) j hl i' hi'
@@ -515,9 +587,9 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemFuseMulHi (fuseLo wireOK fu
 
 /-- **Known indices of the code behind the prefix of the parts**, from known indices of the
     exported code: the coalescing renaming and the renamings by the pairs and the merge send
-    no other name to an access index, the code has no pair of an array self-move, and at a
-    site of the multiplication fusion the fusion leaves the names alone and no access index
-    is `R15`, `RDX` or a low destination of a site. -/
+    no other name to an access index, and with sites of the multiplication fusion the code has
+    no pair of an array self-move, the fusion leaves the names alone and no access index is
+    `R15`, `RDX` or a low destination of a site. -/
 theorem idxKnown_regionCoParts {σ : AbiLayout} {nm : String → String} {body : Lcmd}
     {t : JasminTy} {code : List LinstrRM} {res : List LOperand} {cert : List (String × String)}
     (d : CoParts) (hd : d = regionCoParts σ nm body t code res cert) (hK : IdxKnown code)
@@ -530,8 +602,8 @@ theorem idxKnown_regionCoParts {σ : AbiLayout} {nm : String → String} {body :
       ∀ y, renOf d.ps y = renOf d.ps x → y = x)
     (hτ : ∀ (k : Nat) (i : LinstrRM) (x : String) (m : Nat), d.ren[k]? = some i →
       AccIdx i x m → ∀ y, renOf d.tau y = renOf d.tau x → y = x)
-    (hNP : ∀ k, selfPairB d.pre.length (liveAt (tabAt d.liveM) (d.pre ++ d.merged).length)
-      (d.pre ++ d.merged) k = false)
+    (hNP : d.sites = true → ∀ k, selfPairB d.pre.length
+      (liveAt (tabAt d.liveM) (d.pre ++ d.merged).length) (d.pre ++ d.merged) k = false)
     (hF : d.sites = true → (∀ i ∈ d.merged, wireOK i.1 = true) ∧
       ∀ (k : Nat) (i : LinstrRM) (x : String) (m : Nat), d.merged[k]? = some i →
         AccIdx i x m → x ≠ "R15" ∧ x ≠ "RDX" ∧
@@ -548,12 +620,10 @@ theorem idxKnown_regionCoParts {σ : AbiLayout} {nm : String → String} {body :
     have := idxKnown_map_renRM _ hτ h3
     subst hd
     exact this
-  have hnop : d.nop.drop d.pre.length = d.merged := by
-    have hn : d.nop = selfNop d.pre.length (liveAt (tabAt d.liveM) (d.pre ++ d.merged).length)
-        (d.pre ++ d.merged) := by
-      subst hd
-      rfl
-    rw [hn, selfNop_eq_of_noPair hNP, List.drop_left]
+  have hn : d.nop = selfNop d.pre.length (liveAt (tabAt d.liveM) (d.pre ++ d.merged).length)
+      (d.pre ++ d.merged) := by
+    subst hd
+    rfl
   have hfu : d.fused = if d.sites then d.pre ++ fuseMulHiRM (d.nop.drop d.pre.length)
       else d.nop := by
     subst hd
@@ -561,11 +631,11 @@ theorem idxKnown_regionCoParts {σ : AbiLayout} {nm : String → String} {body :
   rw [hfu]
   split
   · rename_i hs
-    rw [List.drop_left, hnop]
+    rw [List.drop_left, hn, selfNop_eq_of_noPair (hNP hs), List.drop_left]
     obtain ⟨hw, hx⟩ := hF hs
     exact idxKnown_fuseMulHiRM hw hx h4
-  · rw [hnop]
-    exact h4
+  · rw [hn]
+    exact idxKnown_selfNop_drop _ h4
 
 /-! ## 5. The fold positions -/
 
@@ -795,12 +865,13 @@ theorem fieldDom_foldPos_of_back (h : fieldDomB e σ = true) (hB : FieldBody e �
       ∀ y, canonMemrefName (regionAliasTab σ exportReg t none r.res
         (regionCoCode σ exportReg t r.code r.res
           (regionCopy σ exportReg t none r.code r.res))) y = x → y = x)
-    (hNP : ∀ k, selfPairB (regionCoParts σ exportReg b t r.code r.res cert).pre.length
-      (liveAt (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)
+    (hNP : (regionCoParts σ exportReg b t r.code r.res cert).sites = true →
+      ∀ k, selfPairB (regionCoParts σ exportReg b t r.code r.res cert).pre.length
+        (liveAt (tabAt (regionCoParts σ exportReg b t r.code r.res cert).liveM)
+          ((regionCoParts σ exportReg b t r.code r.res cert).pre
+            ++ (regionCoParts σ exportReg b t r.code r.res cert).merged).length)
         ((regionCoParts σ exportReg b t r.code r.res cert).pre
-          ++ (regionCoParts σ exportReg b t r.code r.res cert).merged).length)
-      ((regionCoParts σ exportReg b t r.code r.res cert).pre
-        ++ (regionCoParts σ exportReg b t r.code r.res cert).merged) k = false)
+          ++ (regionCoParts σ exportReg b t r.code r.res cert).merged) k = false)
     (hw : (regionCoParts σ exportReg b t r.code r.res cert).sites = true →
       ∀ i ∈ (regionCoParts σ exportReg b t r.code r.res cert).merged, wireOK i.1 = true)
     (hlo : (regionCoParts σ exportReg b t r.code r.res cert).sites = true →
