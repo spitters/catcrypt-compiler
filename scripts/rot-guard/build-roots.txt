@@ -452,7 +452,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeStatements
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerStateful
+CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
 CatCrypt.Crypto.SecureCompilation.Haxc.RCPerStateFuel
 CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedState
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
