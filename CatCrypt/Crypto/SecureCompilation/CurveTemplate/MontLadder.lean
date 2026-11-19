@@ -43,9 +43,16 @@ word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
   without a computed index: the four scalar words loaded at literal indices, word
   `(254 - i) >> 6` selected by the word masks of its two bits (`sel4W`), then shifted. A shift
   by a constant (`shrConstK`) is the immediate shift `shrImm`, and no instruction by `0`.
-* `ladderLoopBody`: a kernel over the packed input `[k; u]` that runs `bitStepAt` (the
-  scalar bit `scalarBitAt` by `scalarBitK`, then `stepBodyAt`) in a counted loop of
-  `255` iterations on the carried state array.
+* `ladderThen`, `ladderLoopBody`: over the packed input `[k; u]`, `bitStepAt` (the scalar
+  bit `scalarBitAt` by `scalarBitK`, then `stepBodyAt`) in a counted loop of `255`
+  iterations on the carried state array, with a continuation or as a kernel.
+* `Slot`, `FOp`, `ChainOp`, `chainF`, `invChain`: chains of squarings and products between
+  the slots of the state; `invChain` is the ref10 / fiat-crypto chain of `z2 ^ (2^255 - 21)`
+  (`254` squarings, `11` products).
+* `chainThen`: a chain on the state array, each field operation a straight-line block of
+  `lo` and each run of squarings a counted loop of `sqBodyAt` with a literal trip count.
+* `x25519Body`: one kernel over `[k; u]`, a state array and an output array of `n` words:
+  the ladder loop, the inversion chain of `z2`, and `x2 · t` into the output array.
 
 ## Main results
 
@@ -59,6 +66,12 @@ word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
 * `ladderLoopBody_value`: at a packed input whose words from index `4` are the limbs of `u`,
   the loop kernel returns the encoding of the fold of `ladderStepF` over the `255` bits
   `scalarBitAt K i` from `initF u`.
+* `chainF_invChain`: `invChain` keeps `x2` and computes `z2 ^ (2^255 - 21)` into `t`;
+  `pow_invExp_eq_inv`: at the prime `p = 2^255 - 19` this power is `z2⁻¹`.
+* `chainThen_denote`: a chain on an array holding `encW s` gives `encW (chainF ops s)`.
+* `x25519Body_value`, `x25519Body_value_inv`: the X25519 kernel returns the `n` limbs of
+  `x2 · z2 ^ (2^255 - 21)` of the ladder state `ladderOut a24 K u`, which is `x2 · z2⁻¹` at
+  the prime `2^255 - 19`.
 * `scalarBitAt_eq_testBit`: for `i ≤ 254`, `scalarBitAt K i` is bit `(254 - i) % 64` of word
   `(254 - i) / 64` of `K`.
 -/
@@ -1426,19 +1439,30 @@ def bitStepAt (a24 : ZMod p) {M : Nat} {Δ : Ctxt jasminDialect} (pk : Var Δ (a
     (i : Var Δ w64) (w : Var Δ (arrTy (6 * n))) : MC Δ [arrTy (6 * n)] :=
   scalarBitK pk i fun r bw => stepBodyAt lo a24 (r w) bw (r w)
 
-/-- **The ladder loop kernel** over the packed input `[k; u]` (`4` scalar words, then the `n`
-    words of the base coordinate) and an output array: the initial state from `u`, then a
-    counted loop of `255` iterations whose body is `bitStepAt` on the carried state array. -/
+/-- **The ladder loop with a continuation** at the packed input `pk` (`4` scalar words, then
+    the `n` words of the base coordinate) and the array `o`: the initial state from `u` into
+    `o`, then a counted loop of `255` iterations whose body is `bitStepAt` on the carried state
+    array; the continuation receives the renaming of the context and the final state array. -/
+def ladderThen (a24 : ZMod p) {us : List JasminTy} {Γ : Ctxt jasminDialect}
+    (pk : Var Γ (arrTy (4 + n))) (o : Var Γ (arrTy (6 * n)))
+    (K : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ (arrTy (6 * n)) →
+      NFProg jasminDialect Δ us) : NFProg jasminDialect Γ us :=
+  nfThen (initBodyAt lo (p := p) 4 pk o) fun r vs =>
+    .var (wConst 255) <|
+    .forLoop .here (.cons vs.head.there .nil)
+      (NFProg.ofCom (bitStepAt lo a24 (.there (.there (.there (r pk)))) (.there .here) .here
+        |>.toComHead))
+      (K (fun v => (r v).there.there) .here)
+
+/-- **The ladder loop kernel** over the packed input `[k; u]` and an output array: `ladderThen`
+    returning the final state array. -/
 def ladderLoopBody (a24 : ZMod p) :
     NFProg jasminDialect [arrTy (4 + n), arrTy (6 * n)] [arrTy (6 * n)] :=
-  nfThen (initBodyAt lo (p := p) 4 .here (.there .here)) fun r vs =>
-    match vs with
-    | .cons w .nil =>
-      .var (wConst 255) <|
-      .forLoop .here (.cons w.there .nil)
-        (NFProg.ofCom (bitStepAt lo a24 (.there (.there (.there (r .here)))) (.there .here) .here
-          |>.toComHead))
-        (.ret (.cons .here .nil))
+  ladderThen lo a24 .here (.there .here) fun _ w => .ret (.cons w .nil)
+
+/-- The ladder state after the `255` steps at the bits `scalarBitAt K i` from `initF u`. -/
+def ladderOut (a24 : ZMod p) {M : Nat} (K : Fin M → BitVec 64) (u : ZMod p) : LadderState p :=
+  (List.range 255).foldl (fun s i => ladderStepF a24 (scalarBitAt K i) s) (initF u)
 
 /-- A fold in `Option` of a step that maps the encoding of a state to the encoding of `F` at
     that state is `some` of the encoding of the pure fold of `F`. -/
@@ -1480,17 +1504,21 @@ theorem bitStepAt_value (a24 : ZMod p) {M : Nat} {Δ : Ctxt jasminDialect}
     ((pr w).trans hw) hbw
 
 include hsq hA hS hM hQ hC hn in
-/-- **Value of the ladder loop kernel**: at a packed input `K` whose words from index `4` are
-    the limbs of `u`, the loop returns the encoding of the `255`-step fold of `ladderStepF` at
-    the bits `scalarBitAt K i` from `initF u`. -/
-theorem ladderLoopBody_value (a24 : ZMod p) (fuel : Nat) (K : Fin (4 + n) → BitVec 64)
-    (O : Fin (6 * n) → BitVec 64) (u : ZMod p) (hu : arrLimbs K n 4 = encF lo enc p u) :
-    (ladderLoopBody lo a24).denote fuel (.cons K (.cons O .nil))
-      = some (.cons (encW (encF lo enc p) ((List.range 255).foldl
-          (fun s i => ladderStepF a24 (scalarBitAt K i) s) (initF u))) .nil) := by
+/-- At a packed input `K` whose words from index `4` are the limbs of `u`, `ladderThen`
+    denotes its continuation at an array holding `encW (ladderOut a24 K u)`. -/
+theorem ladderThen_denote (a24 : ZMod p) (fuel : Nat) {us : List JasminTy}
+    {Γ : Ctxt jasminDialect} (pk : Var Γ (arrTy (4 + n))) (o : Var Γ (arrTy (6 * n)))
+    (Kc : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ (arrTy (6 * n)) →
+      NFProg jasminDialect Δ us)
+    (W : Valuation Γ) (R : Option (ListDenote us)) (K : Fin (4 + n) → BitVec 64) (u : ZMod p)
+    (hpk : pk.lookup W = K) (hu : arrLimbs K n 4 = encF lo enc p u)
+    (hK : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (w : Var Δ (arrTy (6 * n)))
+      (W' : Valuation Δ), Pres r W W' →
+      w.lookup W' = encW (encF lo enc p) (ladderOut a24 K u) → (Kc r w).denote fuel W' = R) :
+    (ladderThen lo a24 pk o Kc).denote fuel W = R := by
   refine nfThen_denote fuel _ _ _ _ fun r vs W' hr hv => ?_
-  rw [initBodyAt_value lo enc Good hsq hC hn 4 (by omega) Var.here (.there .here)
-    (.cons K (.cons O .nil)) u hu] at hv
+  rw [initBodyAt_value lo enc Good hsq hC hn 4 (by omega) pk o W u (by rw [hpk]; exact hu)]
+    at hv
   cases vs with
   | cons w rest =>
     cases rest
@@ -1506,18 +1534,382 @@ theorem ladderLoopBody_value (a24 : ZMod p) (fuel : Nat) (K : Fin (4 + n) → Bi
         = (HVector.cons (encW (encF lo enc p) (initF u)) .nil : ListDenote [arrTy (6 * n)]) :=
       congrArg (fun a => (HVector.cons a .nil : ListDenote [arrTy (6 * n)])) hw
     rw [hcount, hinit, foldlM_encW (encF lo enc p) _
-      (fun s i => ladderStepF a24 (scalarBitAt K i) s) ?hf]
-    · rfl
+      (fun s i => ladderStepF a24 (scalarBitAt K i) s) ?hf, Option.bind_some]
+    · exact hK _ _ _ (fun v => hr v) rfl
     intro s i
     have hb := bitStepAt_value lo enc Good hsq hA hS hM hQ hC hn a24
-      ((r Var.here).there.there.there) (Var.there Var.here) Var.here
+      ((r pk).there.there.there) (Var.there Var.here) Var.here
       (hvAppend (HVector.cons (encW (encF lo enc p) s) .nil)
         (HVector.cons (HasWord64.ofNat (d := jasminDialect) i)
           (W'.extend ((wConst 255).denote W' : BitVec 64))))
-      K i s (by exact hr Var.here) rfl rfl
+      K i s (by exact (hr pk).trans hpk) rfl rfl
     rw [NFProg.denote_ofCom, MultiReturnCom.toComHead_denote, hb]
     rfl
 
+include hsq hA hS hM hQ hC hn in
+/-- **Value of the ladder loop kernel**: at a packed input `K` whose words from index `4` are
+    the limbs of `u`, the loop returns the encoding of the `255`-step fold of `ladderStepF` at
+    the bits `scalarBitAt K i` from `initF u`. -/
+theorem ladderLoopBody_value (a24 : ZMod p) (fuel : Nat) (K : Fin (4 + n) → BitVec 64)
+    (O : Fin (6 * n) → BitVec 64) (u : ZMod p) (hu : arrLimbs K n 4 = encF lo enc p u) :
+    (ladderLoopBody lo a24).denote fuel (.cons K (.cons O .nil))
+      = some (.cons (encW (encF lo enc p) ((List.range 255).foldl
+          (fun s i => ladderStepF a24 (scalarBitAt K i) s) (initF u))) .nil) :=
+  ladderThen_denote lo enc Good hsq hA hS hM hQ hC hn a24 fuel .here (.there .here) _ _ _ K u
+    rfl hu fun _ w W' _ hw => by
+      rw [NFProg.denote_ret]
+      exact congrArg (fun a => some (HVector.cons a .nil : ListDenote [arrTy (6 * n)])) hw
+
 end Loop
+
+/-! ## 9. The inversion chain over `ZMod p` -/
+
+/-- A slot of the ladder state. -/
+inductive Slot
+  /-- The slot of `u`. -/
+  | u
+  /-- The slot of `x2`. -/
+  | x2
+  /-- The slot of `z2`. -/
+  | z2
+  /-- The slot of `x3`. -/
+  | x3
+  /-- The slot of `z3`. -/
+  | z3
+  /-- The slot of `t`. -/
+  | t
+  deriving DecidableEq
+
+/-- The element of a ladder state at a slot. -/
+def LadderState.get (s : LadderState p) : Slot → ZMod p
+  | .u => s.u
+  | .x2 => s.x2
+  | .z2 => s.z2
+  | .x3 => s.x3
+  | .z3 => s.z3
+  | .t => s.t
+
+/-- The ladder state with the element at a slot replaced by `v`. -/
+def LadderState.set (s : LadderState p) : Slot → ZMod p → LadderState p
+  | .u, v => { s with u := v }
+  | .x2, v => { s with x2 := v }
+  | .z2, v => { s with z2 := v }
+  | .x3, v => { s with x3 := v }
+  | .z3, v => { s with z3 := v }
+  | .t, v => { s with t := v }
+
+/-- A field operation between slots: a squaring or a product into a destination slot. -/
+inductive FOp
+  /-- `d ← a²`. -/
+  | sq (a d : Slot)
+  /-- `d ← a · b`. -/
+  | mul (a b d : Slot)
+
+/-- An operation of an inversion chain: a field operation between slots, or `k` squarings of
+    the accumulator `t` in a counted loop. -/
+inductive ChainOp
+  /-- A field operation between slots. -/
+  | op (o : FOp)
+  /-- `t ← t ^ (2 ^ k)` by `k` squarings. -/
+  | sqn (k : Nat)
+
+/-- The field operation over `ZMod p`. -/
+def FOp.apply (o : FOp) (s : LadderState p) : LadderState p :=
+  match o with
+  | .sq a d => s.set d (s.get a * s.get a)
+  | .mul a b d => s.set d (s.get a * s.get b)
+
+/-- The chain operation over `ZMod p`. -/
+def ChainOp.apply : ChainOp → LadderState p → LadderState p
+  | .op o, s => o.apply s
+  | .sqn k, s => { s with t := s.t ^ 2 ^ k }
+
+/-- A chain of operations over `ZMod p`, applied from the left. -/
+def chainF (ops : List ChainOp) (s : LadderState p) : LadderState p :=
+  ops.foldl (fun s o => o.apply s) s
+
+/-- **The inversion chain of `2^255 - 19`** (ref10 `fe_invert`, fiat-crypto): `z2 ^ (2^255 - 21)`
+    into `t`, by runs of `1, 2, 1, 5, 10, 20, 10, 50, 100, 50, 5` squarings and `11` products,
+    with `u`, `x3`, `z3`, `t` as temporaries and `x2`, `z2` kept. -/
+def invChain : List ChainOp :=
+  [.op (.sq .z2 .u), .op (.sq .u .t), .sqn 1, .op (.mul .t .z2 .x3), .op (.mul .x3 .u .z3),
+    .op (.sq .z3 .t), .op (.mul .t .x3 .u),
+    .op (.sq .u .t), .sqn 4, .op (.mul .t .u .x3),
+    .op (.sq .x3 .t), .sqn 9, .op (.mul .t .x3 .u),
+    .op (.sq .u .t), .sqn 19, .op (.mul .t .u .t),
+    .sqn 10, .op (.mul .t .x3 .u),
+    .op (.sq .u .t), .sqn 49, .op (.mul .t .u .x3),
+    .op (.sq .x3 .t), .sqn 99, .op (.mul .t .x3 .t),
+    .sqn 50, .op (.mul .t .u .t),
+    .sqn 5, .op (.mul .t .z3 .t)]
+
+/-- `k` squarings of the accumulator raise it to the power `2 ^ k`. -/
+theorem foldl_sqF (k : Nat) (s : LadderState p) :
+    (List.range k).foldl (fun s _ => sqF s) s = { s with t := s.t ^ 2 ^ k } := by
+  induction k with
+  | zero => simp
+  | succ k ih =>
+    rw [List.range_succ, List.foldl_append, ih]
+    simp only [List.foldl_cons, List.foldl_nil, sqF, pow_succ 2 k, pow_mul, sq]
+
+/-- **The inversion chain computes `z2 ^ (2^255 - 21)`** into `t` and keeps `x2`. -/
+theorem chainF_invChain (s : LadderState p) :
+    (chainF invChain s).x2 = s.x2 ∧ (chainF invChain s).t = s.z2 ^ (2 ^ 255 - 21) := by
+  have he : (2 : ℕ) ^ 255 - 21 =
+      57896044618658097711785492504343953926634992332820282019728792003956564819947 := by
+    norm_num
+  simp only [chainF, invChain, List.foldl_cons, List.foldl_nil, ChainOp.apply, FOp.apply,
+    LadderState.get, LadderState.set, he]
+  exact ⟨trivial, by ring⟩
+
+/-- At a prime `p = 2^255 - 19`, `z ^ (2^255 - 21)` is `z⁻¹` (and `0` at `z = 0`). -/
+theorem pow_invExp_eq_inv (hp : p = 2 ^ 255 - 19) [Fact p.Prime] (z : ZMod p) :
+    z ^ (2 ^ 255 - 21) = z⁻¹ := by
+  have he : (2 : ℕ) ^ 255 - 21 = p - 2 := by subst hp; norm_num
+  rw [he]
+  rcases eq_or_ne z 0 with rfl | hz
+  · rw [inv_zero, zero_pow (by subst hp; norm_num)]
+  · apply eq_inv_of_mul_eq_one_left
+    rw [← pow_succ, show p - 2 + 1 = p - 1 by subst hp; norm_num]
+    exact ZMod.pow_card_sub_one_eq_one hz
+
+/-! ## 10. The inversion chain and the X25519 kernel over a record -/
+
+namespace LimbSt
+
+variable {n : Nat}
+
+/-- The limb vector of a slot. -/
+def get {Δ : Ctxt jasminDialect} (h : LimbSt n Δ) : Slot → Ctxt.Hom (Rn n) Δ
+  | .u => h.u
+  | .x2 => h.x2
+  | .z2 => h.z2
+  | .x3 => h.x3
+  | .z3 => h.z3
+  | .t => h.t
+
+/-- The limb state with the limb vector of a slot replaced by `x`. -/
+def set {Δ : Ctxt jasminDialect} (h : LimbSt n Δ) : Slot → Ctxt.Hom (Rn n) Δ → LimbSt n Δ
+  | .u, x => { h with u := x }
+  | .x2, x => { h with x2 := x }
+  | .z2, x => { h with z2 := x }
+  | .x3, x => { h with x3 := x }
+  | .z3, x => { h with z3 := x }
+  | .t, x => { h with t := x }
+
+/-- A limb state of `s` holds the limbs of `s.get i` at the slot `i`. -/
+theorem Holds.get {Δ : Ctxt jasminDialect} {E : ZMod p → ListDenote (Rn n)} {h : LimbSt n Δ}
+    {W : Valuation Δ} {s : LadderState p} (hh : h.Holds E W s) (i : Slot) :
+    pullV (h.get i) W = E (s.get i) := by
+  obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hh
+  cases i <;> assumption
+
+/-- Replacing the limbs of a slot by limbs of `v` gives a limb state of `s.set i v`. -/
+theorem Holds.set {Δ : Ctxt jasminDialect} {E : ZMod p → ListDenote (Rn n)} {h : LimbSt n Δ}
+    {W : Valuation Δ} {s : LadderState p} (hh : h.Holds E W s) (i : Slot)
+    {x : Ctxt.Hom (Rn n) Δ} {v : ZMod p} (hx : pullV x W = E v) :
+    (h.set i x).Holds E W (s.set i v) := by
+  obtain ⟨h1, h2, h3, h4, h5, h6⟩ := hh
+  cases i
+  exacts [⟨hx, h2, h3, h4, h5, h6⟩, ⟨h1, hx, h3, h4, h5, h6⟩, ⟨h1, h2, hx, h4, h5, h6⟩,
+    ⟨h1, h2, h3, hx, h5, h6⟩, ⟨h1, h2, h3, h4, hx, h6⟩, ⟨h1, h2, h3, h4, h5, hx⟩]
+
+end LimbSt
+
+section Chain
+
+variable {n : Nat} (lo : LimbBlocks n)
+
+/-- A field operation between slots on a limb state: the lowering of `sqProg` or `finProg` by
+    the blocks of `lo` at the source slots, stored as the limbs of the destination slot. -/
+def fopSt (o : FOp) {bs : List JasminTy} {Δ : Ctxt jasminDialect} (h : LimbSt n Δ)
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → LimbSt n Δ' → MC Δ' bs) : MC Δ bs :=
+  match o with
+  | .sq a d => (loweringOf lo).lowerRM (Γ := fctx p 1) (ts := fctx p 1)
+      (appendHom (h.get a) nilHom) (sqProg p) fun r vs =>
+        k r ((h.map r).set d (hdHom (hvToHom vs)))
+  | .mul a b d => (loweringOf lo).lowerRM (Γ := fctx p 2) (ts := fctx p 1)
+      (appendHom (h.get a) (appendHom (h.get b) nilHom)) (finProg p) fun r vs =>
+        k r ((h.map r).set d (hdHom (hvToHom vs)))
+
+/-- A field operation between slots at the variables `w`, `o`: the loads of the state array,
+    `fopSt`, the stores into `o`. -/
+def fopBodyAt (o : FOp) {Δ : Ctxt jasminDialect} (w o' : Var Δ (arrTy (6 * n))) :
+    MC Δ [arrTy (6 * n)] :=
+  loadSt w fun r₀ h₀ => fopSt lo (p := p) o h₀ fun r₁ h₁ => storeSt (r₁ (r₀ o')) h₁
+
+/-- **A chain on the state array `w` with a continuation**: a field operation is `fopBodyAt`
+    in place; `sqn k` is a counted loop of `k` trips of `sqBodyAt` on the carried state array,
+    with the trip count a literal. The continuation receives the renaming of the context and
+    the final state array. -/
+def chainThen {us : List JasminTy} : (ops : List ChainOp) → {Γ : Ctxt jasminDialect} →
+    Var Γ (arrTy (6 * n)) →
+    (∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ (arrTy (6 * n)) →
+      NFProg jasminDialect Δ us) → NFProg jasminDialect Γ us
+  | [], _, w, K => K (fun v => v) w
+  | .op o :: ops, _, w, K =>
+    nfThen (fopBodyAt lo (p := p) o w w) fun r vs =>
+      chainThen ops vs.head fun r' w' => K (fun v => r' (r v)) w'
+  | .sqn k :: ops, _, w, K =>
+    .var (wConst k) <|
+    .forLoop .here (.cons w.there .nil)
+      (NFProg.ofCom (sqBodyAt lo (p := p) .here .here |>.toComHead))
+      (chainThen ops .here fun r' w' => K (fun v => r' v.there.there) w')
+
+/-- The context of the X25519 kernel: the packed input `[k; u]`, the state array and the output
+    array of `n` words. -/
+abbrev x25519Ctx (n : Nat) : Ctxt jasminDialect := [arrTy (4 + n), arrTy (6 * n), arrTy n]
+
+/-- **The X25519 kernel body** over the record `lo` at the constant `a24`: the ladder loop
+    `ladderThen` on the state array, the inversion chain `invChain` of `z2` into `t`, and the
+    output `x2 · t` into the output array. -/
+def x25519Body (a24 : ZMod p) : NFProg jasminDialect (x25519Ctx n) [arrTy n] :=
+  ladderThen lo a24 .here (.there .here) fun r w =>
+  chainThen lo (p := p) invChain w fun r' w' =>
+  nfThen (finBodyAt lo (p := p) w' (r' (r (.there (.there .here))))) fun _ vs => .ret vs
+
+variable (enc : (loweringOf lo).Enc)
+  (Good : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}, Expr fieldDialect Γ t → Prop)
+  (hsq : (loweringOf lo).BlockSquare enc Good)
+  (hA : ∀ {Γ : Ctxt fieldDialect} (a b : Var Γ (FieldTy.fp p)), Good (eAdd a b))
+  (hS : ∀ {Γ : Ctxt fieldDialect} (a b : Var Γ (FieldTy.fp p)), Good (eSub a b))
+  (hM : ∀ {Γ : Ctxt fieldDialect} (a b : Var Γ (FieldTy.fp p)), Good (eMul a b))
+  (hQ : ∀ {Γ : Ctxt fieldDialect} (a : Var Γ (FieldTy.fp p)), Good (eSq a))
+  (hC : ∀ {Γ : Ctxt fieldDialect} (c : ZMod p),
+    Good (EllipticCurveDialect.JacLower.eConst (Γ := Γ) c))
+  (hn : 6 * n < 2 ^ 64)
+
+include hsq hM hQ in
+/-- Under the block square, `fopSt o` maps a limb state of `s` to one of `o.apply s`. -/
+theorem fopSt_denote (o : FOp) {bs : List JasminTy} {Δ : Ctxt jasminDialect} (h : LimbSt n Δ)
+    (k : ∀ {Δ' : Ctxt jasminDialect}, Ctxt.Hom Δ Δ' → LimbSt n Δ' → MC Δ' bs)
+    (W : Valuation Δ) (G : ListDenote bs) (s : LadderState p)
+    (hh : h.Holds (encF lo enc p) W s)
+    (hk : ∀ {Δ' : Ctxt jasminDialect} (r : Ctxt.Hom Δ Δ') (h' : LimbSt n Δ')
+      (W' : Valuation Δ'), Pres r W W' → h'.Holds (encF lo enc p) W' (o.apply s) →
+      (k r h').denote W' = G) :
+    (fopSt lo (p := p) o h k).denote W = G := by
+  cases o with
+  | sq a d =>
+    rw [fopSt]
+    refine (loweringOf lo).lowerRM_denote_on enc Good hsq _ (sqProg p) _ W
+      (.cons (s.get a) .nil) G (sqProg_covered Good hQ) ?_ fun r vs W' hr hvs => ?_
+    · rw [pullV_appendHom, hh.get a]
+      rfl
+    · rw [sqProg_denote] at hvs
+      exact hk r _ W' hr
+        ((hh.map hr).set d (pullV_hdHom _ W' _ _ ((pullV_hvToHom W' vs).trans hvs)))
+  | mul a b d =>
+    rw [fopSt]
+    refine (loweringOf lo).lowerRM_denote_on enc Good hsq _ (finProg p) _ W
+      (.cons (s.get a) (.cons (s.get b) .nil)) G (finProg_covered Good hM) ?_
+      fun r vs W' hr hvs => ?_
+    · rw [pullV_appendHom, pullV_appendHom, hh.get a, hh.get b]
+      rfl
+    · rw [finProg_denote] at hvs
+      exact hk r _ W' hr
+        ((hh.map hr).set d (pullV_hdHom _ W' _ _ ((pullV_hvToHom W' vs).trans hvs)))
+
+include hsq hM hQ hn in
+/-- A field operation at a variable holding `encW s` returns `encW (o.apply s)`. -/
+theorem fopBodyAt_value (o : FOp) {Δ : Ctxt jasminDialect} (w o' : Var Δ (arrTy (6 * n)))
+    (W : Valuation Δ) (s : LadderState p) (hw : w.lookup W = encW (encF lo enc p) s) :
+    (fopBodyAt lo (p := p) o w o').denote W = .cons (encW (encF lo enc p) (o.apply s)) .nil := by
+  refine loadSt_denote _ hn w _ W _ s hw fun r₀ h₀ W₀ p₀ hh₀ => ?_
+  refine fopSt_denote lo enc Good hsq hM hQ o h₀ _ W₀ _ s hh₀ fun r₁ h₁ W₁ p₁ hh₁ => ?_
+  exact storeSt_denote _ hn _ h₁ W₁ _ hh₁
+
+include hsq hM hQ hn in
+/-- **A chain on an array holding `encW s`** denotes its continuation at an array holding
+    `encW (chainF ops s)`, when every loop count of the chain is below `2 ^ 64`. -/
+theorem chainThen_denote (fuel : Nat) {us : List JasminTy} :
+    ∀ (ops : List ChainOp) {Γ : Ctxt jasminDialect} (w : Var Γ (arrTy (6 * n)))
+      (Kc : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ (arrTy (6 * n)) →
+        NFProg jasminDialect Δ us)
+      (W : Valuation Γ) (R : Option (ListDenote us)) (s : LadderState p),
+      (∀ k, ChainOp.sqn k ∈ ops → k < 2 ^ 64) →
+      w.lookup W = encW (encF lo enc p) s →
+      (∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (w' : Var Δ (arrTy (6 * n)))
+        (W' : Valuation Δ), Pres r W W' →
+        w'.lookup W' = encW (encF lo enc p) (chainF ops s) → (Kc r w').denote fuel W' = R) →
+      (chainThen lo (p := p) ops w Kc).denote fuel W = R
+  | [], _, w, _, W, _, _, _, hw, hK => hK (fun v => v) w W (Pres.id W) hw
+  | .op o :: ops, _, w, Kc, W, R, s, hops, hw, hK => by
+    refine nfThen_denote fuel _ _ _ _ fun r vs W' hr hv => ?_
+    rw [fopBodyAt_value lo enc Good hsq hM hQ hn o w w W s hw] at hv
+    cases vs with
+    | cons w' rest =>
+      cases rest
+      injection hv with _ _ hw' _
+      exact chainThen_denote fuel ops w' _ W' R (o.apply s)
+        (fun k hk => hops k (List.mem_cons_of_mem _ hk)) hw'
+        fun r' w'' W'' hr' hw'' => hK _ w'' W'' (Pres.comp hr hr') hw''
+  | .sqn k :: ops, _, w, Kc, W, R, s, hops, hw, hK => by
+    have hk : k < 2 ^ 64 := hops k List.mem_cons_self
+    change (NFProg.var (wConst k) (NFProg.forLoop .here (.cons w.there .nil) _ _)).denote fuel W
+      = R
+    rw [NFProg.denote_var, Expr.denoteM_option_eq_some]
+    simp only [Option.bind_eq_bind, Option.bind_some, NFProg.denote_forLoop]
+    have hcount : HasWord64.toNat (d := jasminDialect)
+        (Var.here.lookup (W.extend ((wConst k).denote W : BitVec 64))) = k := by
+      change (BitVec.ofNat 64 k).toNat = k
+      rw [BitVec.toNat_ofNat]
+      exact Nat.mod_eq_of_lt hk
+    have hinit : Expr.lookupArgs (HVector.cons w.there .nil)
+        (W.extend ((wConst k).denote W : BitVec 64))
+        = (HVector.cons (encW (encF lo enc p) s) .nil : ListDenote [arrTy (6 * n)]) :=
+      congrArg (fun a => (HVector.cons a .nil : ListDenote [arrTy (6 * n)])) hw
+    rw [hcount, hinit, foldlM_encW (encF lo enc p) _ (fun s _ => sqF s) ?hf, foldl_sqF,
+      Option.bind_some]
+    · exact chainThen_denote fuel ops .here _ _ R _
+        (fun k' hk' => hops k' (List.mem_cons_of_mem _ hk')) rfl
+        fun r' w'' W'' hr' hw'' => hK _ w'' W'' (fun v => hr' v.there.there) hw''
+    intro s' i
+    have hb := sqBodyAt_value lo enc Good hsq hQ hn Var.here Var.here
+      (hvAppend (HVector.cons (encW (encF lo enc p) s') .nil)
+        (HVector.cons (HasWord64.ofNat (d := jasminDialect) i)
+          (W.extend ((wConst k).denote W : BitVec 64)))) s' rfl
+    rw [NFProg.denote_ofCom, MultiReturnCom.toComHead_denote, hb]
+    rfl
+
+/-- Every loop count of `invChain` is below `2 ^ 64`. -/
+theorem invChain_counts : ∀ k, ChainOp.sqn k ∈ invChain → k < 2 ^ 64 := by
+  intro k hk
+  simp only [invChain, List.mem_cons, reduceCtorEq, ChainOp.sqn.injEq, false_or,
+    List.not_mem_nil, or_false] at hk
+  omega
+
+include hsq hA hS hM hQ hC hn in
+/-- **Value of the X25519 kernel**: at a packed input `K` whose words from index `4` are the
+    limbs of `u`, any state array and any output array, the kernel returns the `n` limbs of
+    `x2 · z2 ^ (2^255 - 21)` of the ladder state `ladderOut a24 K u`. -/
+theorem x25519Body_value (a24 : ZMod p) (fuel : Nat) (K : Fin (4 + n) → BitVec 64)
+    (O : Fin (6 * n) → BitVec 64) (Out : Fin n → BitVec 64) (u : ZMod p)
+    (hu : arrLimbs K n 4 = encF lo enc p u) :
+    (x25519Body lo a24).denote fuel (.cons K (.cons O (.cons Out .nil)))
+      = some (.cons (encN (encF lo enc p)
+          ((ladderOut a24 K u).x2 * (ladderOut a24 K u).z2 ^ (2 ^ 255 - 21))) .nil) := by
+  refine ladderThen_denote lo enc Good hsq hA hS hM hQ hC hn a24 fuel .here (.there .here) _ _ _
+    K u rfl hu fun r w W' hr hw => ?_
+  refine chainThen_denote lo enc Good hsq hM hQ hn fuel invChain w _ W' _ _ invChain_counts hw
+    fun r' w' W'' hr' hw' => ?_
+  refine nfThen_denote fuel _ _ _ _ fun _ vs W₃ _ hv => ?_
+  rw [finBodyAt_value lo enc Good hsq hM hn w' _ W'' _ hw', finF, (chainF_invChain _).1,
+    (chainF_invChain _).2] at hv
+  rw [NFProg.denote_ret, ← hv, lookupVars_eq_lookupArgs]
+
+include hsq hA hS hM hQ hC hn in
+/-- **Value of the X25519 kernel at `p = 2^255 - 19`**: the kernel returns the `n` limbs of
+    `x2 · z2⁻¹` of the ladder state `ladderOut a24 K u` (`0` at `z2 = 0`, as RFC 7748). -/
+theorem x25519Body_value_inv (hp : p = 2 ^ 255 - 19) [Fact p.Prime] (a24 : ZMod p) (fuel : Nat)
+    (K : Fin (4 + n) → BitVec 64) (O : Fin (6 * n) → BitVec 64) (Out : Fin n → BitVec 64)
+    (u : ZMod p) (hu : arrLimbs K n 4 = encF lo enc p u) :
+    (x25519Body lo a24).denote fuel (.cons K (.cons O (.cons Out .nil)))
+      = some (.cons (encN (encF lo enc p)
+          ((ladderOut a24 K u).x2 * (ladderOut a24 K u).z2⁻¹)) .nil) := by
+  rw [x25519Body_value lo enc Good hsq hA hS hM hQ hC hn a24 fuel K O Out u hu,
+    pow_invExp_eq_inv hp]
+
+end Chain
 
 end CatCrypt.Crypto.SecureCompilation.CurveTemplate.MontLadder
