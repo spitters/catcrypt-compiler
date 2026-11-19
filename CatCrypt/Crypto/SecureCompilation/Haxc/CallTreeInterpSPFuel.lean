@@ -121,6 +121,28 @@ theorem FuelMono.ret_some {T : Nat → CallTree E (Option R)} (hT : FuelMono T) 
     rw [ih] at h
     exact h.eq_of_some
 
+/-- The fuel order is reflexive. -/
+theorem fuelLe_refl : ∀ t : CallTree E (Option R), FuelLe t t
+  | .ret r => .ret r
+  | .vis e k => .vis e fun a => fuelLe_refl (k a)
+
+/-- The fuel order is transitive. -/
+theorem fuelLe_trans {t₁ t₂ t₃ : CallTree E (Option R)} (h₁ : FuelLe t₁ t₂)
+    (h₂ : FuelLe t₂ t₃) : FuelLe t₁ t₃ := by
+  induction h₁ generalizing t₃ with
+  | none _ => exact .none _
+  | ret _ => exact h₂
+  | vis e _ ih =>
+    cases h₂ with
+    | vis _ h₂ => exact .vis e fun a => ih a (h₂ a)
+
+/-- In an increasing family, a tree is below every tree of larger fuel. -/
+theorem fuelMono_le {T : Nat → CallTree E (Option R)} (hT : FuelMono T) {n m : Nat}
+    (hnm : n ≤ m) : FuelLe (T n) (T m) := by
+  induction m, hnm using Nat.le_induction with
+  | base => exact fuelLe_refl _
+  | succ m _ ih => exact fuelLe_trans ih (hT m)
+
 end Fuel
 
 /-! ## Interpretation of a fuel family -/
