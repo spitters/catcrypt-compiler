@@ -39,8 +39,11 @@ word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
 * `cswapLimbs`: the word-mask conditional swap of two limb vectors.
 * `daddProg`, `sqProg`, `sqmProg`, `finProg`, `initProg`: the field programs of the kernels.
 * `initBody`, `stepBody`, `sqBody`, `sqmBody`, `finBody`: the kernel bodies over `lo`.
+* `mselK`, `maskK`, `ldK`, `wordSelK`, `scalarBitK`: the scalar bit of an iteration read
+  without a computed index: the four scalar words loaded at literal indices, word
+  `(254 - i) >> 6` selected by the word masks of its two bits (`sel4W`), then shifted.
 * `ladderLoopBody`: a kernel over the packed input `[k; u]` that runs `bitStepAt` (the
-  scalar bit `scalarBitAt` read at a computed index, then `stepBodyAt`) in a counted loop of
+  scalar bit `scalarBitAt` by `scalarBitK`, then `stepBodyAt`) in a counted loop of
   `255` iterations on the carried state array.
 
 ## Main results
@@ -55,6 +58,8 @@ word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
 * `ladderLoopBody_value`: at a packed input whose words from index `4` are the limbs of `u`,
   the loop kernel returns the encoding of the fold of `ladderStepF` over the `255` bits
   `scalarBitAt K i` from `initF u`.
+* `scalarBitAt_eq_testBit`: for `i ≤ 254`, `scalarBitAt K i` is bit `(254 - i) % 64` of word
+  `(254 - i) / 64` of `K`.
 -/
 
 @[expose] public section
@@ -1100,12 +1105,30 @@ def bitIdxW (i : Nat) : BitVec 64 := BitVec.ofNat 64 254 - BitVec.ofNat 64 i
 def bitWordW {M : Nat} (K : Fin M → BitVec 64) (i : Nat) : BitVec 64 :=
   stackGet K (JasminBinOp.apply .shr (bitIdxW i) (BitVec.ofNat 64 6)).toNat
 
+/-- The word-mask select of `x` and `y` by the mask `m`: `x ^ (m & (x ^ y))`. -/
+def mselW (m x y : BitVec 64) : BitVec 64 := x ^^^ (m &&& (x ^^^ y))
+
+/-- The mask of bit `s` of the word `v`: `0 - ((v >> s) & 1)`. -/
+def bitMaskW (v : BitVec 64) (s : Nat) : BitVec 64 :=
+  BitVec.ofNat 64 0 - (JasminBinOp.apply .shr v (BitVec.ofNat 64 s) &&& BitVec.ofNat 64 1)
+
+/-- The word of index `q` among `w0`, `w1`, `w2`, `w3`, selected by the masks of the two low
+    bits of `q`. -/
+def sel4W (w0 w1 w2 w3 q : BitVec 64) : BitVec 64 :=
+  mselW (bitMaskW q 1) (mselW (bitMaskW q 0) w0 w1) (mselW (bitMaskW q 0) w2 w3)
+
+/-- The scalar word of iteration `i` read without a computed index: the words `0`, `1`, `2`,
+    `3` of `K`, of which word `(254 - i) >> 6` is selected by masks. -/
+def bitSelW {M : Nat} (K : Fin M → BitVec 64) (i : Nat) : BitVec 64 :=
+  sel4W (stackGet K 0) (stackGet K 1) (stackGet K 2) (stackGet K 3)
+    (JasminBinOp.apply .shr (bitIdxW i) (BitVec.ofNat 64 6))
+
 /-- The scalar word of iteration `i` shifted right by `(254 - i) & 63`. -/
 def bitShW {M : Nat} (K : Fin M → BitVec 64) (i : Nat) : BitVec 64 :=
-  JasminBinOp.apply .shr (bitWordW K i) (bitIdxW i &&& BitVec.ofNat 64 63)
+  JasminBinOp.apply .shr (bitSelW K i) (bitIdxW i &&& BitVec.ofNat 64 63)
 
-/-- **The scalar bit of iteration `i`**: bit `(254 - i) & 63` of word `(254 - i) >> 6` of the
-    scalar words `K`. -/
+/-- **The scalar bit of iteration `i`**: bit `(254 - i) & 63` of the word `bitSelW K i`, the
+    mask selection of word `(254 - i) >> 6` among the scalar words `0..3` of `K`. -/
 def scalarBitAt {M : Nat} (K : Fin M → BitVec 64) (i : Nat) : Bool := (bitShW K i).getLsbD 0
 
 /-- The low bit of a word as a word. -/
@@ -1113,25 +1136,275 @@ theorem and_one_eq (x : BitVec 64) :
     x &&& BitVec.ofNat 64 1 = BitVec.ofNat 64 (x.getLsbD 0).toNat := by
   cases hx : x.getLsbD 0 <;> ext i <;> simp <;> grind
 
+/-- The mask of bit `s` of `v` is the swap mask of that bit. -/
+theorem bitMaskW_eq (v : BitVec 64) (s : Nat) :
+    bitMaskW v s = maskW ((JasminBinOp.apply .shr v (BitVec.ofNat 64 s)).getLsbD 0) := by
+  rw [bitMaskW, and_one_eq]
+  rfl
+
+/-- The word-mask select by the swap mask of `b` is `y` at `true` and `x` at `false`. -/
+theorem mselW_maskW (b : Bool) (x y : BitVec 64) :
+    mselW (maskW b) x y = if b then y else x :=
+  cswap_word_fst b x y
+
+/-- At an index below `4`, the mask selection `sel4W` is the word at that index. -/
+theorem sel4W_eq (w0 w1 w2 w3 q : BitVec 64) (hq : q.toNat < 4) :
+    sel4W w0 w1 w2 w3 q = [w0, w1, w2, w3].getD q.toNat 0 := by
+  have hq' : q = BitVec.ofNat 64 q.toNat := by simp
+  generalize q.toNat = a at hq hq'
+  subst hq'
+  interval_cases a <;>
+    simp only [sel4W, bitMaskW_eq, mselW_maskW] <;> rfl
+
+/-- For `i ≤ 254`, the bit index `bitIdxW i` is `254 - i`. -/
+theorem bitIdxW_toNat (i : Nat) (hi : i ≤ 254) : (bitIdxW i).toNat = 254 - i := by
+  simp [bitIdxW, BitVec.toNat_sub]
+  omega
+
+/-- For `i ≤ 254`, the word index `(254 - i) >> 6` is `(254 - i) / 64`. -/
+theorem bitQW_toNat (i : Nat) (hi : i ≤ 254) :
+    (JasminBinOp.apply .shr (bitIdxW i) (BitVec.ofNat 64 6)).toNat = (254 - i) / 64 := by
+  simp [JasminBinOp.apply, shiftMask, bitIdxW_toNat i hi, Nat.shiftRight_eq_div_pow]
+
+/-- For `i ≤ 254`, the mask selection `bitSelW` is the word `(254 - i) >> 6` of `K`. -/
+theorem bitSelW_eq_bitWordW {M : Nat} (K : Fin M → BitVec 64) (i : Nat) (hi : i ≤ 254) :
+    bitSelW K i = bitWordW K i := by
+  have hq := bitQW_toNat i hi
+  rw [bitSelW, bitWordW, sel4W_eq _ _ _ _ _ (by omega), hq]
+  have : (254 - i) / 64 < 4 := by omega
+  generalize (254 - i) / 64 = a at this
+  interval_cases a <;> rfl
+
+/-- For `i ≤ 254`, the scalar bit of iteration `i` is bit `(254 - i) % 64` of word
+    `(254 - i) / 64` of the scalar words `K`. -/
+theorem scalarBitAt_eq_testBit {M : Nat} (K : Fin M → BitVec 64) (i : Nat) (hi : i ≤ 254) :
+    scalarBitAt K i = (stackGet K ((254 - i) / 64)).toNat.testBit ((254 - i) % 64) := by
+  rw [scalarBitAt, bitShW, bitSelW_eq_bitWordW K i hi, bitWordW, bitQW_toNat i hi]
+  simp only [JasminBinOp.apply, shiftMask, ↓reduceIte, BitVec.toNat_and, bitIdxW_toNat i hi,
+    BitVec.toNat_ofNat, Nat.reducePow, Nat.reduceMod, Nat.ofNat_pos, BitVec.getLsbD_eq_getElem,
+    BitVec.getElem_ushiftRight, add_zero, ← BitVec.testBit_toNat]
+  rw [show 254 - i &&& 63 = (254 - i) % 64 from Nat.and_two_pow_sub_one_eq_mod _ 6,
+    Nat.mod_mod]
+
 variable (lo : LimbBlocks n)
 
-/-- **One iteration of the loop** at the packed input `pk`, the loop index `i` and the state
-    `w`: the bit `scalarBitAt` of iteration `i`, read from `pk` at the computed index, and the
-    ladder step `stepBodyAt` at that bit, with `w` as its output array. -/
-def bitStepAt (a24 : ZMod p) {M : Nat} {Δ : Ctxt jasminDialect} (pk : Var Δ (arrTy M))
-    (i : Var Δ w64) (w : Var Δ (arrTy (6 * n))) : MC Δ [arrTy (6 * n)] :=
+section Select
+
+variable {ts : List JasminTy} {Γ : Ctxt jasminDialect}
+
+/-- The word-mask select `x ^ (m & (x ^ y))`; the continuation receives the renaming and the
+    result. -/
+def mselK (m x y : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts) : MC Γ ts :=
+  bindK (eBin .xor x y) fun r₁ d =>
+  bindK (eBin .and (r₁ m) d) fun r₂ e =>
+  bindK (eBin .xor (r₂ (r₁ x)) e) fun r₃ z =>
+  k (fun v => r₃ (r₂ (r₁ v))) z
+
+/-- `mselK m x y k` passes the value `mselW m x y` to its continuation. -/
+theorem mselK_denote (m x y : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (z : Var Δ w64) (W' : Valuation Δ),
+      Pres r W W' → lk z W' = mselW (lk m W) (lk x W) (lk y W) → (k r z).denote W' = G) :
+    (mselK m x y k).denote W = G := by
+  refine bindK_denote _ _ W _ fun r₁ d W₁ p₁ h₁ => ?_
+  refine bindK_denote _ _ W₁ _ fun r₂ e W₂ p₂ h₂ => ?_
+  refine bindK_denote _ _ W₂ _ fun r₃ z W₃ p₃ h₃ => ?_
+  have ee : lk e W₂ = lk m W &&& (lk x W ^^^ lk y W) :=
+    h₂.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b) (p₁ m) h₁)
+  exact hk _ z W₃ (Pres.comp (Pres.comp p₁ p₂) p₃)
+    (h₃.trans (congrArg₂ (fun a b : BitVec 64 => a ^^^ b) ((p₂ (r₁ x)).trans (p₁ x)) ee))
+
+/-- The mask `0 - ((v >> s) & 1)` of bit `s` of `v`; the continuation receives the renaming
+    and the mask. -/
+def maskK (v : Var Γ w64) (s : Nat)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts) : MC Γ ts :=
+  bindK (wConst s) fun r₁ c =>
+  bindK (eBin .shr (r₁ v) c) fun r₂ t =>
+  bindK (wConst 1) fun r₃ one =>
+  bindK (eBin .and (r₃ t) one) fun r₄ b =>
+  bindK (wConst 0) fun r₅ z =>
+  bindK (eBin .sub z (r₅ b)) fun r₆ m =>
+  k (fun x => r₆ (r₅ (r₄ (r₃ (r₂ (r₁ x)))))) m
+
+/-- `maskK v s k` passes the value `bitMaskW v s` to its continuation. -/
+theorem maskK_denote (v : Var Γ w64) (s : Nat)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (z : Var Δ w64) (W' : Valuation Δ),
+      Pres r W W' → lk z W' = bitMaskW (lk v W) s → (k r z).denote W' = G) :
+    (maskK v s k).denote W = G := by
+  refine bindK_denote _ _ W _ fun r₁ c W₁ p₁ h₁ => ?_
+  refine bindK_denote _ _ W₁ _ fun r₂ t W₂ p₂ h₂ => ?_
+  refine bindK_denote _ _ W₂ _ fun r₃ one W₃ p₃ h₃ => ?_
+  refine bindK_denote _ _ W₃ _ fun r₄ b W₄ p₄ h₄ => ?_
+  refine bindK_denote _ _ W₄ _ fun r₅ z W₅ p₅ h₅ => ?_
+  refine bindK_denote _ _ W₅ _ fun r₆ m W₆ p₆ h₆ => ?_
+  have et : lk t W₂ = JasminBinOp.apply .shr (lk v W) (BitVec.ofNat 64 s) :=
+    h₂.trans (congrArg₂ (fun a b : BitVec 64 => JasminBinOp.apply .shr a b) (p₁ v) h₁)
+  have eb : lk b W₄
+      = JasminBinOp.apply .shr (lk v W) (BitVec.ofNat 64 s) &&& BitVec.ofNat 64 1 :=
+    h₄.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b) ((p₃ t).trans et) h₃)
+  exact hk _ m W₆
+    (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp p₁ p₂) p₃) p₄) p₅) p₆)
+    (h₆.trans (congrArg₂ (fun a b : BitVec 64 => a - b) h₅ ((p₅ b).trans eb)))
+
+/-- The load of word `j` of the array `pk` at the literal index `j`; the continuation receives
+    the renaming and the word. -/
+def ldK {M : Nat} (pk : Var Γ (arrTy M)) (j : Nat)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts) : MC Γ ts :=
+  bindK (wConst j) fun r₁ c =>
+  bindK (eLoad (r₁ pk) c) fun r₂ w =>
+  k (fun x => r₂ (r₁ x)) w
+
+/-- `ldK pk j k` passes word `j` of `pk` to its continuation. -/
+theorem ldK_denote {M : Nat} (pk : Var Γ (arrTy M)) (j : Nat)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (z : Var Δ w64) (W' : Valuation Δ),
+      Pres r W W' → lk z W' = stackGet (pk.lookup W) (BitVec.ofNat 64 j).toNat →
+        (k r z).denote W' = G) :
+    (ldK pk j k).denote W = G := by
+  refine bindK_denote _ _ W _ fun r₁ c W₁ p₁ h₁ => ?_
+  refine bindK_denote _ _ W₁ _ fun r₂ w W₂ p₂ h₂ => ?_
+  exact hk _ w W₂ (Pres.comp p₁ p₂)
+    (h₂.trans (congrArg₂ (fun (a : Fin M → BitVec 64) (b : BitVec 64) => stackGet a b.toNat)
+      (p₁ pk) h₁))
+
+/-- The mask selection `sel4W` of word `q` among the words `0..3` of `pk`, read at literal
+    indices; the continuation receives the renaming and the word. -/
+def wordSelK {M : Nat} (pk : Var Γ (arrTy M)) (q : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts) : MC Γ ts :=
+  ldK pk 0 fun r₁ w0 =>
+  ldK (r₁ pk) 1 fun r₂ w1 =>
+  ldK (r₂ (r₁ pk)) 2 fun r₃ w2 =>
+  ldK (r₃ (r₂ (r₁ pk))) 3 fun r₄ w3 =>
+  maskK (r₄ (r₃ (r₂ (r₁ q)))) 0 fun r₅ m0 =>
+  maskK (r₅ (r₄ (r₃ (r₂ (r₁ q))))) 1 fun r₆ m1 =>
+  mselK (r₆ m0) (r₆ (r₅ (r₄ (r₃ (r₂ w0))))) (r₆ (r₅ (r₄ (r₃ w1)))) fun r₇ lo =>
+  mselK (r₇ (r₆ m0)) (r₇ (r₆ (r₅ (r₄ w2)))) (r₇ (r₆ (r₅ w3))) fun r₈ hi =>
+  mselK (r₈ (r₇ m1)) (r₈ lo) hi fun r₉ z =>
+  k (fun x => r₉ (r₈ (r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ x))))))))) z
+
+/-- `wordSelK pk q k` passes `sel4W` of the words `0..3` of `pk` at `q` to its
+    continuation. -/
+theorem wordSelK_denote {M : Nat} (pk : Var Γ (arrTy M)) (q : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (K : Fin M → BitVec 64) (hpk : pk.lookup W = K)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (z : Var Δ w64) (W' : Valuation Δ),
+      Pres r W W' →
+        lk z W' = sel4W (stackGet K 0) (stackGet K 1) (stackGet K 2) (stackGet K 3) (lk q W) →
+        (k r z).denote W' = G) :
+    (wordSelK pk q k).denote W = G := by
+  refine ldK_denote _ _ _ W _ fun r₁ w0 W₁ p₁ h₁ => ?_
+  refine ldK_denote _ _ _ W₁ _ fun r₂ w1 W₂ p₂ h₂ => ?_
+  refine ldK_denote _ _ _ W₂ _ fun r₃ w2 W₃ p₃ h₃ => ?_
+  refine ldK_denote _ _ _ W₃ _ fun r₄ w3 W₄ p₄ h₄ => ?_
+  refine maskK_denote _ _ _ W₄ _ fun r₅ m0 W₅ p₅ h₅ => ?_
+  refine maskK_denote _ _ _ W₅ _ fun r₆ m1 W₆ p₆ h₆ => ?_
+  refine mselK_denote _ _ _ _ W₆ _ fun r₇ lo W₇ p₇ h₇ => ?_
+  refine mselK_denote _ _ _ _ W₇ _ fun r₈ hi W₈ p₈ h₈ => ?_
+  refine mselK_denote _ _ _ _ W₈ _ fun r₉ z W₉ p₉ h₉ => ?_
+  have k1 : (r₁ pk).lookup W₁ = K := (p₁ pk).trans hpk
+  have k2 : (r₂ (r₁ pk)).lookup W₂ = K := (p₂ _).trans k1
+  have k3 : (r₃ (r₂ (r₁ pk))).lookup W₃ = K := (p₃ _).trans k2
+  have e0 : lk (r₆ (r₅ (r₄ (r₃ (r₂ w0))))) W₆ = stackGet K 0 :=
+    (p₆ _).trans ((p₅ _).trans ((p₄ _).trans ((p₃ _).trans ((p₂ w0).trans
+      (h₁.trans (congrArg (fun a => stackGet a (BitVec.ofNat 64 0).toNat) hpk))))))
+  have e1 : lk (r₆ (r₅ (r₄ (r₃ w1)))) W₆ = stackGet K 1 :=
+    (p₆ _).trans ((p₅ _).trans ((p₄ _).trans ((p₃ w1).trans
+      (h₂.trans (congrArg (fun a => stackGet a (BitVec.ofNat 64 1).toNat) k1)))))
+  have e2 : lk (r₇ (r₆ (r₅ (r₄ w2)))) W₇ = stackGet K 2 :=
+    (p₇ _).trans ((p₆ _).trans ((p₅ _).trans ((p₄ w2).trans
+      (h₃.trans (congrArg (fun a => stackGet a (BitVec.ofNat 64 2).toNat) k2)))))
+  have e3 : lk (r₇ (r₆ (r₅ w3))) W₇ = stackGet K 3 :=
+    (p₇ _).trans ((p₆ _).trans ((p₅ w3).trans
+      (h₄.trans (congrArg (fun a => stackGet a (BitVec.ofNat 64 3).toNat) k3))))
+  have em0 : lk m0 W₅ = bitMaskW (lk q W) 0 :=
+    h₅.trans (congrArg (fun a => bitMaskW a 0)
+      ((p₄ _).trans ((p₃ _).trans ((p₂ _).trans (p₁ q)))))
+  have em1 : lk m1 W₆ = bitMaskW (lk q W) 1 :=
+    h₆.trans (congrArg (fun a => bitMaskW a 1)
+      ((p₅ _).trans ((p₄ _).trans ((p₃ _).trans ((p₂ _).trans (p₁ q))))))
+  have elo : lk lo W₇ = mselW (bitMaskW (lk q W) 0) (stackGet K 0) (stackGet K 1) :=
+    h₇.trans (congr (congr (congrArg mselW ((p₆ m0).trans em0)) e0) e1)
+  have ehi : lk hi W₈ = mselW (bitMaskW (lk q W) 0) (stackGet K 2) (stackGet K 3) :=
+    h₈.trans (congr (congr (congrArg mselW ((p₇ _).trans ((p₆ m0).trans em0))) e2) e3)
+  have ez : lk z W₉ = mselW (bitMaskW (lk q W) 1)
+      (mselW (bitMaskW (lk q W) 0) (stackGet K 0) (stackGet K 1))
+      (mselW (bitMaskW (lk q W) 0) (stackGet K 2) (stackGet K 3)) :=
+    h₉.trans (congr (congr (congrArg mselW ((p₈ _).trans ((p₇ m1).trans em1)))
+      ((p₈ lo).trans elo)) ehi)
+  exact hk _ z W₉
+    (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp
+      (Pres.comp p₁ p₂) p₃) p₄) p₅) p₆) p₇) p₈) p₉) ez
+
+/-- The scalar bit of iteration `i` as a word, read from the packed input `pk` without a
+    computed index; the continuation receives the renaming and the bit word. -/
+def scalarBitK {M : Nat} (pk : Var Γ (arrTy M)) (i : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts) : MC Γ ts :=
   bindK (wConst 254) fun r₁ c =>
   bindK (eBin .sub c (r₁ i)) fun r₂ j =>
   bindK (wConst 6) fun r₃ six =>
   bindK (eBin .shr (r₃ j) six) fun r₄ q =>
-  bindK (eLoad (r₄ (r₃ (r₂ (r₁ pk)))) q) fun r₅ word =>
+  wordSelK (r₄ (r₃ (r₂ (r₁ pk)))) q fun r₅ word =>
   bindK (wConst 63) fun r₆ m =>
   bindK (eBin .and (r₆ (r₅ (r₄ (r₃ j)))) m) fun r₇ sh =>
   bindK (eBin .shr (r₇ (r₆ word)) sh) fun r₈ x =>
   bindK (wConst 1) fun r₉ one =>
   bindK (eBin .and (r₉ x) one) fun r₁₀ bw =>
-  stepBodyAt lo a24 (r₁₀ (r₉ (r₈ (r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ w)))))))))) bw
-    (r₁₀ (r₉ (r₈ (r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ w))))))))))
+  k (fun v => r₁₀ (r₉ (r₈ (r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ v)))))))))) bw
+
+/-- `scalarBitK pk i k` passes the bit `scalarBitAt K iv` as a word to its continuation. -/
+theorem scalarBitK_denote {M : Nat} (pk : Var Γ (arrTy M)) (i : Var Γ w64)
+    (k : ∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ w64 → MC Δ ts)
+    (W : Valuation Γ) (G : ListDenote ts) (K : Fin M → BitVec 64) (iv : Nat)
+    (hpk : pk.lookup W = K) (hi : i.lookup W = BitVec.ofNat 64 iv)
+    (hk : ∀ {Δ : Ctxt jasminDialect} (r : Ctxt.Hom Γ Δ) (z : Var Δ w64) (W' : Valuation Δ),
+      Pres r W W' → lk z W' = BitVec.ofNat 64 (scalarBitAt K iv).toNat →
+        (k r z).denote W' = G) :
+    (scalarBitK pk i k).denote W = G := by
+  refine bindK_denote _ _ W _ fun r₁ c W₁ p₁ h₁ => ?_
+  refine bindK_denote _ _ W₁ _ fun r₂ j W₂ p₂ h₂ => ?_
+  refine bindK_denote _ _ W₂ _ fun r₃ six W₃ p₃ h₃ => ?_
+  refine bindK_denote _ _ W₃ _ fun r₄ q W₄ p₄ h₄ => ?_
+  have ej : lk j W₂ = bitIdxW iv :=
+    h₂.trans (congrArg₂ (fun a b : BitVec 64 => a - b) h₁ ((p₁ i).trans hi))
+  have ej₃ : lk (r₃ j) W₃ = bitIdxW iv := (p₃ j).trans ej
+  have eq_ : lk q W₄ = JasminBinOp.apply .shr (bitIdxW iv) (BitVec.ofNat 64 6) :=
+    h₄.trans (congrArg₂ (fun a b : BitVec 64 => JasminBinOp.apply .shr a b) ej₃ h₃)
+  have epk : (r₄ (r₃ (r₂ (r₁ pk)))).lookup W₄ = K :=
+    ((p₄ (r₃ (r₂ (r₁ pk)))).trans ((p₃ (r₂ (r₁ pk))).trans ((p₂ (r₁ pk)).trans (p₁ pk)))).trans
+      hpk
+  refine wordSelK_denote _ _ _ W₄ _ K epk fun r₅ word W₅ p₅ h₅ => ?_
+  have eword : lk word W₅ = bitSelW K iv := h₅.trans (congrArg _ eq_)
+  refine bindK_denote _ _ W₅ _ fun r₆ m W₆ p₆ h₆ => ?_
+  refine bindK_denote _ _ W₆ _ fun r₇ sh W₇ p₇ h₇ => ?_
+  refine bindK_denote _ _ W₇ _ fun r₈ x W₈ p₈ h₈ => ?_
+  refine bindK_denote _ _ W₈ _ fun r₉ one W₉ p₉ h₉ => ?_
+  refine bindK_denote _ _ W₉ _ fun r₁₀ bw W₁₀ p₁₀ h₁₀ => ?_
+  have esh : lk sh W₇ = bitIdxW iv &&& BitVec.ofNat 64 63 :=
+    h₇.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b)
+      ((p₆ (r₅ (r₄ (r₃ j)))).trans ((p₅ (r₄ (r₃ j))).trans ((p₄ (r₃ j)).trans ej₃))) h₆)
+  have ex : lk x W₈ = bitShW K iv :=
+    h₈.trans (congrArg₂ (fun a b : BitVec 64 => JasminBinOp.apply .shr a b)
+      ((p₇ (r₆ word)).trans ((p₆ word).trans eword)) esh)
+  have ebw : lk bw W₁₀ = BitVec.ofNat 64 (scalarBitAt K iv).toNat :=
+    (h₁₀.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b) ((p₉ x).trans ex) h₉)).trans
+      (and_one_eq _)
+  exact hk _ bw W₁₀ (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp
+    (Pres.comp (Pres.comp (Pres.comp p₁ p₂) p₃) p₄) p₅) p₆) p₇) p₈) p₉) p₁₀) ebw
+
+end Select
+
+/-- **One iteration of the loop** at the packed input `pk`, the loop index `i` and the state
+    `w`: the bit `scalarBitAt` of iteration `i`, read from `pk` by `scalarBitK` (loads at
+    literal indices and a mask selection), and the ladder step `stepBodyAt` at that bit, with
+    `w` as its output array. -/
+def bitStepAt (a24 : ZMod p) {M : Nat} {Δ : Ctxt jasminDialect} (pk : Var Δ (arrTy M))
+    (i : Var Δ w64) (w : Var Δ (arrTy (6 * n))) : MC Δ [arrTy (6 * n)] :=
+  scalarBitK pk i fun r bw => stepBodyAt lo a24 (r w) bw (r w)
 
 /-- **The ladder loop kernel** over the packed input `[k; u]` (`4` scalar words, then the `n`
     words of the base coordinate) and an output array: the initial state from `u`, then a
@@ -1182,41 +1455,9 @@ theorem bitStepAt_value (a24 : ZMod p) {M : Nat} {Δ : Ctxt jasminDialect}
     (hi : i.lookup W = BitVec.ofNat 64 iv) (hw : w.lookup W = encW (encF lo enc p) s) :
     (bitStepAt lo a24 pk i w).denote W
       = .cons (encW (encF lo enc p) (ladderStepF a24 (scalarBitAt K iv) s)) .nil := by
-  refine bindK_denote _ _ W _ fun r₁ c W₁ p₁ h₁ => ?_
-  refine bindK_denote _ _ W₁ _ fun r₂ j W₂ p₂ h₂ => ?_
-  refine bindK_denote _ _ W₂ _ fun r₃ six W₃ p₃ h₃ => ?_
-  refine bindK_denote _ _ W₃ _ fun r₄ q W₄ p₄ h₄ => ?_
-  refine bindK_denote _ _ W₄ _ fun r₅ word W₅ p₅ h₅ => ?_
-  refine bindK_denote _ _ W₅ _ fun r₆ m W₆ p₆ h₆ => ?_
-  refine bindK_denote _ _ W₆ _ fun r₇ sh W₇ p₇ h₇ => ?_
-  refine bindK_denote _ _ W₇ _ fun r₈ x W₈ p₈ h₈ => ?_
-  refine bindK_denote _ _ W₈ _ fun r₉ one W₉ p₉ h₉ => ?_
-  refine bindK_denote _ _ W₉ _ fun r₁₀ bw W₁₀ p₁₀ h₁₀ => ?_
-  have ej : lk j W₂ = bitIdxW iv :=
-    h₂.trans (congrArg₂ (fun a b : BitVec 64 => a - b) h₁ ((p₁ i).trans hi))
-  have ej₃ : lk (r₃ j) W₃ = bitIdxW iv := (p₃ j).trans ej
-  have eq_ : lk q W₄ = JasminBinOp.apply .shr (bitIdxW iv) (BitVec.ofNat 64 6) :=
-    h₄.trans (congrArg₂ (fun a b : BitVec 64 => JasminBinOp.apply .shr a b) ej₃ h₃)
-  have epk : (r₄ (r₃ (r₂ (r₁ pk)))).lookup W₄ = K :=
-    ((p₄ (r₃ (r₂ (r₁ pk)))).trans ((p₃ (r₂ (r₁ pk))).trans ((p₂ (r₁ pk)).trans (p₁ pk)))).trans
-      hpk
-  have eword : lk word W₅ = bitWordW K iv :=
-    h₅.trans (congrArg₂ (fun (a : Fin M → BitVec 64) (b : BitVec 64) => stackGet a b.toNat)
-      epk eq_)
-  have esh : lk sh W₇ = bitIdxW iv &&& BitVec.ofNat 64 63 :=
-    h₇.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b)
-      ((p₆ (r₅ (r₄ (r₃ j)))).trans ((p₅ (r₄ (r₃ j))).trans ((p₄ (r₃ j)).trans ej₃))) h₆)
-  have ex : lk x W₈ = bitShW K iv :=
-    h₈.trans (congrArg₂ (fun a b : BitVec 64 => JasminBinOp.apply .shr a b)
-      ((p₇ (r₆ word)).trans ((p₆ word).trans eword)) esh)
-  have ebw : lk bw W₁₀ = BitVec.ofNat 64 (scalarBitAt K iv).toNat :=
-    (h₁₀.trans (congrArg₂ (fun a b : BitVec 64 => a &&& b) ((p₉ x).trans ex) h₉)).trans
-      (and_one_eq _)
-  have ew : (r₁₀ (r₉ (r₈ (r₇ (r₆ (r₅ (r₄ (r₃ (r₂ (r₁ w)))))))))).lookup W₁₀
-      = encW (encF lo enc p) s :=
-    (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp (Pres.comp
-      (Pres.comp (Pres.comp p₁ p₂) p₃) p₄) p₅) p₆) p₇) p₈) p₉) p₁₀ w).trans hw
-  exact stepBodyAt_value lo enc Good hsq hA hS hM hQ hC hn a24 _ _ _ W₁₀ s _ ew ebw
+  refine scalarBitK_denote pk i _ W _ K iv hpk hi fun r bw W' pr hbw => ?_
+  exact stepBodyAt_value lo enc Good hsq hA hS hM hQ hC hn a24 _ _ _ W' s _
+    ((pr w).trans hw) hbw
 
 include hsq hA hS hM hQ hC hn in
 /-- **Value of the ladder loop kernel**: at a packed input `K` whose words from index `4` are
