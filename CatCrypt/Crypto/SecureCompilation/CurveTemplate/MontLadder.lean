@@ -1768,6 +1768,31 @@ def x25519Body (a24 : ZMod p) : NFProg jasminDialect (x25519Ctx n) [arrTy n] :=
   chainThen lo (p := p) invChain w fun r' w' =>
   nfThen (finBodyAt lo (p := p) w' (r' (r (.there (.there .here))))) fun _ vs => .ret vs
 
+/-- The chain of the two-array X25519 kernel: `invChain`, then the product `x2 · t` into `t`. -/
+def x25519Chain : List ChainOp := invChain ++ [.op (.mul .x2 .t .t)]
+
+/-- The ladder state returned by the two-array X25519 kernel: `x25519Chain` applied to the
+    ladder state `ladderOut a24 K u`. -/
+def x25519Out (a24 : ZMod p) {M : Nat} (K : Fin M → BitVec 64) (u : ZMod p) : LadderState p :=
+  chainF x25519Chain (ladderOut a24 K u)
+
+/-- **The two-array X25519 kernel body** over the record `lo` at the constant `a24`, with the
+    parameters of `ladderLoopBody`: the ladder loop `ladderThen` on the state array, then the
+    chain `x25519Chain` (the inversion chain of `z2` into `t` and the product `x2 · t` into
+    `t`) in place, returning the state array. -/
+def x25519Body2 (a24 : ZMod p) :
+    NFProg jasminDialect [arrTy (4 + n), arrTy (6 * n)] [arrTy (6 * n)] :=
+  ladderThen lo a24 .here (.there .here) fun _ w =>
+  chainThen lo (p := p) x25519Chain w fun _ w' => .ret (.cons w' .nil)
+
+/-- The slot `t` of `x25519Out a24 K u` is `x2 · z2 ^ (2^255 - 21)` of `ladderOut a24 K u`. -/
+theorem x25519Out_get_t (a24 : ZMod p) {M : Nat} (K : Fin M → BitVec 64) (u : ZMod p) :
+    (x25519Out a24 K u).get .t
+      = (ladderOut a24 K u).x2 * (ladderOut a24 K u).z2 ^ (2 ^ 255 - 21) := by
+  obtain ⟨h1, h2⟩ := chainF_invChain (ladderOut a24 K u)
+  change (chainF invChain (ladderOut a24 K u)).x2 * (chainF invChain (ladderOut a24 K u)).t = _
+  rw [h1, h2]
+
 variable (enc : (loweringOf lo).Enc)
   (Good : ∀ {Γ : Ctxt fieldDialect} {t : FieldTy}, Expr fieldDialect Γ t → Prop)
   (hsq : (loweringOf lo).BlockSquare enc Good)
@@ -1879,6 +1904,14 @@ theorem invChain_counts : ∀ k, ChainOp.sqn k ∈ invChain → k < 2 ^ 64 := by
     List.not_mem_nil, or_false] at hk
   omega
 
+/-- Every loop count of `x25519Chain` is below `2 ^ 64`. -/
+theorem x25519Chain_counts : ∀ k, ChainOp.sqn k ∈ x25519Chain → k < 2 ^ 64 := by
+  intro k hk
+  rw [x25519Chain, List.mem_append] at hk
+  rcases hk with hk | hk
+  · exact invChain_counts k hk
+  · simp at hk
+
 include hsq hA hS hM hQ hC hn in
 /-- **Value of the X25519 kernel**: at a packed input `K` whose words from index `4` are the
     limbs of `u`, any state array and any output array, the kernel returns the `n` limbs of
@@ -1909,6 +1942,38 @@ theorem x25519Body_value_inv (hp : p = 2 ^ 255 - 19) [Fact p.Prime] (a24 : ZMod 
           ((ladderOut a24 K u).x2 * (ladderOut a24 K u).z2⁻¹)) .nil) := by
   rw [x25519Body_value lo enc Good hsq hA hS hM hQ hC hn a24 fuel K O Out u hu,
     pow_invExp_eq_inv hp]
+
+include hsq hA hS hM hQ hC hn in
+/-- **Value of the two-array X25519 kernel**: at a packed input `K` whose words from index `4`
+    are the limbs of `u` and any state array, the kernel returns the state array `encW` of
+    `x25519Out a24 K u`, whose slot `t` (words `5n .. 6n - 1`) is
+    `x2 · z2 ^ (2^255 - 21)` of the ladder state `ladderOut a24 K u`. -/
+theorem x25519Body2_value (a24 : ZMod p) (fuel : Nat) (K : Fin (4 + n) → BitVec 64)
+    (O : Fin (6 * n) → BitVec 64) (u : ZMod p) (hu : arrLimbs K n 4 = encF lo enc p u) :
+    (x25519Body2 lo a24).denote fuel (.cons K (.cons O .nil))
+      = some (.cons (encW (encF lo enc p) (x25519Out a24 K u)) .nil) ∧
+    (x25519Out a24 K u).get .t
+      = (ladderOut a24 K u).x2 * (ladderOut a24 K u).z2 ^ (2 ^ 255 - 21) := by
+  refine ⟨?_, x25519Out_get_t a24 K u⟩
+  refine ladderThen_denote lo enc Good hsq hA hS hM hQ hC hn a24 fuel .here (.there .here) _ _ _
+    K u rfl hu fun _ w W' _ hw => ?_
+  refine chainThen_denote lo enc Good hsq hM hQ hn fuel x25519Chain w _ W' _ _
+    x25519Chain_counts hw fun _ w' _ _ hw' => ?_
+  rw [NFProg.denote_ret]
+  exact congrArg (fun a => some (HVector.cons a .nil : ListDenote [arrTy (6 * n)])) hw'
+
+include hsq hA hS hM hQ hC hn in
+/-- **Value of the two-array X25519 kernel at `p = 2^255 - 19`**: the kernel returns the state
+    array `encW` of `x25519Out a24 K u`, whose slot `t` is `x2 · z2⁻¹` of the ladder state
+    `ladderOut a24 K u` (`0` at `z2 = 0`, as RFC 7748). -/
+theorem x25519Body2_value_inv (hp : p = 2 ^ 255 - 19) [Fact p.Prime] (a24 : ZMod p)
+    (fuel : Nat) (K : Fin (4 + n) → BitVec 64) (O : Fin (6 * n) → BitVec 64) (u : ZMod p)
+    (hu : arrLimbs K n 4 = encF lo enc p u) :
+    (x25519Body2 lo a24).denote fuel (.cons K (.cons O .nil))
+      = some (.cons (encW (encF lo enc p) (x25519Out a24 K u)) .nil) ∧
+    (x25519Out a24 K u).get .t = (ladderOut a24 K u).x2 * (ladderOut a24 K u).z2⁻¹ := by
+  rw [← pow_invExp_eq_inv hp]
+  exact x25519Body2_value lo enc Good hsq hA hS hM hQ hC hn a24 fuel K O u hu
 
 end Chain
 
