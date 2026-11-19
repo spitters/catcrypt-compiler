@@ -455,6 +455,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
 CatCrypt.Crypto.SecureCompilation.Haxc.RCPerStateFuel
 CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedDet
+CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedStateful
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
