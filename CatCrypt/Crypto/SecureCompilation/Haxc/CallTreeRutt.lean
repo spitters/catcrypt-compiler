@@ -23,7 +23,6 @@ that `Rutt` carries. Bisimilar images give `RuttS` at every source handler and f
 
 ## Main definitions
 
-* `sigPF`: the polynomial functor of an event signature.
 * `toITree`: the embedding of finite call trees in interaction trees.
 * `sigRel`: the relation of event signatures given by an event and an answer relation.
 
@@ -48,11 +47,6 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract
 open _root_.ITree (CrossSignatureWeakBisim EventSignatureRel TauSteps shape'_pure shape'_query)
 
 /-! ## The embedding -/
-
-/-- The polynomial functor of an event signature: positions are events, directions answers. -/
-def sigPF (E : EventSig) : PFunctor.{0, 0} where
-  A := E.Event
-  B := E.Resp
 
 /-- The interaction tree of a finite call tree: a leaf is a `pure` node and an event a `query`
     node. The image has no silent steps. -/
