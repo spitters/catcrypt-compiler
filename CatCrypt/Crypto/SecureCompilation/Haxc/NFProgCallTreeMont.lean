@@ -33,6 +33,12 @@ reduce-multiply heads keeps the tree (`treeAt_inline?`), so the montify step ref
 without `call`, whose tree at `mfEnv` is the leaf of the value of the call whenever the call
 answers; it refines the tree at `mfEnv` as well (`refinesT_fieldDialectStep`).
 
+Each stage lemma `refinesT_*` is the instance at the answers of a handler of a lemma
+`refinesTA_*` (`montifyAux_refinesTA`, `entryConv_refinesTA`) at a skip predicate `Sk`
+(`refinesTA_iff_refinesT`). The rewriter, the inlining and the field dialect step skip no
+event, so their lemmas hold at every `Sk`; the skip of an inner head in
+`refinesTA_nfProgTree_mfTree` needs that `Sk` admits at an inner head only its value.
+
 ## Main definitions
 
 * `innerHead`, `mfEnv`, `mfTree`: the heads answered inside the tree, the tree call
@@ -68,6 +74,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering (hvAppend)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord (canonEnc w64)
 open CatCrypt.Crypto.SecureCompilation.Algebraic.FieldWord.Mont32 (mont32Cert)
@@ -130,6 +137,49 @@ theorem interp_mfTree (E : CallEnv jasminDialect) (fuel : Nat) {Γ : Ctxt jasmin
       exact (montEnv_fieldEnv_outer (by simpa using hf) E as rs x).symm
   rw [mfTree, interp_treeAt _ _ (fun _ _ => rfl), hE]
 
+/-- **The tree with every call an event refines `mfTree` at a skip predicate**, when every
+    answer that `Sk` admits at an inner head is the value of the head: an event of an inner head
+    is skipped. -/
+theorem refinesTA_nfProgTree_mfTree
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (hSk : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (p : NFProg jasminDialect Γ ts) :
+    ∀ V : Valuation Γ, RefinesTA Sk (nfProgTree fuel p V) (mfTree fuel p V) := by
+  induction p with
+  | ret vs => intro V; exact RefinesTA.refl _
+  | var e k ih => intro V; exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih _
+  | forLoop count inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
+  | ifThenElse cond thn els k iht ihe ihk =>
+    intro V
+    refine RefinesTA.obind ?_ fun _ => ihk _
+    split
+    · exact iht V
+    · exact ihe V
+  | whileLoop inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
+  | call f args k ih =>
+    intro V
+    by_cases hf : innerHead f = true
+    · simp only [nfProgTree, mfTree, treeAt, eventEnv, mfEnv, hf, ite_true]
+      unfold obind
+      refine RuttSA.skip_bind _ fun s hs => ?_
+      cases hs with
+      | vis ha hr =>
+        cases hr
+        obtain rfl := hSk f _ _ _ _ hf ha
+        cases (montEnv (fieldEnv CallEnv.empty)).call f _ _ (Expr.lookupArgs args V) with
+        | none => exact .ret rfl
+        | some r => exact ih _
+    · simp only [nfProgTree, mfTree, treeAt, eventEnv, mfEnv, hf, Bool.false_eq_true,
+        ite_false]
+      exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih _
+
 /-- **The tree with every call an event refines `mfTree`**, at a source handler that answers
     each inner head by its value: an event of an inner head is skipped. -/
 theorem refinesT_nfProgTree_mfTree (h₁ : ∀ e : (nfCallSig jasminDialect).Event,
@@ -139,35 +189,9 @@ theorem refinesT_nfProgTree_mfTree (h₁ : ∀ e : (nfCallSig jasminDialect).Eve
         h₁ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
     (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     (p : NFProg jasminDialect Γ ts) :
-    ∀ V : Valuation Γ, RefinesT h₁ (nfProgTree fuel p V) (mfTree fuel p V) := by
-  induction p with
-  | ret vs => intro V; exact RefinesT.refl _
-  | var e k ih => intro V; exact RefinesT.obind (RefinesT.refl _) fun _ => ih _
-  | forLoop count inits body k ihb ihk =>
-    intro V
-    exact RefinesT.obind (RefinesT.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
-  | ifThenElse cond thn els k iht ihe ihk =>
-    intro V
-    refine RefinesT.obind ?_ fun _ => ihk _
-    split
-    · exact iht V
-    · exact ihe V
-  | whileLoop inits body k ihb ihk =>
-    intro V
-    exact RefinesT.obind (RefinesT.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
-  | call f args k ih =>
-    intro V
-    by_cases hf : innerHead f = true
-    · simp only [nfProgTree, mfTree, treeAt, eventEnv, mfEnv, hf, ite_true]
-      unfold obind
-      refine RuttS.skip_bind _ ?_
-      simp only [interp, hh f _ _ _ hf]
-      cases (montEnv (fieldEnv CallEnv.empty)).call f _ _ (Expr.lookupArgs args V) with
-      | none => exact .ret rfl
-      | some r => exact ih _
-    · simp only [nfProgTree, mfTree, treeAt, eventEnv, mfEnv, hf, Bool.false_eq_true,
-        ite_false]
-      exact RefinesT.obind (RefinesT.refl _) fun _ => ih _
+    ∀ V : Valuation Γ, RefinesT h₁ (nfProgTree fuel p V) (mfTree fuel p V) := fun V =>
+  refinesTA_iff_refinesT.mp (refinesTA_nfProgTree_mfTree _
+    (fun f as rs x _ hf ha => ha.trans (hh f as rs x hf)) fuel p V)
 
 /-- A `call` of an inner head has the tree of its continuation at the value of the head. -/
 theorem mfTree_call_inner (fuel : Nat) {Γ : Ctxt jasminDialect} {as rs ts : List JasminTy}
@@ -327,21 +351,23 @@ theorem treeAt_ofCom [DialectDenote d] (tE : TreeCallEnv E d) (fuel : Nat) {Γ :
     simp only [NFProg.ofCom, treeAt, pureReader, Expr.denoteM_option_eq_some]
     exact ih _
 
-/-- **Inlining refines the tree**: at a library without operation bodies whose body of each
-    symbol refines the tree of its call in `tE`, the tree of the inlined program refines the
-    tree of the source program, at every valuation. -/
-theorem refinesT_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCallEnv E d)
-    (fuel : Nat) (h₁ : ∀ e : E.Event, E.Resp e) {L : InlineLib d} (hop : ∀ o, L.op o = none)
+/-- **Inlining refines the tree at a skip predicate**: at a library without operation bodies
+    whose body of each symbol refines the tree of its call in `tE` up to events skipped at `Sk`,
+    the tree of the inlined program refines the tree of the source program up to events skipped
+    at `Sk`, at every valuation. -/
+theorem refinesTA_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCallEnv E d)
+    (fuel : Nat) (Sk : (e : E.Event) → E.Resp e → Prop) {L : InlineLib d}
+    (hop : ∀ o, L.op o = none)
     (hcall : ∀ f as rs b, L.call f as rs = some b →
-      ∀ x, RefinesT h₁ (tE.call f as rs x) (treeAt ex tE fuel b x))
+      ∀ x, RefinesTA Sk (tE.call f as rs x) (treeAt ex tE fuel b x))
     {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
     ∀ {p' : NFProg d Γ ts}, NFProg.inline? L p = some p' →
-      ∀ V, RefinesT h₁ (treeAt ex tE fuel p V) (treeAt ex tE fuel p' V) := by
+      ∀ V, RefinesTA Sk (treeAt ex tE fuel p V) (treeAt ex tE fuel p' V) := by
   induction p with
   | ret vs =>
     intro p' hq V
     cases hq
-    exact RefinesT.refl _
+    exact RefinesTA.refl _
   | var e k ih =>
     intro p' hq V
     simp only [NFProg.inline?, Option.bind_eq_some_iff] at hq
@@ -349,17 +375,17 @@ theorem refinesT_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCa
     obtain ⟨o, rfl, args⟩ := e
     simp only [NFProg.inlineVar, hop, Option.some.injEq] at hq
     subst hq
-    exact RefinesT.obind (RefinesT.refl _) fun _ => ih hk' _
+    exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih hk' _
   | forLoop count inits body k ihb ihk =>
     intro p' hq V
     simp only [NFProg.inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
     obtain ⟨b', hb', k', hk', rfl⟩ := hq
-    exact RefinesT.obind (RefinesT.ofoldl (fun _ _ => ihb hb' _) _ _) fun _ => ihk hk' _
+    exact RefinesTA.obind (RefinesTA.ofoldl (fun _ _ => ihb hb' _) _ _) fun _ => ihk hk' _
   | ifThenElse cond thn els k iht ihe ihk =>
     intro p' hq V
     simp only [NFProg.inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
     obtain ⟨t', ht', e', he', k', hk', rfl⟩ := hq
-    refine RefinesT.obind ?_ fun _ => ihk hk' _
+    refine RefinesTA.obind ?_ fun _ => ihk hk' _
     split
     · exact iht ht' V
     · exact ihe he' V
@@ -367,7 +393,7 @@ theorem refinesT_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCa
     intro p' hq V
     simp only [NFProg.inline?, Option.bind_eq_some_iff, Option.map_eq_some_iff] at hq
     obtain ⟨b', hb', k', hk', rfl⟩ := hq
-    exact RefinesT.obind (RefinesT.owhileIter (fun _ => ihb hb' _) _ _) fun _ => ihk hk' _
+    exact RefinesTA.obind (RefinesTA.owhileIter (fun _ => ihb hb' _) _ _) fun _ => ihk hk' _
   | call f args k ih =>
     intro p' hq V
     simp only [NFProg.inline?, Option.bind_eq_some_iff] at hq
@@ -375,9 +401,22 @@ theorem refinesT_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCa
     split at hq
     · rename_i b hb
       rw [treeAt_seq? hex tE fuel b k' hq (PRen.agrees_ofArgs V args) (PRen.agrees_id V)]
-      exact RefinesT.obind (hcall f _ _ b hb _) fun _ => ih hk' _
+      exact RefinesTA.obind (hcall f _ _ b hb _) fun _ => ih hk' _
     · cases hq
-      exact RefinesT.obind (RefinesT.refl _) fun _ => ih hk' _
+      exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih hk' _
+
+/-- **Inlining refines the tree**: at a library without operation bodies whose body of each
+    symbol refines the tree of its call in `tE`, the tree of the inlined program refines the
+    tree of the source program, at every valuation. -/
+theorem refinesT_inline? {ex : ExprReader E d} (hex : ex.RenameInv) (tE : TreeCallEnv E d)
+    (fuel : Nat) (h₁ : ∀ e : E.Event, E.Resp e) {L : InlineLib d} (hop : ∀ o, L.op o = none)
+    (hcall : ∀ f as rs b, L.call f as rs = some b →
+      ∀ x, RefinesT h₁ (tE.call f as rs x) (treeAt ex tE fuel b x))
+    {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) {p' : NFProg d Γ ts}
+    (hp : NFProg.inline? L p = some p') (V : Valuation Γ) :
+    RefinesT h₁ (treeAt ex tE fuel p V) (treeAt ex tE fuel p' V) :=
+  refinesTA_iff_refinesT.mp (refinesTA_inline? hex tE fuel _ hop
+    (fun f as rs b hb x => refinesTA_iff_refinesT.mpr (hcall f as rs b hb x)) p hp V)
 
 /-- A program without `call` calls no symbol. -/
 theorem not_calls_of_callFree {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts)
@@ -709,22 +748,24 @@ theorem callArm_mfTree {Γ Θ : Ctxt jasminDialect} {f : String} (hf : montTag? 
     · exact opaqueArm_mfTree h fuel hf hi _ hA kk q hq r hr
 
 variable (h₁ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+  (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
 
 include hm in
-/-- **The rewriter keeps the call tree up to refinement.** For a program `prog` rewritten from
-    the renaming `ρ` and valuations `X`, `W` that agree along `ρ`, the tree of the rewritten
-    program at `W` refines the tree of `prog` at `X`, at every source handler: each event is
-    the source event with the same arguments, and each returned value the source value. -/
-theorem montifyAux_refinesT :
+/-- **The rewriter keeps the call tree up to refinement at a skip predicate.** For a program
+    `prog` rewritten from the renaming `ρ` and valuations `X`, `W` that agree along `ρ`, the tree
+    of the rewritten program at `W` refines the tree of `prog` at `X` up to events skipped at
+    every `Sk`: each event is the source event with the same arguments, and each returned value
+    the source value. -/
+theorem montifyAux_refinesTA :
     ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts)
       (H : DegHint) {Θ : Ctxt jasminDialect} (ρ : MRen Γ Θ) (q : NFProg jasminDialect Θ ts),
       montifyAux h prog H ρ = some q → ∀ (X : Valuation Γ) (W : Valuation Θ),
-        MAgree h ρ X W → RefinesT h₁ (mfTree fuel prog X) (mfTree fuel q W)
+        MAgree h ρ X W → RefinesTA Sk (mfTree fuel prog X) (mfTree fuel q W)
   | _, _, .ret vs, _, _, ρ, q, hq, X, W, hA => by
       obtain ⟨ws, hws, rfl⟩ := Option.map_eq_some_iff.mp hq
       simp only [mfTree, treeAt]
       rw [sameVars_lookup h hA vs ws hws]
-      exact RefinesT.refl _
+      exact RefinesTA.refl _
   | _, _, .var e k, H, _, ρ, q, hq, X, W, hA => by
       obtain ⟨e', he, hq⟩ := Option.bind_eq_some_iff.mp hq
       obtain ⟨q0, hq0, rfl⟩ := Option.map_eq_some_iff.mp hq
@@ -735,9 +776,9 @@ theorem montifyAux_refinesT :
       | some x =>
         obtain ⟨Θ', g, r, W', q', hp, hr, hk, hden⟩ :=
           varConv_mfTree h hm fuel H.deg _ q0 hq0 (W.extend x)
-        change RefinesT h₁ (mfTree fuel k (X.extend x)) (mfTree fuel q0 (W.extend x))
+        change RefinesTA Sk (mfTree fuel k (X.extend x)) (mfTree fuel q0 (W.extend x))
         rw [hden]
-        exact montifyAux_refinesT k H.next _ q' hk (X.extend x) W'
+        exact montifyAux_refinesTA k H.next _ q' hk (X.extend x) W'
           (hA.lift h (g := fun w => g (.there w)) (fun v => hp (.there v)) r x hr)
   | _, _, .forLoop (cs := cs) count inits body k, H, _, ρ, q, hq, X, W, hA => by
       obtain ⟨c, hc, hq⟩ := Option.bind_eq_some_iff.mp hq
@@ -751,9 +792,9 @@ theorem montifyAux_refinesT :
         exact h0
       simp only [mfTree, treeAt]
       rw [hcnt, sameVars_lookup h hA inits ivs hivs]
-      refine RefinesT.obind (RefinesT.ofoldl (fun a i => ?_) _ _) fun acc =>
-        montifyAux_refinesT k H.next _ k' hk' _ _ (MAgree.app h hA cs acc)
-      exact montifyAux_refinesT body H.sub1 _ b' hb' _ _
+      refine RefinesTA.obind (RefinesTA.ofoldl (fun a i => ?_) _ _) fun acc =>
+        montifyAux_refinesTA k H.next _ k' hk' _ _ (MAgree.app h hA cs acc)
+      exact montifyAux_refinesTA body H.sub1 _ b' hb' _ _
         (MAgree.app h (hA.lift h (g := fun w => .there w)
           (W' := HVector.cons (HasWord64.ofNat (d := jasminDialect) i) W) (fun _ => rfl)
           (.same .here) (HasWord64.ofNat (d := jasminDialect) i) rfl) cs a)
@@ -769,20 +810,20 @@ theorem montifyAux_refinesT :
         exact h0
       simp only [mfTree, treeAt]
       rw [hcond]
-      refine RefinesT.obind ?_ fun r =>
-        montifyAux_refinesT k H.next _ k' hk' _ _ (MAgree.app h hA rs r)
+      refine RefinesTA.obind ?_ fun r =>
+        montifyAux_refinesTA k H.next _ k' hk' _ _ (MAgree.app h hA rs r)
       split
-      · exact montifyAux_refinesT thn H.sub1 ρ t' ht' X W hA
-      · exact montifyAux_refinesT els H.sub2 ρ e' he' X W hA
+      · exact montifyAux_refinesTA thn H.sub1 ρ t' ht' X W hA
+      · exact montifyAux_refinesTA els H.sub2 ρ e' he' X W hA
   | _, _, .whileLoop (cs := cs) inits body k, H, _, ρ, q, hq, X, W, hA => by
       obtain ⟨ivs, hivs, hq⟩ := Option.bind_eq_some_iff.mp hq
       obtain ⟨b', hb', hq⟩ := Option.bind_eq_some_iff.mp hq
       obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hq
       simp only [mfTree, treeAt]
       rw [sameVars_lookup h hA inits ivs hivs]
-      exact RefinesT.obind (RefinesT.owhileIter (fun a =>
-          montifyAux_refinesT body H.sub1 _ b' hb' _ _ (MAgree.app h hA cs a)) _ _) fun acc =>
-        montifyAux_refinesT k H.next _ k' hk' _ _ (MAgree.app h hA cs acc)
+      exact RefinesTA.obind (RefinesTA.owhileIter (fun a =>
+          montifyAux_refinesTA body H.sub1 _ b' hb' _ _ (MAgree.app h hA cs a)) _ _) fun acc =>
+        montifyAux_refinesTA k H.next _ k' hk' _ _ (MAgree.app h hA cs acc)
   | _, _, .call f args k, H, _, ρ, q, hq, X, W, hA => by
       unfold montifyAux at hq
       split at hq
@@ -795,8 +836,8 @@ theorem montifyAux_refinesT :
           have hio : innerHead f = false := by simp [innerHead, hf', hi]
           simp only [mfTree, treeAt, mfEnv, hio, Bool.false_eq_true, ite_false]
           rw [sameVars_lookup h hA args args' hargs]
-          exact RefinesT.obind (RefinesT.refl _) fun r =>
-            montifyAux_refinesT k H.next _ k' hk' _ _ (MAgree.app h hA _ r)
+          exact RefinesTA.obind (RefinesTA.refl _) fun r =>
+            montifyAux_refinesTA k H.next _ k' hk' _ _ (MAgree.app h hA _ r)
         | true =>
           rw [mfTree_call_inner fuel (by simp [innerHead, hi])]
           cases hr : (montEnv (fieldEnv CallEnv.empty)).call f _ _ (Expr.lookupArgs args X) with
@@ -805,9 +846,59 @@ theorem montifyAux_refinesT :
             rw [montEnv_of_none _ hf'] at hr
             obtain ⟨Θ', ρ', W', q', hk, hA', hden⟩ :=
               callArm_mfTree h hm fuel hf' hi args hA _ _ q hq r hr
-            change RefinesT h₁ (mfTree fuel k (hvAppend r X)) (mfTree fuel q W)
+            change RefinesTA Sk (mfTree fuel k (hvAppend r X)) (mfTree fuel q W)
             rw [hden]
-            exact montifyAux_refinesT k H.next ρ' q' hk _ W' hA'
+            exact montifyAux_refinesTA k H.next ρ' q' hk _ W' hA'
+
+include hm in
+/-- **The rewriter keeps the call tree up to refinement.** For a program `prog` rewritten from
+    the renaming `ρ` and valuations `X`, `W` that agree along `ρ`, the tree of the rewritten
+    program at `W` refines the tree of `prog` at `X`, at every source handler: each event is
+    the source event with the same arguments, and each returned value the source value. -/
+theorem montifyAux_refinesT :
+    ∀ {Γ : Ctxt jasminDialect} {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts)
+      (H : DegHint) {Θ : Ctxt jasminDialect} (ρ : MRen Γ Θ) (q : NFProg jasminDialect Θ ts),
+      montifyAux h prog H ρ = some q → ∀ (X : Valuation Γ) (W : Valuation Θ),
+        MAgree h ρ X W → RefinesT h₁ (mfTree fuel prog X) (mfTree fuel q W) :=
+  fun {_ _} prog H {_} ρ q hq X W hA =>
+    refinesTA_iff_refinesT.mp (montifyAux_refinesTA h hm fuel _ prog H ρ q hq X W hA)
+
+include hm in
+/-- **The entry conversions keep the refinement at a skip predicate.** When `entryConv` returns
+    `q` from a renaming that agrees with `X` and `W`, and the tree of every program the
+    continuation returns, from a renaming that agrees with `X` and a valuation `W'`, refines `t`
+    at `W'` up to events skipped at `Sk`, the tree of `q` at `W` refines `t` likewise. -/
+theorem entryConv_refinesTA {Γ : Ctxt jasminDialect} {us : List JasminTy}
+    (kk : ∀ {Θ : Ctxt jasminDialect}, MRen Γ Θ → Option (NFProg jasminDialect Θ us))
+    (X : Valuation Γ) (t : CallTree (nfCallSig jasminDialect) (Option (Valuation us)))
+    (hk : ∀ {Θ' : Ctxt jasminDialect} (ρ' : MRen Γ Θ') (q' : NFProg jasminDialect Θ' us)
+      (W' : Valuation Θ'), kk ρ' = some q' → MAgree h ρ' X W' →
+        RefinesTA Sk t (mfTree fuel q' W')) :
+    ∀ (vs : List (Var Γ w64 × ℤ)) {Θ : Ctxt jasminDialect} (ρ : MRen Γ Θ)
+      (q : NFProg jasminDialect Θ us) (W : Valuation Θ), entryConv h kk vs ρ = some q →
+      MAgree h ρ X W → RefinesTA Sk t (mfTree fuel q W)
+  | [], _, ρ, q, W, hq, hA => hk ρ q W hq hA
+  | (v, d) :: vs, _, ρ, q, W, hq, hA => by
+      obtain ⟨x, hx, hq⟩ := Option.bind_eq_some_iff.mp hq
+      obtain ⟨q1, hq1, rfl⟩ := Option.map_eq_some_iff.mp hq
+      have hxv : x.lookup W = v.lookup X := by
+        have h0 : (ρ v).rel h W (v.lookup X) := hA _ v
+        have e : ρ v = .same x := Rd.eq_of_same? hx
+        rw [e] at h0
+        exact h0
+      rw [convProg_mfTree h hm fuel x (d + 1) q1 W]
+      refine entryConv_refinesTA kk X t hk vs _ q1 _ hq1 ?_
+      refine MAgree.set h (MAgree.comp h hA (g := fun y => .there (.there y))
+        (W' := .cons (t := w64) (redcMulW p (x.lookup W) (BitVec.ofNat 64 (convC h (d + 1))))
+          (.cons (t := w64) (BitVec.ofNat 64 (convC h (d + 1))) W)) ?_) v _ ?_
+      · intro _ _
+        rfl
+      intro hlt
+      have e := redcMulW_conv h 0 (d + 1) (((v.lookup X : BitVec 64).toNat : Nat) : ZMod p)
+      rw [← word_eq_encK_zero h _ hlt, show (0 : ℤ) + (d + 1) - 1 = d by ring] at e
+      change redcMulW p (x.lookup W) (BitVec.ofNat 64 (convC h (d + 1))) = _
+      rw [hxv]
+      exact e
 
 include hm in
 /-- **The entry conversions keep the refinement.** When `entryConv` returns `q` from a renaming
@@ -822,29 +913,25 @@ theorem entryConv_refinesT {Γ : Ctxt jasminDialect} {us : List JasminTy}
         RefinesT h₁ t (mfTree fuel q' W')) :
     ∀ (vs : List (Var Γ w64 × ℤ)) {Θ : Ctxt jasminDialect} (ρ : MRen Γ Θ)
       (q : NFProg jasminDialect Θ us) (W : Valuation Θ), entryConv h kk vs ρ = some q →
-      MAgree h ρ X W → RefinesT h₁ t (mfTree fuel q W)
-  | [], _, ρ, q, W, hq, hA => hk ρ q W hq hA
-  | (v, d) :: vs, _, ρ, q, W, hq, hA => by
-      obtain ⟨x, hx, hq⟩ := Option.bind_eq_some_iff.mp hq
-      obtain ⟨q1, hq1, rfl⟩ := Option.map_eq_some_iff.mp hq
-      have hxv : x.lookup W = v.lookup X := by
-        have h0 : (ρ v).rel h W (v.lookup X) := hA _ v
-        have e : ρ v = .same x := Rd.eq_of_same? hx
-        rw [e] at h0
-        exact h0
-      rw [convProg_mfTree h hm fuel x (d + 1) q1 W]
-      refine entryConv_refinesT kk X t hk vs _ q1 _ hq1 ?_
-      refine MAgree.set h (MAgree.comp h hA (g := fun y => .there (.there y))
-        (W' := .cons (t := w64) (redcMulW p (x.lookup W) (BitVec.ofNat 64 (convC h (d + 1))))
-          (.cons (t := w64) (BitVec.ofNat 64 (convC h (d + 1))) W)) ?_) v _ ?_
-      · intro _ _
-        rfl
-      intro hlt
-      have e := redcMulW_conv h 0 (d + 1) (((v.lookup X : BitVec 64).toNat : Nat) : ZMod p)
-      rw [← word_eq_encK_zero h _ hlt, show (0 : ℤ) + (d + 1) - 1 = d by ring] at e
-      change redcMulW p (x.lookup W) (BitVec.ofNat 64 (convC h (d + 1))) = _
-      rw [hxv]
-      exact e
+      MAgree h ρ X W → RefinesT h₁ t (mfTree fuel q W) :=
+  fun vs {_} ρ q W hq hA => refinesTA_iff_refinesT.mp (entryConv_refinesTA h hm fuel _ kk X t
+    (fun ρ' q' W' hq' hA' => refinesTA_iff_refinesT.mpr (hk ρ' q' W' hq' hA')) vs ρ q W hq hA)
+
+/-- **The stage lemma of the rewriter `montify` at a skip predicate**: when `montify` accepts the
+    parameter degrees `pd` and the degree assignment `H` and returns `q`, the tree of `q` at
+    `mfEnv` refines the tree of `prog` up to events skipped at `Sk`, at every valuation and
+    every `Sk`. -/
+theorem refinesTA_montify (pd : List ℤ) (H : DegHint) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts) (q : NFProg jasminDialect Γ ts)
+    (hq : montify h pd H prog = some q) (X : Valuation Γ) :
+    RefinesTA Sk (mfTree fuel prog X) (mfTree fuel q X) := by
+  unfold montify at hq
+  split at hq
+  · rename_i hm'
+    exact entryConv_refinesTA h hm' fuel Sk (fun ρ => montifyAux h prog H ρ) X _
+      (fun ρ' q' W' hk hA' => montifyAux_refinesTA h hm' fuel Sk prog H ρ' q' hk X W' hA')
+      (paramDegs Γ pd) (idRen Γ) q X hq (idRen_agree h X)
+  · cases hq
 
 /-- **The stage lemma of the rewriter `montify` at the tree level**: when `montify` accepts the
     parameter degrees `pd` and the degree assignment `H` and returns `q`, the tree of `q` at
@@ -852,14 +939,8 @@ theorem entryConv_refinesT {Γ : Ctxt jasminDialect} {us : List JasminTy}
 theorem refinesT_montify (pd : List ℤ) (H : DegHint) {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts) (q : NFProg jasminDialect Γ ts)
     (hq : montify h pd H prog = some q) (X : Valuation Γ) :
-    RefinesT h₁ (mfTree fuel prog X) (mfTree fuel q X) := by
-  unfold montify at hq
-  split at hq
-  · rename_i hm'
-    exact entryConv_refinesT h hm' fuel h₁ (fun ρ => montifyAux h prog H ρ) X _
-      (fun ρ' q' W' hk hA' => montifyAux_refinesT h hm' fuel h₁ prog H ρ' q' hk X W' hA')
-      (paramDegs Γ pd) (idRen Γ) q X hq (idRen_agree h X)
-  · cases hq
+    RefinesT h₁ (mfTree fuel prog X) (mfTree fuel q X) :=
+  refinesTA_iff_refinesT.mp (refinesTA_montify h fuel _ pd H prog q hq X)
 
 end Montify
 
@@ -888,46 +969,81 @@ theorem mfTree_montBody (fuel : Nat) (f : String) (as rs : List JasminTy)
   · cases hb
 
 variable (h₁ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+  (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
   (fuel : Nat)
 
-/-- **A montify round refines the tree** at `mfEnv`: the rewriter refines it
-    (`refinesT_montify`) and the inlining of the reduce-multiply heads keeps it. -/
-theorem refinesT_montifyAt {p : Nat} (h : mont32Cert p = true) {Γ : Ctxt jasminDialect}
+/-- **A montify round refines the tree at a skip predicate** at `mfEnv`: the rewriter refines it
+    (`refinesTA_montify`) and the inlining of the reduce-multiply heads keeps it. -/
+theorem refinesTA_montifyAt {p : Nat} (h : mont32Cert p = true) {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts) (X : Valuation Γ) :
-    RefinesT h₁ (mfTree fuel prog X) (mfTree fuel (montifyAt h prog) X) := by
+    RefinesTA Sk (mfTree fuel prog X) (mfTree fuel (montifyAt h prog) X) := by
   unfold montifyAt
   split
   · rename_i q hq
     split
     · rename_i q' hq'
       split
-      · refine RefinesT.trans (refinesT_montify h fuel h₁ _ _ prog q hq X) ?_
+      · refine RefinesTA.trans (refinesTA_montify h fuel Sk _ _ prog q hq X) ?_
         rw [mfTree, mfTree, treeAt_inline? pureReader_renameInv mfEnv fuel (fun _ => rfl)
           (fun f as rs b hb x => mfTree_montBody fuel f as rs b hb x) q hq' X]
-        exact RefinesT.refl _
-      · exact RefinesT.refl _
-    · exact RefinesT.refl _
-  · exact RefinesT.refl _
+        exact RefinesTA.refl _
+      · exact RefinesTA.refl _
+    · exact RefinesTA.refl _
+  · exact RefinesTA.refl _
 
-/-- The montify rounds at a list of moduli refine the tree. -/
-theorem refinesT_montifyMods {Γ : Ctxt jasminDialect} {ts : List JasminTy} :
+/-- **A montify round refines the tree** at `mfEnv`: the rewriter refines it
+    (`refinesT_montify`) and the inlining of the reduce-multiply heads keeps it. -/
+theorem refinesT_montifyAt {p : Nat} (h : mont32Cert p = true) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} (prog : NFProg jasminDialect Γ ts) (X : Valuation Γ) :
+    RefinesT h₁ (mfTree fuel prog X) (mfTree fuel (montifyAt h prog) X) :=
+  refinesTA_iff_refinesT.mp (refinesTA_montifyAt _ fuel h prog X)
+
+/-- The montify rounds at a list of moduli refine the tree up to events skipped at `Sk`. -/
+theorem refinesTA_montifyMods {Γ : Ctxt jasminDialect} {ts : List JasminTy} :
     ∀ (ps : List Nat) (prog : NFProg jasminDialect Γ ts) (X : Valuation Γ),
-      RefinesT h₁ (mfTree fuel prog X) (mfTree fuel (montifyMods ps prog) X)
-  | [], _, _ => RefinesT.refl _
+      RefinesTA Sk (mfTree fuel prog X) (mfTree fuel (montifyMods ps prog) X)
+  | [], _, _ => RefinesTA.refl _
   | p :: ps, prog, X => by
-      refine RefinesT.trans ?_ (refinesT_montifyMods ps _ X)
+      refine RefinesTA.trans ?_ (refinesTA_montifyMods ps _ X)
       split
       · rename_i h
-        exact refinesT_montifyAt h₁ fuel h prog X
-      · exact RefinesT.refl _
+        exact refinesTA_montifyAt Sk fuel h prog X
+      · exact RefinesTA.refl _
+
+/-- The montify rounds at a list of moduli refine the tree. -/
+theorem refinesT_montifyMods {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    (ps : List Nat) (prog : NFProg jasminDialect Γ ts) (X : Valuation Γ) :
+    RefinesT h₁ (mfTree fuel prog X) (mfTree fuel (montifyMods ps prog) X) :=
+  refinesTA_iff_refinesT.mp (refinesTA_montifyMods _ fuel ps prog X)
+
+/-- **The stage lemma of `montifyStep` at a skip predicate**: the tree at `mfEnv` of the output
+    of the montify step refines the tree of its input up to events skipped at every `Sk`. -/
+theorem refinesTA_montifyStep {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p q : NFProg jasminDialect Γ ts} (hf : (montifyStep Γ ts).run p = some q)
+    (X : Valuation Γ) : RefinesTA Sk (mfTree fuel p X) (mfTree fuel q X) := by
+  obtain rfl : montifyPass p = q := Option.some.inj hf
+  exact refinesTA_montifyMods Sk fuel _ p X
 
 /-- **The stage lemma of `montifyStep` at the tree level**: the tree at `mfEnv` of the output
     of the montify step refines the tree of its input, at every source handler. -/
 theorem refinesT_montifyStep {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {p q : NFProg jasminDialect Γ ts} (hf : (montifyStep Γ ts).run p = some q)
-    (X : Valuation Γ) : RefinesT h₁ (mfTree fuel p X) (mfTree fuel q X) := by
-  obtain rfl : montifyPass p = q := Option.some.inj hf
-  exact refinesT_montifyMods h₁ fuel _ p X
+    (X : Valuation Γ) : RefinesT h₁ (mfTree fuel p X) (mfTree fuel q X) :=
+  refinesTA_iff_refinesT.mp (refinesTA_montifyStep _ fuel hf X)
+
+/-- **The montify step from the tree with every call an event at a skip predicate**: when every
+    answer that `Sk` admits at an inner head is the value of the head, the tree at `mfEnv` of
+    the output of the montify step refines the tree `nfProgTree` of its input up to events
+    skipped at `Sk`. -/
+theorem refinesTA_nfProgTree_montifyStep
+    (hSk : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p q : NFProg jasminDialect Γ ts}
+    (hf : (montifyStep Γ ts).run p = some q) (X : Valuation Γ) :
+    RefinesTA Sk (nfProgTree fuel p X) (mfTree fuel q X) :=
+  RefinesTA.trans (refinesTA_nfProgTree_mfTree Sk hSk fuel p X)
+    (refinesTA_montifyStep Sk fuel hf X)
 
 /-- **The montify step from the tree with every call an event**: at a source handler that
     answers each inner head by its value, the tree at `mfEnv` of the output of the montify
@@ -960,14 +1076,15 @@ theorem fieldHeadB_of_raiseBody {f : String} {as rs : List JasminTy}
     | none => simp [hm] at h
     | some mpk => exact _root_.Hax.FieldTag.fieldHeadB_of_fieldTagM? hm
 
-/-- **The lowered body of a field head refines its call** at `mfEnv`: the call is the leaf of
-    the value of the `u64` table, and the body, which has no `call`, is the leaf of its
-    denotation, which is that value whenever the table answers. -/
-theorem refinesT_fieldBodyD (h₁ : ∀ e : (nfCallSig jasminDialect).Event,
-      (nfCallSig jasminDialect).Resp e) (fuel : Nat) (f : String) (as rs : List JasminTy)
+/-- **The lowered body of a field head refines its call** at `mfEnv`, at every skip predicate:
+    the call is the leaf of the value of the `u64` table, and the body, which has no `call`, is
+    the leaf of its denotation, which is that value whenever the table answers. -/
+theorem refinesTA_fieldBodyD
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (fuel : Nat) (f : String) (as rs : List JasminTy)
     (b : NFProg jasminDialect as rs) (hb : fieldLibD.call f as rs = some b)
     (x : Valuation (d := jasminDialect) as) :
-    RefinesT h₁ (mfEnv.call f as rs x) (mfTree fuel b x) := by
+    RefinesTA Sk (mfEnv.call f as rs x) (mfTree fuel b x) := by
   change fieldBodyD f as rs = some b at hb
   obtain ⟨-, r₁, hr₁, -⟩ := fieldBodyD_some hb
   have hfb : fieldHeadB f = true := fieldHeadB_of_raiseBody hr₁
@@ -997,6 +1114,37 @@ theorem refinesT_fieldBodyD (h₁ : ∀ e : (nfCallSig jasminDialect).Event,
     rw [hoe]
     exact hd.symm
 
+/-- **The lowered body of a field head refines its call** at `mfEnv`: the call is the leaf of
+    the value of the `u64` table, and the body, which has no `call`, is the leaf of its
+    denotation, which is that value whenever the table answers. -/
+theorem refinesT_fieldBodyD (h₁ : ∀ e : (nfCallSig jasminDialect).Event,
+      (nfCallSig jasminDialect).Resp e) (fuel : Nat) (f : String) (as rs : List JasminTy)
+    (b : NFProg jasminDialect as rs) (hb : fieldLibD.call f as rs = some b)
+    (x : Valuation (d := jasminDialect) as) :
+    RefinesT h₁ (mfEnv.call f as rs x) (mfTree fuel b x) :=
+  refinesTA_iff_refinesT.mp (refinesTA_fieldBodyD _ fuel f as rs b hb x)
+
+/-- **The stage lemma of `fieldDialectStep` at a skip predicate**: the tree at `mfEnv` of the
+    output of the field dialect step refines the tree of its input up to events skipped at
+    every `Sk`. A field call is a leaf of `mfEnv`, and its lowered body is a leaf with the same
+    value. -/
+theorem refinesTA_fieldDialectStep
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (fuel : Nat) {Γ : Ctxt jasminDialect}
+    {ts : List JasminTy} {p q : NFProg jasminDialect Γ ts}
+    (hf : (fieldDialectStep Γ ts).run p = some q) (X : Valuation Γ) :
+    RefinesTA Sk (mfTree fuel p X) (mfTree fuel q X) := by
+  change (if fieldFree p then some p else _) = some q at hf
+  split at hf
+  · cases hf
+    exact RefinesTA.refl _
+  · obtain ⟨q0, hq0, hif⟩ := Option.bind_eq_some_iff.mp hf
+    split at hif
+    · cases hif
+      exact refinesTA_inline? pureReader_renameInv mfEnv fuel Sk (fun _ => rfl)
+        (fun f as rs b hb x => refinesTA_fieldBodyD Sk fuel f as rs b hb x) p hq0 X
+    · cases hif
+
 /-- **The stage lemma of `fieldDialectStep` at the tree level**: the tree at `mfEnv` of the
     output of the field dialect step refines the tree of its input, at every source handler.
     A field call is a leaf of `mfEnv`, and its lowered body is a leaf with the same value. -/
@@ -1004,16 +1152,7 @@ theorem refinesT_fieldDialectStep (h₁ : ∀ e : (nfCallSig jasminDialect).Even
       (nfCallSig jasminDialect).Resp e) (fuel : Nat) {Γ : Ctxt jasminDialect}
     {ts : List JasminTy} {p q : NFProg jasminDialect Γ ts}
     (hf : (fieldDialectStep Γ ts).run p = some q) (X : Valuation Γ) :
-    RefinesT h₁ (mfTree fuel p X) (mfTree fuel q X) := by
-  change (if fieldFree p then some p else _) = some q at hf
-  split at hf
-  · cases hf
-    exact RefinesT.refl _
-  · obtain ⟨q0, hq0, hif⟩ := Option.bind_eq_some_iff.mp hf
-    split at hif
-    · cases hif
-      exact refinesT_inline? pureReader_renameInv mfEnv fuel h₁ (fun _ => rfl)
-        (fun f as rs b hb x => refinesT_fieldBodyD h₁ fuel f as rs b hb x) p hq0 X
-    · cases hif
+    RefinesT h₁ (mfTree fuel p X) (mfTree fuel q X) :=
+  refinesTA_iff_refinesT.mp (refinesTA_fieldDialectStep _ fuel hf X)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont

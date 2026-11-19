@@ -57,6 +57,9 @@ predicate (`RuttS.answerOut`).
   the call tree of the program of `nfDialect` to the tree `mfTree` of the narrowed program: the
   elimination of aborting branches and tuple flattening, then
   `NFProgCallTreeNarrow.ruttS_extChainCore_narrowPrep`.
+* `ruttSA_extChain_narrowPrep`: the same chain at a skip predicate `Sk` of the leaf events and
+  `Sk₃` of the calls of `jasminDialect`, under the side conditions of
+  `NFProgCallTreeNarrow.ruttSA_extChainCore_narrowPrep`.
 * `frontRA_linkHandler`, `srcFail_of_frontRR`: the side conditions of the composition at the
   front, at the handler of the linked functions and the leaf table of the table of the linked
   functions.
@@ -222,6 +225,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (linkReader OutRel
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt (MapRE MapRA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont (mfTree innerHead)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montEnv)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA (RuttSA ruttSA_iff_ruttS
+  RuttSA.mono ruttSA_eqTrans)
 
 /-- The failed leaf `none` is related to every leaf by `OutRel`. -/
 theorem outRel_none {α β : Type} (R : α → β → Prop) (o : Option β) : OutRel R none o :=
@@ -237,6 +242,69 @@ theorem none_of_outRel_eq {α : Type} {r₀ r₁ : Option α} (h : OutRel (fun x
     rw [h1] at hb
     cases hb
 open Ctxt (Var Valuation)
+
+/-- **The steps of `extChain` followed by `narrowPrep` at skip predicates.** The statement of
+    `NFProgCallTreeNarrow.ruttSA_extChainCore_narrowPrep` for the chain `extChain` of the front,
+    at a tree call environment in which every call of a procedure fails: the elimination of
+    aborting branches and tuple flattening keep the events, the answers and the leaves of the
+    tree at every skip predicate (`refinesTA_treeAt_abortElim_link`,
+    `ruttSA_treeAt_flatSame`). -/
+theorem ruttSA_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List ExtDecl)
+    (tE : TreeCallEnv leafSig nfDialect)
+    (htE : ∀ (f : String) (as rs : List NfTy) (a : Valuation (d := nfDialect) as),
+      tE.call f as rs a = .ret none)
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
+    (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
+      ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
+        CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+          (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
+    (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
+    {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
+    (h : (extChain D Γ t).run p = some q) (hB : regionExportableB q = true)
+    {q' : NFProg jasminDialect ((mapCtx (Γ.map catTy)).map NarrowWords.wideTy)
+      ([mapTy (catTy t)].map NarrowWords.wideTy)} (hq' : NarrowWords.narrowPrep q = some q')
+    (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
+    (tf fuel : Nat) (hle : tf ≤ fuel) :
+    RuttSA Sk
+      (CompRE (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+        (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x))
+      (CompRA (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+        (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
+        (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+          (MapRA catToJasmin fun x => ctTransTy x))
+        (MapRA NarrowWords.widenP fun x => NarrowWords.transTy x))
+      (Relation.Comp
+        (Relation.Comp (OutRel (VRelL [t]))
+          (OutRel fun x y => y = transArgs catToJasmin.mapTy (fun x => ctTransTy x) x))
+        (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
+          (fun x => NarrowWords.transTy x) x))
+      (fun o => o = none)
+      (treeAt linkReader tE tf p V)
+      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) := by
+  simp only [extChain, Chain.run, Option.bind_eq_some_iff] at h
+  obtain ⟨p₁, h1, p₂, h2, h3⟩ := h
+  cases h1
+  have R1 := NFProgCallTreeAbortRuttSA.refinesTA_treeAt_abortElim_link Sk tE tf p V
+  have R2 := NFProgCallTreeFlatRuttSA.ruttSA_treeAt_flatSame Sk tE htE tf h2 V
+  have R3 := NFProgCallTreeNarrow.ruttSA_extChainCore_narrowPrep hbi D tE hSk hh hSk₃ h3
+    hB hq' V hin tf fuel hle
+  have R23 := ruttSA_eqTrans (F₀ := fun o => o = none)
+    (F₁ := fun o => o = none) (fun _ _ h01 h1 => none_of_outRel_eq h01 h1) R2 R3
+  have R123 := ruttSA_eqTrans (F₀ := fun o => o = none)
+    (F₁ := fun o => o = none) (fun _ _ h01 h1 => h01.trans h1) R1 R23
+  refine RuttSA.mono ?_ R123
+  rintro r₀ r₂ ⟨r₁, rfl, r₁', h01, h12⟩
+  cases r₀ with
+  | none =>
+    exact ⟨none, ⟨none, outRel_none _ _, outRel_none _ _⟩, outRel_none _ _⟩
+  | some a =>
+    obtain ⟨b, rfl, rfl⟩ := h01 a rfl
+    exact h12
 
 /-- **The steps of `extChain` followed by `narrowPrep` at the tree level.** The statement of
     `NFProgCallTreeNarrow.ruttS_extChainCore_narrowPrep` for the chain `extChain` of the front,
@@ -278,27 +346,13 @@ theorem ruttS_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List 
           (fun x => NarrowWords.transTy x) x))
       (fun o => o = none)
       (treeAt linkReader tE tf p V)
-      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) := by
-  simp only [extChain, Chain.run, Option.bind_eq_some_iff] at h
-  obtain ⟨p₁, h1, p₂, h2, h3⟩ := h
-  cases h1
-  have R1 := NFProgCallTreeAbort.refinesT_treeAt_abortElim_link (leafHandler (tableOf bi)) tE tf
-    p V
-  have R2 := NFProgCallTreeFlat.ruttS_treeAt_flatSame (leafHandler (tableOf bi)) tE htE tf h2 V
-  have R3 := NFProgCallTreeNarrow.ruttS_extChainCore_narrowPrep hbi D tE h₂ h₃ hh₂ hh₃ hinner h3
-    hB hq' V hin tf fuel hle
-  have R23 := NFProgCallTreeFlat.ruttS_eqTrans (F₀ := fun o => o = none)
-    (F₁ := fun o => o = none) (fun _ _ h01 h1 => none_of_outRel_eq h01 h1) R2 R3
-  have R123 := NFProgCallTreeFlat.ruttS_eqTrans (F₀ := fun o => o = none)
-    (F₁ := fun o => o = none) (fun _ _ h01 h1 => h01.trans h1) R1 R23
-  refine NFProgCallTreeExt.RuttS.mono ?_ R123
-  rintro r₀ r₂ ⟨r₁, rfl, r₁', h01, h12⟩
-  cases r₀ with
-  | none =>
-    exact ⟨none, ⟨none, outRel_none _ _, outRel_none _ _⟩, outRel_none _ _⟩
-  | some a =>
-    obtain ⟨b, rfl, rfl⟩ := h01 a rfl
-    exact h12
+      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) :=
+  ruttSA_iff_ruttS.mp (ruttSA_extChain_narrowPrep hbi D tE htE
+    (Sk := fun e a => a = leafHandler (tableOf bi) e) (Sk₃ := fun e a => a = h₃ e)
+    (fun _ _ _ h => h)
+    (fun _ e _ a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
+      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁, hh₃ _ _ he₂⟩⟩)
+    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) h hB hq' V hin tf fuel hle)
 
 end Chain
 

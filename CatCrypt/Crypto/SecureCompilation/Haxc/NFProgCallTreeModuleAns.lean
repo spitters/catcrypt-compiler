@@ -32,6 +32,8 @@ the narrowed program are asked to satisfy `EvOK` only.
 
 * `ChainSA`: the chain `extChain` followed by `narrowPrep` relates the call trees at a skip
   predicate of the leaf events.
+* `TypedSk`: the skip predicate of the leaf events that admits every answer at a typed call of
+  a linked function and the answer of the leaf table elsewhere.
 
 ## Main results
 
@@ -39,6 +41,10 @@ the narrowed program are asked to satisfy `EvOK` only.
   at `BackRE` and `BackRAA`.
 * `ruttF_regionBack_targetA`: the same at a result of `regionBack`, with the decoding of the bytes.
 * `chainSA_leaf`: the chain at the skip predicate of the leaf handler.
+* `chainSA_of_skip`: the chain at a skip predicate, from its side conditions at the calls of
+  `CatName`, the translated and lowered events, and the inner heads.
+* `chainSA_typed`: the chain at the typed skip predicate `TypedSk`.
+* `r3FA_typed`: `r3FA_of_front` at `TypedSk` and `SkipAns TypedAns`, the chain discharged.
 * `RuttFA.answerOut`, `RuttFA.and_target`: answering the events outside `keep` and restricting to
   target events of a predicate.
 * `ruttF_extChain_targetA`: the chain composed with the back half.
@@ -343,6 +349,34 @@ theorem chainSA_leaf {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List Ex
   fun hB _ hq' V hin tf fuel hle => ruttSA_iff_ruttS.mpr
     (NFProgCallTreeCompose.ruttS_extChain_narrowPrep hbi D tE htE h₂ h₃ hh₂ hh₃ hinner hp hB hq'
       V hin tf fuel hle)
+
+/-- **The chain at a skip predicate from its side conditions**, from
+    `NFProgCallTreeCompose.ruttSA_extChain_narrowPrep`: let `Sk` admit only the answer of the leaf
+    table at the calls of names of `CatName`, let every answer of `Sk` at an event related by the
+    translation and the lowering have an answer of `Sk₃` related by the composed answer relation,
+    and let `Sk₃` admit only the answer of `montEnv` at inner heads. Then the chain relates the
+    call trees at `Sk`. -/
+theorem chainSA_of_skip {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List ExtDecl)
+    (tE : TreeCallEnv leafSig nfDialect)
+    (htE : ∀ (f : String) (as rs : List NfTy) (a : Ctxt.Valuation (d := nfDialect) as),
+      tE.call f as rs a = .ret none)
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
+    (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
+      ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
+        CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+          (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
+    (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as)
+      a, innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    {Γ : Ctxt nfDialect} {t : NfTy} {p0 : NFProg nfDialect Γ [t]}
+    {p : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
+    (hp : (extChain D Γ t).run p0 = some p) :
+    ChainSA Sk tE p0 p :=
+  fun hB _ hq' V hin tf fuel hle =>
+    NFProgCallTreeCompose.ruttSA_extChain_narrowPrep hbi D tE htE hSk hh hSk₃ hp hB hq' V hin
+      tf fuel hle
 
 /-! ## 3. Answering events outside `keep`, and target events of a predicate -/
 
@@ -894,5 +928,264 @@ theorem r3FA_of_front {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lpr
     exact hin l hl
   exact hR hwordT hinT sa hreg env henv V hV tf (G := EvOK T) (fun _ he => he)
     (hev T hsub q p q' hq hp hq' tf V) (symOf T pc.length) hsym _ hfr
+
+/-! ## 7. The chain at the typed skip predicate -/
+
+/-- **The typed skip predicate of the leaf events of a module** `m`: at a call of a linked
+    function of `m` with the argument types of its parameters and its result type, every
+    answer; at every call, the answer of the leaf table of the linked functions. -/
+def TypedSk (m : HaxModule) (e : leafSig.Event) (a : leafSig.Resp e) : Prop :=
+  (keepL m e = true ∧ ∀ l, m.linked.find? (·.name == e.name) = some l →
+      e.argTys = l.params.map (·.2) ∧ e.ret = l.res)
+    ∨ a = leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e
+
+/-- A leaf call kept by `keepL` is a call of a linked function of the same name, the first one
+    `find?` returns. -/
+theorem linked_of_keepL {m : HaxModule} {e : leafSig.Event} (hk : keepL m e = true) :
+    ∃ l ∈ m.linked, l.name = e.name ∧ m.linked.find? (·.name == e.name) = some l := by
+  obtain ⟨l, hl⟩ := Option.isSome_iff_exists.mp
+    (List.find?_isSome.mpr (List.any_eq_true.mp hk))
+  exact ⟨l, List.mem_of_find?_eq_some hl,
+    beq_iff_eq.mp (List.find?_eq_some_iff_append.mp hl).1, hl⟩
+
+/-- **The answers of the translation and the lowering at a word result**: at a leaf call with a
+    word result, every answer has an answer related by the composed answer relation of
+    `nfToCatExt` and the lowering to `jasminDialect`, the word transported. -/
+theorem compRA_extMap_word {e₁ : leafSig.Event} {e₃ : (nfCallSig jasminDialect).Event}
+    (hr : e₁.ret = .word 64)
+    (hC : CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₁ e₃) (a₁ : leafSig.Resp e₁) :
+    ∃ a₃, CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+      (MapRA catToJasmin fun x => ctTransTy x) e₁ e₃ a₁ a₃ := by
+  obtain ⟨n₁, as₁, r₁, xs₁⟩ := e₁
+  dsimp only at hr
+  subst hr
+  obtain ⟨e₂, hE, hM⟩ := id hC
+  obtain ⟨n₂, as₂, rs₂, xs₂⟩ := e₂
+  obtain ⟨-, has2, hrs2, -⟩ := hE
+  dsimp only at has2 hrs2
+  subst hrs2
+  subst has2
+  subst hM
+  refine ⟨a₁.map fun y => transArgs catToJasmin.mapTy (fun x => ctTransTy x)
+    (HVector.cons y .nil : Ctxt.Valuation (d := catCryptDialect) [catTy (.word 64)]),
+    fun e₂' hE' _ => ?_⟩
+  obtain ⟨n₂', as₂', rs₂', xs₂'⟩ := e₂'
+  obtain ⟨-, has2', hrs2', -⟩ := hE'
+  dsimp only at has2' hrs2'
+  subst hrs2'
+  subst has2'
+  refine ⟨a₁.map fun y => (HVector.cons y .nil :
+    Ctxt.Valuation (d := catCryptDialect) [catTy (.word 64)]), fun y hy => ?_, fun y hy => ?_⟩
+  · refine ⟨y, ?_, rfl⟩
+    rw [hy]
+    rfl
+  · cases a₁ with
+    | none => cases hy
+    | some y₀ =>
+      cases hy
+      rfl
+
+/-- **The answers of the chain at a word result**: at a leaf call with a word result, every
+    answer has an answer related by `ChainRA`, the word transported through the translation, the
+    lowering and the widening. -/
+theorem chainRA_word {e₁ : leafSig.Event} {e₄ : (nfCallSig jasminDialect).Event}
+    (hr : e₁.ret = .word 64) (hC : ChainRE e₁ e₄) (a₁ : leafSig.Resp e₁) :
+    ∃ a₄, ChainRA e₁ e₄ a₁ a₄ := by
+  obtain ⟨n₁, as₁, r₁, xs₁⟩ := e₁
+  dsimp only at hr
+  subst hr
+  obtain ⟨e₃, ⟨e₂, hE, hM⟩, hW⟩ := id hC
+  obtain ⟨n₂, as₂, rs₂, xs₂⟩ := e₂
+  obtain ⟨-, has2, hrs2, -⟩ := hE
+  dsimp only at has2 hrs2
+  subst hrs2
+  subst has2
+  subst hM
+  subst hW
+  refine ⟨a₁.map fun y => transArgs NarrowWords.widenP.mapTy (fun x => NarrowWords.transTy x)
+    (transArgs catToJasmin.mapTy (fun x => ctTransTy x)
+      (HVector.cons y .nil : Ctxt.Valuation (d := catCryptDialect) [catTy (.word 64)])), ?_⟩
+  intro e₃' hA' _
+  obtain ⟨e₂', hE', hM'⟩ := hA'
+  obtain ⟨n₂', as₂', rs₂', xs₂'⟩ := e₂'
+  obtain ⟨-, has2', hrs2', -⟩ := hE'
+  dsimp only at has2' hrs2'
+  subst hrs2'
+  subst has2'
+  subst hM'
+  refine ⟨a₁.map fun y => transArgs catToJasmin.mapTy (fun x => ctTransTy x)
+    (HVector.cons y .nil : Ctxt.Valuation (d := catCryptDialect) [catTy (.word 64)]),
+    fun e₂'' hE'' _ => ?_, fun y hy => ?_⟩
+  · obtain ⟨n₂'', as₂'', rs₂'', xs₂''⟩ := e₂''
+    obtain ⟨-, has2'', hrs2'', -⟩ := hE''
+    dsimp only at has2'' hrs2''
+    subst hrs2''
+    subst has2''
+    refine ⟨a₁.map fun y => (HVector.cons y .nil :
+      Ctxt.Valuation (d := catCryptDialect) [catTy (.word 64)]), fun y hy => ?_,
+      fun y hy => ?_⟩
+    · refine ⟨y, ?_, rfl⟩
+      rw [hy]
+      rfl
+    · cases a₁ with
+      | none => cases hy
+      | some y₀ =>
+        cases hy
+        rfl
+  · cases a₁ with
+    | none => cases hy
+    | some y₀ =>
+      cases hy
+      rfl
+
+/-- The result type of a leaf call admitted by the left disjunct of `TypedSk` is a word, at
+    linked functions with a word result. -/
+theorem ret_of_typedSk {m : HaxModule}
+    (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
+    {e : leafSig.Event} (hk : keepL m e = true)
+    (ht : ∀ l, m.linked.find? (·.name == e.name) = some l →
+      e.argTys = l.params.map (·.2) ∧ e.ret = l.res) : e.ret = .word 64 := by
+  obtain ⟨l, hl, -, hf⟩ := linked_of_keepL hk
+  exact (ht l hf).2.trans (hpar l hl).2
+
+/-- **The chain at the typed skip predicate.** Let the linked functions of `m` have names that
+    pass `linkNameOk`, a word result and word and integer parameters, and names that are not
+    inner heads. Under the handler conditions of `chainSA_leaf` at the leaf table of the linked
+    functions, the chain relates the call trees at `TypedSk m`. -/
+theorem chainSA_typed {m : HaxModule}
+    (hlk : ∀ l ∈ m.linked, linkNameOk l.name = true)
+    (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
+    (hin : ∀ l ∈ m.linked, innerHead l.name = false) (D : List ExtDecl)
+    (tE : TreeCallEnv leafSig nfDialect)
+    (htE : ∀ (f : String) (as rs : List NfTy) (a : Ctxt.Valuation (d := nfDialect) as),
+      tE.call f as rs a = .ret none)
+    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
+    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+      (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
+    (hinner : ∀ (f : String) (as rs : List JasminTy)
+      (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
+        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    {Γ : Ctxt nfDialect} {t : NfTy} {p0 : NFProg nfDialect Γ [t]}
+    {p : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
+    (hp : (extChain D Γ t).run p0 = some p) :
+    ChainSA (TypedSk m) tE p0 p := by
+  have hbi : SubTable (m.linkTable CatCrypt.Crypto.Hax.hax64WExit) :=
+    subTable_linkBi _ CatCrypt.Crypto.Hax.hax64WExit_subTable
+      fun l hl => not_catName_of_linkNameOk (hlk l hl)
+  refine chainSA_of_skip (Sk₃ := fun e a => innerHead e.name = true →
+      a = (montEnv (fieldEnv CallEnv.empty)).call e.name e.argTys e.resTys e.args)
+    hbi D tE htE ?_ ?_ (fun _ _ _ _ _ hi h => h hi) hp
+  · intro e a hc ha
+    rcases ha with ⟨hk, -⟩ | rfl
+    · obtain ⟨l, hl, hn, -⟩ := linked_of_keepL hk
+      exact absurd (hn ▸ hc) (not_catName_of_linkNameOk (hlk l hl))
+    · rfl
+  · intro e₀ e hC a₀ ha₀
+    rcases ha₀ with ⟨hk, ht⟩ | rfl
+    · obtain ⟨a, ha⟩ := compRA_extMap_word (ret_of_typedSk hpar hk ht) hC a₀
+      refine ⟨a, fun hi => absurd hi ?_, ha⟩
+      obtain ⟨l, hl, hn, -⟩ := linked_of_keepL hk
+      obtain ⟨e₁, hE, hM⟩ := hC
+      rw [hM]
+      dsimp only
+      rw [hE.1, ← hn, hin l hl]
+      decide
+    · exact ⟨h₃ e, fun hi => hinner e.name e.argTys e.resTys e.args hi,
+        fun e₁ hE hM => ⟨h₂ e₁, hh₂ _ _ hE, hh₃ _ _ hM⟩⟩
+
+/-- **The relation of the call trees of a module at the separation contracts at the typing
+    predicate, from the front.** `r3FA_of_front` at `Sk₁ := TypedSk m` and
+    `Sk₀ := SkipAns TypedAns m`, with the chain discharged by `chainSA_typed`: under the shape
+    conditions of `r3FA_of_front`, the handler conditions of `chainSA_leaf` at the leaf table of
+    the linked functions with the chain answers `hhC` at that table, and the front at
+    `SkipAns TypedAns m`, the source call tree of the entry is related by
+    `RuttFA (SkipAns TypedAns m)` to the target trees of the calling body at `contractREG` and
+    `contractRACA A`, for every answer predicate `A`. -/
+theorem r3FA_typed {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
+    {bytes : List (BitVec 8)} (hc : compileA m σ fname = some (P, bytes))
+    (hnd : (m.linked.map (·.name)).Nodup) (hk : ∀ l ∈ m.linked, LinkedKernel l)
+    (hn : narrowOk m σ = false) (hpt : pairTailOf m σ = none)
+    (hcf : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
+      (p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy q.1)]), haxToNF σ m = some q →
+      (extChain (linkedDecls m CatCrypt.Crypto.Hax.hax64WExit) _ q.1).run q.2
+        = some p → p.callFree = false)
+    (tE : TreeCallEnv leafSig nfDialect)
+    (htE : ∀ (f : String) (as rs : List NfTy) (a : Ctxt.Valuation (d := nfDialect) as),
+      tE.call f as rs a = .ret none)
+    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
+    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+      (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
+    (hinner : ∀ (f : String) (as rs : List JasminTy)
+      (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
+        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+      (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₃ e₂))
+    (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
+    (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
+      ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
+    (hin : ∀ l ∈ m.linked, innerHead l.name = false)
+    (hev : ∀ (T : CalleeTab), T.fns.Sublist (m.linked.filterMap LinkedFn.calleeData) →
+      ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
+        (p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy q.1)])
+        (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy)
+          ([mapTy (catTy q.1)].map NarrowWords.wideTy)), haxToNF σ m = some q →
+      (extChain (linkedDecls m CatCrypt.Crypto.Hax.hax64WExit) _ q.1).run q.2
+        = some p → NarrowWords.narrowPrep p = some q' →
+      ∀ (tf : Nat) (V : Ctxt.Valuation (entryCtx (abiEntry σ))),
+        AllEv (EvOK T) (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
+    (hfront : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t]),
+      haxToNF σ m = some q → ∀ (sa : AState), σ.Regions sa → ∀ (env : Env), σ.EnvOf sa env →
+      ∀ (fuelC fuel : Nat), ∃ (V : Ctxt.Valuation (entryCtx (abiEntry σ))) (tf : Nat),
+        EntryVals env (abiEntry σ) V
+        ∧ RuttSA (NFProgCallTreeOracle.SkipAns NFProgCallTreeOracle.TypedAns m) (FrontRET m)
+          FrontRA (FrontRR q.1) srcFail
+          (nfTree (moduleTreeTable m CatCrypt.Crypto.Hax.hax64WExit fuelC) fuel m.entry.erase env)
+          (answerOut (keepL m) (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)))
+            (treeAt linkReader tE tf q.2 V)))
+    (A : AnsPred) :
+    ∃ (pc Q : List RInstr) (sym : Nat → String),
+      decodeLprog bytes = some (pc ++ shiftProg pc.length Q) ∧
+      ∀ (sa : AState), σ.Regions sa → ∀ env, σ.EnvOf (narrowEntry m σ sa) env →
+        ∀ fuelC fuel,
+          RuttFA (NFProgCallTreeOracle.SkipAns NFProgCallTreeOracle.TypedAns m) (contractREG m)
+            (contractRACA A m) (resRel σ sa) srcFail
+            (nfTree (moduleTreeTable m CatCrypt.Crypto.Hax.hax64WExit fuelC) fuel
+              m.entry.erase env)
+            (fun fuelT => targetTree aMachine pc sym (linkRead m) fuelT 0 sa) := by
+  refine r3FA_of_front hc hnd hk hn hpt hcf tE (TypedSk m)
+    (fun q p hq hp => chainSA_typed (haxToNF_eq_some hq).2.2.1 hpar hin _ tE htE h₂ h₃ hh₂ hh₃
+      hinner hp)
+    ?_ ?_ hpar hword hin hev _ ?_ hfront A
+  · intro e₁ e₂ hC a₁ ha₁
+    rcases ha₁ with ⟨hk, ht⟩ | rfl
+    · exact chainRA_word (ret_of_typedSk hpar hk ht) hC a₁
+    · exact ⟨h₃ e₂, hhC e₁ e₂ hC⟩
+  · intro e _
+    exact Or.inr rfl
+  · intro e₀ e₁ hF a₀ ha₀
+    obtain ⟨⟨hn₁, -, l, hl, hr⟩, ht⟩ := hF
+    refine ⟨(a₀ : Option Value).bind (dec e₁.ret), Or.inl ⟨?_, ?_⟩, ?_⟩
+    · exact List.any_eq_true.mpr ⟨l, List.mem_of_find?_eq_some hl, by
+        rw [hn₁]
+        exact (List.find?_eq_some_iff_append.mp hl).1⟩
+    · intro l' hl'
+      rw [hn₁, hl] at hl'
+      obtain rfl := Option.some.inj hl'
+      exact ⟨ht l hl, hr⟩
+    · unfold NFProgCallTreeOracle.SkipAns at ha₀
+      rw [hl] at ha₀
+      change (a₀ : Option Value) = ((a₀ : Option Value).bind (dec e₁.ret)).map (enc e₁.ret)
+      cases hv : (a₀ : Option Value) with
+      | none => rfl
+      | some v =>
+        obtain ⟨x, hx⟩ := Option.isSome_iff_exists.mp (ha₀ v hv)
+        rw [Option.bind_some, hr, hx, Option.map_some,
+          ← CatCrypt.Crypto.Hax.ImpToNF.dec_sound _ _ _ hx]
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeModuleAns

@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSABase
 public import CatCrypt.Crypto.SecureCompilation.VIR.NFProgDCE
 
 /-!
@@ -37,6 +38,8 @@ the events its expression performs. The tree of `dce p` is related to the tree o
   call tree in which every call is an event, and the handler of a call environment.
 * `RefinesT`: the relation `RuttS` at equal events, answers and leaves, with `none` as the
   failed source leaf.
+* `NFProgCallTreeRuttSA.RefinesTA`: refinement of trees up to events skipped at an answer
+  predicate.
 
 ## Main results
 
@@ -47,8 +50,13 @@ the events its expression performs. The tree of `dce p` is related to the tree o
   whole source prefix for `RuttS`.
 * `RefinesT.trans`, `RefinesT.obind`, `RefinesT.ofoldl`, `RefinesT.owhileIter`: refinement up
   to skipped events composes and is a congruence of the tree combinators.
+* `refinesTA_iff_refinesT`, `RefinesTA.refl`, `RefinesTA.obind`, `RefinesTA.trans`,
+  `RefinesTA.ofoldl`, `RefinesTA.owhileIter`: refinement at a skip predicate is `RefinesT` at
+  the answers of a handler, is reflexive and transitive, and is a congruence of the tree
+  combinators.
 * `treeAt_rename?`: a renamed program has the tree of the source at related valuations.
 * `ruttS_treeAt_dce`: the stage lemma of dead-binding elimination at the tree level.
+* `refinesTA_treeAt_dce`: the same stage lemma at every skip predicate.
 -/
 
 @[expose] public section
@@ -504,3 +512,137 @@ theorem ruttS_treeAt_dce (h₁ : ∀ e : E.Event, E.Resp e) {ex : ExprReader E d
 end Dce
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
+
+/-! ## Refinement at a skip predicate -/
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
+  (RefinesT obind ofoldl owhileIter ExprReader TreeCallEnv treeAt treeAt_rename?)
+open Ctxt (Valuation)
+
+section Refines
+
+variable {E : EventSig} {Sk : (e : E.Event) → E.Resp e → Prop}
+
+/-- **Refinement of trees up to events skipped at an answer predicate**: `RuttSA` at the skip
+    predicate `Sk`, equal events and answers, equal leaves, and the source leaf `none` as the
+    failed run. -/
+def RefinesTA (Sk : (e : E.Event) → E.Resp e → Prop) {α : Type}
+    (t₁ t₂ : CallTree E (Option α)) : Prop :=
+  RuttSA Sk (fun e₁ e₂ => e₁ = e₂) (fun _ _ a₁ a₂ => a₁ ≍ a₂) (fun r₁ r₂ => r₁ = r₂)
+    (fun r₁ => r₁ = none) t₁ t₂
+
+/-- At the answers of a handler, `RefinesTA` is `RefinesT`. -/
+theorem refinesTA_iff_refinesT {h₁ : ∀ e : E.Event, E.Resp e} {α : Type}
+    {t₁ t₂ : CallTree E (Option α)} :
+    RefinesTA (fun e a => a = h₁ e) t₁ t₂ ↔ RefinesT h₁ t₁ t₂ :=
+  ruttSA_iff_ruttS
+
+/-- A tree refines itself. -/
+theorem RefinesTA.refl {α : Type} (t : CallTree E (Option α)) : RefinesTA Sk t t :=
+  RuttSA.refl (fun _ => rfl) t
+
+/-- **Sequencing of refinements**: refined prefixes and refined continuations give a refined
+    `obind`. -/
+theorem RefinesTA.obind {α β : Type} {t₁ t₂ : CallTree E (Option α)}
+    {k₁ k₂ : α → CallTree E (Option β)} (h : RefinesTA Sk t₁ t₂)
+    (hk : ∀ a, RefinesTA Sk (k₁ a) (k₂ a)) :
+    RefinesTA Sk (obind t₁ k₁) (obind t₂ k₂) := by
+  refine RuttSA.bind h ?_ ?_
+  · rintro s₁ s₂ rfl
+    cases s₁ with
+    | none => exact .fail rfl
+    | some a => exact hk a
+  · rintro s₁ rfl t
+    exact .fail rfl
+
+/-- **Transitivity**: refinement up to events skipped at `Sk` composes. -/
+theorem RefinesTA.trans {α : Type} {t₁ t₂ t₃ : CallTree E (Option α)}
+    (h12 : RefinesTA Sk t₁ t₂) (h23 : RefinesTA Sk t₂ t₃) : RefinesTA Sk t₁ t₃ := by
+  induction h12 generalizing t₃ with
+  | ret h => subst h; exact h23
+  | fail h => exact .fail h
+  | vis he _ ih =>
+    subst he
+    cases h23 with
+    | vis he' hk' => exact .vis he' fun a₁ a₂ ha => ih a₁ a₁ HEq.rfl (hk' a₁ a₂ ha)
+    | skip hk' => exact .skip fun a ha => ih a a HEq.rfl (hk' a ha)
+  | skip _ ih => exact .skip fun a ha => ih a ha h23
+
+/-- Refined steps give a refined fold. -/
+theorem RefinesTA.ofoldl {α β : Type} {f₁ f₂ : β → α → CallTree E (Option β)}
+    (hf : ∀ b a, RefinesTA Sk (f₁ b a) (f₂ b a)) (l : List α) (b : β) :
+    RefinesTA Sk (ofoldl f₁ l b) (ofoldl f₂ l b) := by
+  induction l generalizing b with
+  | nil => exact RefinesTA.refl _
+  | cons a l ih => exact RefinesTA.obind (hf b a) fun b' => ih b'
+
+end Refines
+
+section Iter
+
+variable {E : EventSig} {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+  [HasBoolBit d]
+
+omit [DialectSignature d] [HasWord64 d] in
+/-- Refined bodies give a refined exit-flag iteration. -/
+theorem RefinesTA.owhileIter {Sk : (e : E.Event) → E.Resp e → Prop} {cs : List d.Ty}
+    {s₁ s₂ : Valuation cs → CallTree E (Option (Valuation (HasBitType.bit (d := d) :: cs)))}
+    (hs : ∀ a, RefinesTA Sk (s₁ a) (s₂ a)) :
+    ∀ (n : Nat) (a : Valuation cs), RefinesTA Sk (owhileIter s₁ n a) (owhileIter s₂ n a) := by
+  intro n
+  induction n with
+  | zero => intro a; exact RefinesTA.refl _
+  | succ n ih =>
+    intro a
+    refine RefinesTA.obind (hs a) fun r => ?_
+    split
+    · exact ih _
+    · exact RefinesTA.refl _
+
+/-- **The stage lemma of dead-binding elimination at a skip predicate**: at a reader invariant
+    under renaming, the tree of `NFProg.dce p` refines the tree of `p` up to events skipped at
+    `Sk`, for every predicate `Sk`. A removed let-binding is the skip of the events of its
+    expression at every answer `Sk` admits; a source run that fails there is the failed source
+    leaf. -/
+theorem refinesTA_treeAt_dce (Sk : (e : E.Event) → E.Resp e → Prop) {ex : ExprReader E d}
+    (hex : ex.RenameInv) (tE : TreeCallEnv E d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) :
+    ∀ V : Valuation Γ,
+      RefinesTA Sk (treeAt ex tE fuel p V) (treeAt ex tE fuel (NFProg.dce p) V) := by
+  induction p with
+  | ret vs => intro V; exact RefinesTA.refl _
+  | var e k ih =>
+    intro V
+    simp only [NFProg.dce]
+    split
+    · rename_i k' hr
+      refine RuttSA.skip_bind (ex e V) fun s _ => ?_
+      cases s with
+      | none => exact .fail rfl
+      | some x =>
+        rw [treeAt_rename? hex tE fuel (NFProg.dce k) hr (PRen.agrees_drop V x)]
+        exact ih _
+    · exact RefinesTA.obind (RefinesTA.refl _) fun x => ih _
+  | forLoop count inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
+  | ifThenElse cond thn els k iht ihe ihk =>
+    intro V
+    refine RefinesTA.obind ?_ fun _ => ihk _
+    split
+    · exact iht V
+    · exact ihe V
+  | whileLoop inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
+  | call f args k ih =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih _
+
+end Iter
+
+end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA

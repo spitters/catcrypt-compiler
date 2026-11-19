@@ -25,17 +25,20 @@ trees in place of denotations.
 * `emitArm?_treeAt`, `emitSels_treeAt`, `lowerIte?_treeAt`: the trees of the parts of a
   lowered branch.
 * `treeAt_lowerSel`, `treeAt_lowerSelects`: the lowering keeps the call tree.
-* `refinesT_lowerSelectsStep`: the stage lemma of `lowerSelectsStep` at `mfEnv`.
+* `refinesT_lowerSelectsStep`, `refinesTA_lowerSelectsStep`: the stage lemma of
+  `lowerSelectsStep` at `mfEnv`, at a handler and at a skip predicate.
 * `LeafOK`, `leafOK_obind`, `leafOK_ofoldl`, `leafOK_owhileIter`, `obind_congr_inv`,
   `ofoldl_congr_inv`, `owhileIter_congr_inv`: invariants of the leaves of a tree under every
   answer, and the congruences of the tree combinators under an invariant.
-* `retsWithin_leafOK`, `carriedGo_treeAt`, `treeAt_loopRange`, `refinesT_synRangeStep`: the
-  checker of the range stage at the tree level, and the stage lemma of `synRangeStep`.
+* `retsWithin_leafOK`, `carriedGo_treeAt`, `treeAt_loopRange`, `refinesT_synRangeStep`,
+  `refinesTA_synRangeStep`: the tree-level checker of the range stage, and the stage lemma of
+  `synRangeStep`.
 * `treeAt_nfGo_env`, `treeAt_aegraphOptNF_env`: the e-graph pass keeps the tree at every tree
   call environment.
 * `refinesT_jasminTail`, `ruttS_jasminTail`: the steps of `extChainCore` in `jasminDialect`,
   from the tree `nfProgTree` of their input to the tree `mfTree` of their output, and their
-  composition after a relation `RuttS`.
+  composition after a relation `RuttS`; `refinesTA_jasminTail`, `ruttSA_jasminTail`: the same
+  at skip predicates.
 
 The range stage drops masks on the strength of intervals of the variables a loop carries. The
 interval of a result of a call is the full lane range, so the invariant of the checker holds of
@@ -54,6 +57,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.MultiBlockLowering (hvAppend)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+  (RuttSA RefinesTA RefinesTA.refl RefinesTA.trans)
 open CatCrypt.Crypto.SecureCompilation.VIR.NFProg (Agrees agrees_id agrees_lift agrees_comp
   appLift agrees_appLift bindHom agrees_bindHom lookupArgs_renameVars denoteM_rename lowerSel
   lowerSelects lowerIte? emitArm? emitSels straightSpec Lowerable)
@@ -282,6 +287,19 @@ theorem refinesT_lowerSelectsStep
   obtain rfl : lowerSelects p = q := Option.some.inj hf
   rw [mfTree, mfTree, treeAt_lowerSelects]
   exact RefinesT.refl _
+
+/-- **The stage lemma of `lowerSelectsStep` at a skip predicate**: the output has the tree of
+    its input at `mfEnv`, so it refines it up to events skipped at every `Sk`. -/
+theorem refinesTA_lowerSelectsStep
+    (Sk : (e : (nfCallSig JasminDialect.jasminDialect).Event) →
+      (nfCallSig JasminDialect.jasminDialect).Resp e → Prop) (fuel : Nat)
+    {Γ : Ctxt JasminDialect.jasminDialect} {ts : List JasminDialect.JasminTy}
+    {p q : NFProg JasminDialect.jasminDialect Γ ts}
+    (hf : (NFProgPasses.lowerSelectsStep Γ ts).run p = some q) (X : Valuation Γ) :
+    RefinesTA Sk (mfTree fuel p X) (mfTree fuel q X) := by
+  obtain rfl : lowerSelects p = q := Option.some.inj hf
+  rw [mfTree, mfTree, treeAt_lowerSelects]
+  exact RefinesTA.refl _
 
 /-! ## Invariants of the leaves of a tree -/
 
@@ -674,6 +692,21 @@ theorem refinesT_synRangeStep
   rw [mfTree, mfTree, treeAt_loopRange]
   exact RefinesT.refl _
 
+/-- **The stage lemma of `synRangeStep` at a skip predicate**: the output has the tree of its
+    input at `mfEnv`, so it refines it up to events skipped at every `Sk`. -/
+theorem refinesTA_synRangeStep
+    (Sk : (e : (nfCallSig JasminDialect.jasminDialect).Event) →
+      (nfCallSig JasminDialect.jasminDialect).Resp e → Prop) (fuel : Nat)
+    {Γ : Ctxt JasminDialect.jasminDialect} {ts : List JasminDialect.JasminTy}
+    {p q : NFProg JasminDialect.jasminDialect Γ ts}
+    (hf : (Optimizer.Rewrite.RangeAnnSyn.synRangeStep Γ ts).run p = some q)
+    (X : Valuation Γ) :
+    RefinesTA Sk (mfTree fuel p X) (mfTree fuel q X) := by
+  obtain rfl : Optimizer.Rewrite.RangeNFLoop.loopRange
+      (Optimizer.Rewrite.RangeAnnSyn.synAnn p) p = q := Option.some.inj hf
+  rw [mfTree, mfTree, treeAt_loopRange]
+  exact RefinesTA.refl _
+
 /-! ## The steps of `extChainCore` in `jasminDialect` -/
 
 section Tail
@@ -737,6 +770,62 @@ theorem ruttS_jasminTail {E₀ : EventSig} {R₀ : Type} {h₀ : ∀ e : E₀.Ev
     RuttS h₀ RE RA RR Fail t (mfTree fuel q₅ X) :=
   NFProgCallTreeOpt.RuttS.trans_refinesT hRA hRR ht
     (refinesT_jasminTail h₁ hh fuel R h1 h2 h3 h4 h5 X)
+
+/-- **The steps of `extChainCore` in `jasminDialect` at a skip predicate.** Under the hypotheses
+    of `refinesT_jasminTail` on the steps, the tree `mfTree` of `q₅` refines the tree
+    `nfProgTree` of `p` up to events skipped at `Sk`, when every answer that `Sk` admits at an
+    inner head is the value of the head. -/
+theorem refinesTA_jasminTail
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (hSk : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (fuel : Nat) (R : Optimizer.Rewrite.AegraphGeneric.RuleSet jasminDialect)
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {p q₁ q₂ q₃ q₄ q₅ : NFProg jasminDialect Γ ts}
+    (h1 : (montifyStep Γ ts).run p = some q₁)
+    (h2 : (fieldDialectStep Γ ts).run q₁ = some q₂)
+    (h3 : (NFProgPasses.lowerSelectsStep Γ ts).run q₂ = some q₃)
+    (h4 : (synRangeStep Γ ts).run q₃ = some q₄)
+    (h5 : (NFProgPasses.aegraphStep R Γ ts).run q₄ = some q₅) (X : Valuation Γ) :
+    RefinesTA Sk (nfProgTree fuel p X) (mfTree fuel q₅ X) := by
+  refine RefinesTA.trans (refinesTA_nfProgTree_montifyStep Sk fuel hSk h1 X) ?_
+  refine RefinesTA.trans (refinesTA_fieldDialectStep Sk fuel h2 X) ?_
+  refine RefinesTA.trans (refinesTA_lowerSelectsStep Sk fuel h3 X) ?_
+  refine RefinesTA.trans (refinesTA_synRangeStep Sk fuel h4 X) ?_
+  obtain rfl : Optimizer.Rewrite.AegraphNF.aegraphOptNF R q₄ = q₅ := Option.some.inj h5
+  rw [mfTree, mfTree, treeAt_aegraphOptNF_env mfEnv R q₄ fuel X]
+  exact RefinesTA.refl _
+
+/-- **A relation with skips to the tree of the input of the steps in `jasminDialect` is a
+    relation to the tree of their output.** From `RuttSA Sk₀` to `nfProgTree` of `p`, at an
+    intermediate skip predicate `Sk` that admits, for every answer admitted by `Sk₀` at an event
+    related to an intermediate event, a related answer, and at an inner head only its value,
+    `RuttSA Sk₀` holds to `mfTree` of `q₅`. -/
+theorem ruttSA_jasminTail {E₀ : EventSig} {R₀ : Type}
+    {Sk₀ : (e : E₀.Event) → E₀.Resp e → Prop}
+    {RE : E₀.Event → (nfCallSig jasminDialect).Event → Prop}
+    {RA : (e₀ : E₀.Event) → (e : (nfCallSig jasminDialect).Event) → E₀.Resp e₀ →
+      (nfCallSig jasminDialect).Resp e → Prop}
+    {Γ : Ctxt jasminDialect} {ts : List JasminTy}
+    {RR : R₀ → Option (Valuation (d := jasminDialect) ts) → Prop} {Fail : R₀ → Prop}
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (hRA : ∀ e₀ e, RE e₀ e → ∀ a₀, Sk₀ e₀ a₀ → ∃ a, Sk e a ∧ RA e₀ e a₀ a)
+    (hRR : ∀ r, RR r none → Fail r)
+    (hSk : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (fuel : Nat) (R : Optimizer.Rewrite.AegraphGeneric.RuleSet jasminDialect)
+    {p q₁ q₂ q₃ q₄ q₅ : NFProg jasminDialect Γ ts}
+    (h1 : (montifyStep Γ ts).run p = some q₁)
+    (h2 : (fieldDialectStep Γ ts).run q₁ = some q₂)
+    (h3 : (NFProgPasses.lowerSelectsStep Γ ts).run q₂ = some q₃)
+    (h4 : (synRangeStep Γ ts).run q₃ = some q₄)
+    (h5 : (NFProgPasses.aegraphStep R Γ ts).run q₄ = some q₅) (X : Valuation Γ)
+    {t : CallTree E₀ R₀} (ht : RuttSA Sk₀ RE RA RR Fail t (nfProgTree fuel p X)) :
+    RuttSA Sk₀ RE RA RR Fail t (mfTree fuel q₅ X) :=
+  NFProgCallTreeOpt.RuttSA.trans_refinesTA hRA hRR ht
+    (refinesTA_jasminTail Sk hSk fuel R h1 h2 h3 h4 h5 X)
 
 end Tail
 
