@@ -351,6 +351,7 @@ CatCrypt.Crypto.SecureCompilation.CrateGen
 CatCrypt.Crypto.SecureCompilation.CtSelectLeak
 CatCrypt.Crypto.SecureCompilation.CtTableEmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.CubExtGeneric
+CatCrypt.Crypto.SecureCompilation.CurveTemplate.MontLadder
 CatCrypt.Crypto.SecureCompilation.Dialects
 CatCrypt.Crypto.SecureCompilation.Dialects.ArithExportFaithful
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontPrototype
@@ -486,7 +487,6 @@ CatCrypt.Crypto.SecureCompilation.MlkemNttConcreteRoots
 CatCrypt.Crypto.SecureCompilation.MlkemNttFieldAuthored
 CatCrypt.Crypto.SecureCompilation.MlkemNttWidenProbe
 CatCrypt.Crypto.SecureCompilation.MontMulFieldTie
-CatCrypt.Crypto.SecureCompilation.MontgomeryLadderGeneric
 CatCrypt.Crypto.SecureCompilation.MultiWidthGoldenPath
 CatCrypt.Crypto.SecureCompilation.NegacyclicEmitRealization
 CatCrypt.Crypto.SecureCompilation.NttPassBridgeComplete
