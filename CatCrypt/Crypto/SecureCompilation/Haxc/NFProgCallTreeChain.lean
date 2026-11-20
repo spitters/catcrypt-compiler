@@ -38,6 +38,7 @@ composed answer relation at every related call of `jasminDialect`, and of `Sk₃
 ## Main definitions
 
 * `CompRE`, `CompRA`: the composition of event relations and of answer relations.
+* `ExtEv`: a leaf call at a signature of the translated calls.
 
 ## Main results
 
@@ -202,7 +203,74 @@ theorem RefinesT.trans_ruttS {α R₂ : Type} {h₀ : ∀ e : E₀.Event, E₀.R
   ruttSA_iff_ruttS.mp (RefinesTA.trans_ruttSA hF (refinesTA_iff_refinesT.mpr h01)
     (ruttSA_iff_ruttS.mpr h12))
 
+/-- The composition of an event relation restricted at its source event with a second event
+    relation is the composition restricted at the source event. -/
+theorem compRE_and {RE₁ : E₀.Event → E₁.Event → Prop} {RE₂ : E₁.Event → E₂.Event → Prop}
+    {P : E₀.Event → Prop} {e₀ : E₀.Event} {e₂ : E₂.Event} :
+    CompRE (fun a b => RE₁ a b ∧ P a) RE₂ e₀ e₂ ↔ CompRE RE₁ RE₂ e₀ e₂ ∧ P e₀ := by
+  grind [CompRE]
+
+/-- **A composed relation restricted at its source events.** A relation at the composition of
+    `RE₁` restricted to source events of `P` with `RE₂` is a relation at the composition of
+    `RE₁` with `RE₂`, restricted to source events of `P`, and the answer relation of `RE₁` and
+    `RE₂`. -/
+theorem RuttSA.comp_and {R₀ R₂ : Type} {Sk : (e : E₀.Event) → E₀.Resp e → Prop}
+    {RE₁ : E₀.Event → E₁.Event → Prop} {RE₂ : E₁.Event → E₂.Event → Prop}
+    {RA₁ : (e₀ : E₀.Event) → (e₁ : E₁.Event) → E₀.Resp e₀ → E₁.Resp e₁ → Prop}
+    {RA₂ : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
+    {RR : R₀ → R₂ → Prop} {F : R₀ → Prop} {P : E₀.Event → Prop}
+    {t₀ : CallTree E₀ R₀} {t₂ : CallTree E₂ R₂}
+    (h : RuttSA Sk (CompRE (fun a b => RE₁ a b ∧ P a) RE₂)
+      (CompRA (fun a b => RE₁ a b ∧ P a) RE₂ RA₁ RA₂) RR F t₀ t₂) :
+    RuttSA Sk (fun e₀ e₂ => CompRE RE₁ RE₂ e₀ e₂ ∧ P e₀) (CompRA RE₁ RE₂ RA₁ RA₂) RR F t₀ t₂ :=
+  RuttSA.imp (fun _ _ h => h) (fun _ _ h => compRE_and.mp h)
+    (fun _ _ _ _ _ h e₁ he₁ he₂ => h e₁ he₁.1 he₂) (fun _ _ h => h) (fun _ h => h) h
+
 end Comp
+
+/-! ## The events of the translated calls -/
+
+/-- **A leaf call at a signature of the translated calls**: every argument type a word, an
+    integer or an array of `64`-bit words, and the result a `64`-bit word or an array of
+    `64`-bit words. -/
+def ExtEv (e : leafSig.Event) : Prop :=
+  (e.argTys.all wordArrTy && linkResOk e.ret) = true
+
+/-- The call `array_lit` of a bit array of length one, an operation the translation answers in
+    place, is no event of a signature of the translated calls. -/
+example (b : NfTy.denote .bit) :
+    ¬ ExtEv (⟨"array_lit", [.bit], .arr 1 .bit, .cons b .nil⟩ : LeafCall) := by
+  simp [ExtEv, wordArrTy, linkResOk, CatCrypt.Crypto.Hax.ImpToNF.hax64NFWordTy]
+
+/-- The declarations of the linked functions of a module have result types of `linkResOk`. -/
+theorem linkResOk_of_mem_linkedDecls {m : CatCrypt.Crypto.Hax.HaxModule} {bi : _root_.Hax.Builtins}
+    {d : ExtDecl} (hd : d ∈ linkedDecls m bi) : linkResOk d.ret = true := by
+  simp only [linkedDecls, List.mem_flatMap, List.mem_filter, List.mem_map] at hd
+  grind
+
+/-- **A call declared at a signature of words by declarations with results of `linkResOk` is
+    an event of a signature of the translated calls.** -/
+theorem extEv_of_declared_linkResOk {D : List ExtDecl} (hD : ∀ d ∈ D, linkResOk d.ret = true)
+    {e : leafSig.Event} (h : declared D e.name e.argTys e.ret = true) : ExtEv e := by
+  obtain ⟨d, hd, -, ha, hr, hw⟩ := declared_iff.mp h
+  simp only [ExtDecl.wordSig, wordArrSig, Bool.and_eq_true] at hw
+  simp only [ExtEv, Bool.and_eq_true]
+  exact ⟨ha ▸ hw.1, hr ▸ hD d hd⟩
+
+/-- **Every call declared by the declarations of the translation is an event of a signature
+    of the translated calls**: a declaration of `fieldDeclsFor D p` is one of `D`, whose result
+    passes `linkResOk` by `hD`, or the declaration of a field head, whose result is a `64`-bit
+    word or an array of `64`-bit words. -/
+theorem extEv_of_declared {D : List ExtDecl} (hD : ∀ d ∈ D, linkResOk d.ret = true)
+    {Γ : Ctxt nfDialect} {ts : List NfTy} {p : NFProg nfDialect Γ ts} {e : leafSig.Event}
+    (h : declared (fieldDeclsFor D p) e.name e.argTys e.ret = true) : ExtEv e := by
+  refine extEv_of_declared_linkResOk (fun d hd => ?_) h
+  rcases List.mem_append.mp hd with hd | hd
+  · exact hD d (List.mem_filter.mp hd).1
+  · rcases mem_fieldDeclsOf p hd with ⟨m, q, -, ⟨-, hd⟩ | ⟨-, hd⟩⟩ | ⟨m, q, k, -, -, -, -, hd⟩
+    · rw [hd]; rfl
+    · rw [hd]; simp [FieldWideDecl.wideDecl, linkResOk]
+    · rw [hd]; rfl
 
 /-! ## The check of the result type -/
 
@@ -235,18 +303,22 @@ section Chain
 
 /-- **The steps of `extChainCore` up to `map?` at skip predicates.** Let `bi` satisfy
     `SubTable bi`, let the skip predicate `Sk` of the leaf events admit at a call named by
-    `CatName` only the answer of the leaf table of `bi`, and let every answer `Sk` admits at an
-    event related by `ExtRE` to a call of `catCryptDialect` have an answer related by `ExtRA`
-    and admitted by `Sk₂`. For a program `p` whose steps `outTyStep`, `dceStep`,
-    `extCallStep D`, the e-graph pass at `catRules` and `mapStep catToJasmin` return `p₄`, and a
-    valuation `V` in range, the tree of `p` at `linkReader` and the source fuel `tf` is related
-    by `RuttSA Sk` to the tree with call events of `p₄` at the transported valuation, at every
-    fuel at least `tf`, at the relations of `ruttS_extChainFront`. -/
+    `CatName` only the answer of the leaf table of `bi`, let every answer `Sk` admits at an
+    event of `ExtEv` related by `ExtRE` to a call of `catCryptDialect` have an answer related
+    by `ExtRA` and admitted by `Sk₂`, and let the results of the declarations of `D` pass
+    `linkResOk`. For a program `p` whose steps `outTyStep`, `dceStep`, `extCallStep D`, the
+    e-graph pass at `catRules` and `mapStep catToJasmin` return `p₄`, and a valuation `V` in
+    range, the tree of `p` at `linkReader` and the source fuel `tf` is related by `RuttSA Sk`
+    to the tree with call events of `p₄` at the transported valuation, at every fuel at least
+    `tf`, at the relations of `ruttS_extChainFront`; the source event of every related pair of
+    events satisfies `ExtEv`. -/
 theorem ruttSA_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List ExtDecl)
     (tE : TreeCallEnv leafSig nfDialect) {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
     {Sk₂ : (e : (nfCallSig catCryptDialect).Event) → (nfCallSig catCryptDialect).Resp e → Prop}
     (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ∀ a₁, Sk e₁ a₁ → ∃ a₂, Sk₂ e₂ a₂ ∧ ExtRA e₁ e₂ a₁ a₂)
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ∀ a₁, Sk e₁ a₁ →
+      ∃ a₂, Sk₂ e₂ a₂ ∧ ExtRA e₁ e₂ a₁ a₂)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p p₀ p₁ : NFProg nfDialect Γ [t]}
     {p₂ p₃ : NFProg catCryptDialect (Γ.map catTy) [catTy t]}
     {p₄ : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
@@ -258,7 +330,7 @@ theorem ruttSA_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D :
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttSA Sk
-      (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧ ExtEv e₀)
       (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
         (MapRA catToJasmin fun x => ctTransTy x))
       (Relation.Comp (OutRel (VRelL [t]))
@@ -266,8 +338,13 @@ theorem ruttSA_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D :
       (fun o => o = none)
       (treeAt linkReader tE tf p V) (nfProgTree fuel p₄ (ctMapValD (mapVal V))) := by
   have hdce := refinesTA_treeAt_dce Sk linkReader_renameInv tE tf p₀ V
-  have hext := nfToCatExt_ruttSA hbi hSk (fieldDeclsFor D p₁) tE p₁ TRd.id p₂ s2 V (mapVal V)
-    (TRd.agree_id V hin) tf fuel hle
+  have hext := RuttSA.imp (RE' := fun e₁ e₂ => ExtRE e₁ e₂ ∧ ExtEv e₁)
+    (fun _ _ h => h) (fun _ _ h => ⟨h.1, extEv_of_declared hD h.2⟩) (fun _ _ _ _ _ h => h)
+    (fun _ _ h => h) (fun _ h => h)
+    (nfToCatExt_ruttSAD hbi hSk (fieldDeclsFor D p₁) tE p₁ TRd.id p₂ s2 V (mapVal V)
+      (TRd.agree_id V hin) tf fuel hle)
+  replace hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ ∧ ExtEv e₁ → ∀ a₁, Sk e₁ a₁ →
+      ∃ a₂, Sk₂ e₂ a₂ ∧ ExtRA e₁ e₂ a₁ a₂ := fun e₁ e₂ h => hh₂ e₁ e₂ h.1 h.2
   have hopt := refinesTA_aegraphOptNF catRules p₂ fuel (mapVal V) Sk₂
   have hmap := map?_ruttSA catToJasmin (fun x => ctTransTy x) ctMapValD catToJasmin_regionTypes
     (fun _ => True) catToJasmin_varTransports
@@ -280,7 +357,7 @@ theorem ruttSA_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D :
   refine RefinesTA.trans_ruttSA (Fail := fun o => o = none) rfl
     (refinesTA_outTyStep _ linkReader tE tf s0 V) ?_
   refine RefinesTA.trans_ruttSA (Fail := fun o => o = none) rfl hdce ?_
-  refine RuttSA.trans hh₂ ?_ ?_ hmap
+  refine RuttSA.comp_and (RuttSA.trans hh₂ ?_ ?_ hmap)
   · rintro r₀ r₁ h rfl
     cases r₀ with
     | none => rfl
@@ -291,18 +368,21 @@ theorem ruttSA_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D :
       | some a => obtain ⟨b, hb, -⟩ := h a rfl; cases hb) hext hopt
 
 /-- **The steps of `extChainCore` up to `map?` at the tree level.** Let `bi` satisfy
-    `SubTable bi`, and let the handler `h₂` of the calls of `catCryptDialect` answer events
-    related by `ExtRE` with answers related by `ExtRA` to those of the leaf table of `bi`.
+    `SubTable bi`, let the handler `h₂` of the calls of `catCryptDialect` answer events
+    related by `ExtRE` to a source event of `ExtEv` with answers related by `ExtRA` to those of
+    the leaf table of `bi`, and let the results of the declarations of `D` pass `linkResOk`.
     For a program `p` whose steps `outTyStep`, `dceStep`, `extCallStep D`, the e-graph pass at
     `catRules` and `mapStep catToJasmin` return `q`, and a valuation `V` in range, the tree of
     `p` at `linkReader`, the source fuel `tf` and the handler of the leaf table is related to
     the tree with call events of `q` at the transported valuation, at every fuel at least `tf`:
-    events related by `ExtRE` then `MapRE`, answers by `ExtRA` then `MapRA`, leaves by `VRelL`
-    then the transport, and the failed source leaf `none`. -/
+    events related by `ExtRE` then `MapRE` at a source event of `ExtEv`, answers by `ExtRA`
+    then `MapRA`, leaves by `VRelL` then the transport, and the failed source leaf `none`. -/
 theorem ruttS_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List ExtDecl)
     (tE : TreeCallEnv leafSig nfDialect)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p p₀ p₁ : NFProg nfDialect Γ [t]}
     {p₂ p₃ : NFProg catCryptDialect (Γ.map catTy) [catTy t]}
     {p₄ : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
@@ -314,7 +394,7 @@ theorem ruttS_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : 
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttS (leafHandler (tableOf bi))
-      (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧ ExtEv e₀)
       (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
         (MapRA catToJasmin fun x => ctTransTy x))
       (Relation.Comp (OutRel (VRelL [t]))
@@ -323,15 +403,17 @@ theorem ruttS_extChainFront {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : 
       (treeAt linkReader tE tf p V) (nfProgTree fuel p₄ (ctMapValD (mapVal V))) :=
   ruttSA_iff_ruttS.mp (ruttSA_extChainFront hbi D tE
     (Sk := fun e a => a = leafHandler (tableOf bi) e) (Sk₂ := fun e a => a = h₂ e)
-    (fun _ _ _ h => h) (fun e₁ e₂ he a₁ ha₁ => ⟨h₂ e₂, rfl, by subst ha₁; exact hh₂ e₁ e₂ he⟩)
+    (fun _ _ _ h => h)
+    (fun e₁ e₂ he hX a₁ ha₁ => ⟨h₂ e₂, rfl, by subst ha₁; exact hh₂ e₁ e₂ he hX⟩) hD
     s0 s1 s2 s3 s4 V hin tf fuel hle)
 
 /-- **The steps of `extChainCore` at skip predicates.** Let `bi` satisfy `SubTable bi`, let the
     skip predicate `Sk` of the leaf events admit at a call named by `CatName` only the answer of
-    the leaf table of `bi`, let every answer `Sk` admits at a source event related to a call of
-    `jasminDialect` have an answer admitted by `Sk₃` and related to it by the composition of
-    `ExtRA` and `MapRA`, and let `Sk₃` admit at an inner field or reduction head only the answer
-    of `montEnv (fieldEnv CallEnv.empty)`. For a program `p` that the chain `extChainCore D Γ t`
+    the leaf table of `bi`, let every answer `Sk` admits at a source event of `ExtEv` related to
+    a call of `jasminDialect` have an answer admitted by `Sk₃` and related to it by the
+    composition of `ExtRA` and `MapRA`, let `Sk₃` admit at an inner field or reduction head only
+    the answer of `montEnv (fieldEnv CallEnv.empty)`, and let the results of the declarations of
+    `D` pass `linkResOk`. For a program `p` that the chain `extChainCore D Γ t`
     turns into `q` and a valuation `V` in range, the tree of `p` at `linkReader` and the source
     fuel `tf` is related by `RuttSA Sk` to the tree `mfTree` of `q` at the transported
     valuation, at every fuel at least `tf`, at the relations of `ruttS_extChainCore`. -/
@@ -339,20 +421,21 @@ theorem ruttSA_extChainCore {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : 
     (tE : TreeCallEnv leafSig nfDialect) {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
     {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
     (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
-    (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
+    (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e → ExtEv e₀ →
       ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
         CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
     (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
       innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
         a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChainCore D Γ t).run p = some q)
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttSA Sk
-      (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧ ExtEv e₀)
       (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
         (MapRA catToJasmin fun x => ctTransTy x))
       (Relation.Comp (OutRel (VRelL [t]))
@@ -363,8 +446,9 @@ theorem ruttSA_extChainCore {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : 
   obtain ⟨p₀, s0, p₁, s1, p₂, s2, p₃, s3, p₄, s4, q₁, s5, q₂, s6, q₃, s7, q₄, s8, q₅, s9,
     hq⟩ := h
   cases hq
-  refine ruttSA_jasminTail Sk₃ hh ?_ hSk₃ fuel jasminRules s5 s6 s7 s8 s9 _
-    (ruttSA_extChainFront hbi D tE (Sk₂ := fun _ _ => True) hSk ?_ s0 s1 s2 s3 s4 V hin tf
+  refine ruttSA_jasminTail Sk₃ (fun e₀ e h => hh e₀ e h.1 h.2) ?_ hSk₃ fuel jasminRules
+    s5 s6 s7 s8 s9 _
+    (ruttSA_extChainFront hbi D tE (Sk₂ := fun _ _ => True) hSk ?_ hD s0 s1 s2 s3 s4 V hin tf
       fuel hle)
   · rintro r ⟨r₁, h₁, h₂⟩
     have : r₁ = none := by
@@ -375,14 +459,15 @@ theorem ruttSA_extChainCore {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : 
     cases r with
     | none => rfl
     | some a => obtain ⟨b, hb, -⟩ := h₁ a rfl; cases hb
-  · intro e₀ e₁ he a₀ ha₀
-    obtain ⟨a, -, hc⟩ := hh e₀ _ ⟨e₁, he, rfl⟩ a₀ ha₀
+  · intro e₀ e₁ he hX a₀ ha₀
+    obtain ⟨a, -, hc⟩ := hh e₀ _ ⟨e₁, he, rfl⟩ hX a₀ ha₀
     obtain ⟨a₁, ha₁, -⟩ := hc e₁ he rfl
     exact ⟨a₁, trivial, ha₁⟩
 
 /-- **The steps of `extChainCore` at the tree level.** Under the hypotheses of
     `ruttS_extChainFront`, a handler `h₃` of the calls of `jasminDialect` that answers events
-    related by `MapRE` with answers related by `MapRA` to those of `h₂`, and that answers the
+    related by `MapRE` to an image by `ExtRE` of a source event of `ExtEv` with answers related
+    by `MapRA` to those of `h₂`, and that answers the
     inner field and reduction heads by `montEnv (fieldEnv CallEnv.empty)`, a program `p` that
     the chain `extChainCore D Γ t` turns into `q` and a valuation `V` in range: the tree of `p`
     at `linkReader`, the source fuel `tf` and the handler of the leaf table of `bi` is related
@@ -391,19 +476,21 @@ theorem ruttS_extChainCore {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : L
     (tE : TreeCallEnv leafSig nfDialect)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ → MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChainCore D Γ t).run p = some q)
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttS (leafHandler (tableOf bi))
-      (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧ ExtEv e₀)
       (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
         (MapRA catToJasmin fun x => ctTransTy x))
       (Relation.Comp (OutRel (VRelL [t]))
@@ -413,9 +500,9 @@ theorem ruttS_extChainCore {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : L
   ruttSA_iff_ruttS.mp (ruttSA_extChainCore hbi D tE
     (Sk := fun e a => a = leafHandler (tableOf bi) e) (Sk₃ := fun e a => a = h₃ e)
     (fun _ _ _ h => h)
-    (fun _ e _ a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
-      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁, hh₃ _ _ he₂⟩⟩)
-    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) h V hin tf fuel hle)
+    (fun _ e _ hX a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
+      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁ hX, hh₃ _ _ _ he₁ hX he₂⟩⟩)
+    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) hD h V hin tf fuel hle)
 
 end Chain
 

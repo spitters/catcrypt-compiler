@@ -75,7 +75,8 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeCompose
 
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
-open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA RuttS.trans)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA RuttS.trans
+  ExtEv)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeCalls (RuttF RuttS.trans_ruttF
   R3StatementF r3f_consequence)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (LeafCall leafSig leafHandler)
@@ -257,12 +258,13 @@ theorem ruttSA_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List
     {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
     (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
     (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
-      ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
+      ExtEv e₀ → ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
         CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
     (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
       innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
         a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChain D Γ t).run p = some q) (hB : regionExportableB q = true)
@@ -271,9 +273,11 @@ theorem ruttSA_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttSA Sk
-      (CompRE (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRE (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x))
-      (CompRA (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRA (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
         (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x))
@@ -291,7 +295,7 @@ theorem ruttSA_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List
   cases h1
   have R1 := NFProgCallTreeAbortRuttSA.refinesTA_treeAt_abortElim_link Sk tE tf p V
   have R2 := NFProgCallTreeFlatRuttSA.ruttSA_treeAt_flatSame Sk tE htE tf h2 V
-  have R3 := NFProgCallTreeNarrow.ruttSA_extChainCore_narrowPrep hbi D tE hSk hh hSk₃ h3
+  have R3 := NFProgCallTreeNarrow.ruttSA_extChainCore_narrowPrep hbi D tE hSk hh hSk₃ hD h3
     hB hq' V hin tf fuel hle
   have R23 := ruttSA_eqTrans (F₀ := fun o => o = none)
     (F₁ := fun o => o = none) (fun _ _ h01 h1 => none_of_outRel_eq h01 h1) R2 R3
@@ -318,12 +322,15 @@ theorem ruttS_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List 
       tE.call f as rs a = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChain D Γ t).run p = some q) (hB : regionExportableB q = true)
@@ -332,9 +339,11 @@ theorem ruttS_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List 
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttS (leafHandler (tableOf bi))
-      (CompRE (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRE (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x))
-      (CompRA (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRA (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
         (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x))
@@ -350,9 +359,9 @@ theorem ruttS_extChain_narrowPrep {bi : Builtins} (hbi : SubTable bi) (D : List 
   ruttSA_iff_ruttS.mp (ruttSA_extChain_narrowPrep hbi D tE htE
     (Sk := fun e a => a = leafHandler (tableOf bi) e) (Sk₃ := fun e a => a = h₃ e)
     (fun _ _ _ h => h)
-    (fun _ e _ a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
-      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁, hh₃ _ _ he₂⟩⟩)
-    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) h hB hq' V hin tf fuel hle)
+    (fun _ e _ hX a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
+      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁ hX, hh₃ _ _ _ he₁ hX he₂⟩⟩)
+    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) hD h hB hq' V hin tf fuel hle)
 
 end Chain
 

@@ -100,7 +100,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree (TreeCallEnv nfCallSi
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (leafSig leafHandler linkReader
   OutRel ExtRE ExtRA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt (MapRE MapRA)
-open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA ExtEv
+  linkResOk_of_mem_linkedDecls)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont (mfTree innerHead)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montEnv)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeEvents (AllEv)
@@ -315,7 +316,8 @@ theorem ruttF_regionBack_targetA {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasm
 /-- **The chain at a skip predicate of the leaf events**: when the program `p` the chain
     `extChain` returns on `p0` passes the gate `regionExportableB`, at every narrowed program `q'`
     of `p` and every valuation in range, the call tree of `p0` at `linkReader` and the tree
-    `mfTree` of `q'` are related by `RuttSA Sk` at the relations of the chain. -/
+    `mfTree` of `q'` are related by `RuttSA Sk` at the relations of the chain, the event
+    relation restricted to source events of `ExtEv`. -/
 def ChainSA (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop)
     (tE : TreeCallEnv leafSig nfDialect) {Γ : Ctxt nfDialect} {t : NfTy}
     (p0 : NFProg nfDialect Γ [t])
@@ -325,7 +327,8 @@ def ChainSA (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop)
       ([mapTy (catTy t)].map NarrowWords.wideTy)), NarrowWords.narrowPrep p = some q' →
     ∀ (V : Ctxt.Valuation Γ), (∀ (s : NfTy) (v : Ctxt.Var Γ s), InRange s (v.lookup V)) →
     ∀ (tf fuel : Nat), tf ≤ fuel →
-      RuttSA Sk ChainRE ChainRA (ChainRR t) (fun o => o = none) (treeAt linkReader tE tf p0 V)
+      RuttSA Sk (fun e₀ e => ChainRE e₀ e ∧ ExtEv e₀) ChainRA (ChainRR t) (fun o => o = none)
+        (treeAt linkReader tE tf p0 V)
         (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V))))
 
 /-- **The chain at the skip predicate of the leaf handler**, from
@@ -336,19 +339,22 @@ theorem chainSA_leaf {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List Ex
       tE.call f as rs a = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy)
       (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p0 : NFProg nfDialect Γ [t]}
     {p : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (hp : (extChain D Γ t).run p0 = some p) :
     ChainSA (fun e a => a = leafHandler (tableOf bi) e) tE p0 p :=
-  fun hB _ hq' V hin tf fuel hle => ruttSA_iff_ruttS.mpr
-    (NFProgCallTreeCompose.ruttS_extChain_narrowPrep hbi D tE htE h₂ h₃ hh₂ hh₃ hinner hp hB hq'
-      V hin tf fuel hle)
+  fun hB _ hq' V hin tf fuel hle => NFProgCallTreeChain.RuttSA.comp_and (ruttSA_iff_ruttS.mpr
+    (NFProgCallTreeCompose.ruttS_extChain_narrowPrep hbi D tE htE h₂ h₃ hh₂ hh₃ hinner hD hp hB
+      hq' V hin tf fuel hle))
 
 /-- **The chain at a skip predicate from its side conditions**, from
     `NFProgCallTreeCompose.ruttSA_extChain_narrowPrep`: let `Sk` admit only the answer of the leaf
@@ -364,19 +370,20 @@ theorem chainSA_of_skip {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : List
     {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
     (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
     (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
-      ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
+      ExtEv e₀ → ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
         CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
     (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as)
       a, innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
         a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p0 : NFProg nfDialect Γ [t]}
     {p : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (hp : (extChain D Γ t).run p0 = some p) :
     ChainSA Sk tE p0 p :=
-  fun hB _ hq' V hin tf fuel hle =>
-    NFProgCallTreeCompose.ruttSA_extChain_narrowPrep hbi D tE htE hSk hh hSk₃ hp hB hq' V hin
-      tf fuel hle
+  fun hB _ hq' V hin tf fuel hle => NFProgCallTreeChain.RuttSA.comp_and
+    (NFProgCallTreeCompose.ruttSA_extChain_narrowPrep hbi D tE htE hSk hh hSk₃ hD hp hB hq' V
+      hin tf fuel hle)
 
 /-! ## 3. Answering events outside `keep`, and target events of a predicate -/
 
@@ -439,7 +446,7 @@ end RuttFA
     `BackRAA` of the back half. -/
 theorem ruttF_extChain_targetA (tE : TreeCallEnv leafSig nfDialect)
     (Sk₁ : (e : leafSig.Event) → leafSig.Resp e → Prop)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
     {σ : AbiLayout} {t : NfTy} {p0 : NFProg nfDialect (entryCtx (abiEntry σ)) [t]}
     {p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy t)]}
     (hchain : ChainSA Sk₁ tE p0 p) {a : AbiNames} {linked : List CalleeData}
@@ -496,9 +503,15 @@ theorem ruttF_extChain_targetA (tE : TreeCallEnv leafSig nfDialect)
   have hch := hchain hB q hq V (NFToRoute.inRange_entry henv V hV) tf fuel hle
   have hback := hR kind lf insK resK X hK hTc hword sa hreg (ctMapValD (mapVal V))
     (NFToRoute.abiValOf_mapVal henv V hV) fuel hGT (hmf ▸ hG) (fun _ _ => True) sym rd hsym
+  refine NFProgCallTreeOracle.RuttFA.imp
+    (RE := CompRE (fun e₀ e => ChainRE e₀ e ∧ ExtEv e₀) (BackRE T))
+    (RA := CompRA (fun e₀ e => ChainRE e₀ e ∧ ExtEv e₀) (BackRE T) ChainRA
+      (BackRAA (fun f sc => sc.regs (phys (resK f))) X))
+    (fun _ _ h => h) (fun _ _ ⟨e₁, h, h'⟩ => ⟨e₁, h.1, h'⟩)
+    (fun _ _ _ _ _ h e₁ he₁ he₂ => h e₁ he₁.1 he₂) (fun _ _ h => h) (fun _ h => h) ?_
   refine RuttSA.trans_ruttFA (fun e₁ e₂ he a₁ ha₁ => ?_) (fun r₀ r₁ hr hf => ?_)
     (hmf ▸ hch) hback
-  · obtain ⟨a₂, ha₂⟩ := hhC e₁ e₂ he a₁ ha₁
+  · obtain ⟨a₂, ha₂⟩ := hhC e₁ e₂ he.1 he.2 a₁ ha₁
     exact ⟨a₂, trivial, ha₂⟩
   · obtain ⟨m₁, ⟨m₀, h1, h2⟩, h3⟩ := hr
     subst hf
@@ -519,7 +532,7 @@ theorem ruttF_front_targetDA {m : HaxModule} {σ : AbiLayout}
     (h1 : compileRegion σ a p linked = some (P, bytes)) (hcf : p.callFree = false)
     (tE : TreeCallEnv leafSig nfDialect) (Sk₁ : (e : leafSig.Event) → leafSig.Resp e → Prop)
     (hchain : ChainSA Sk₁ tE q.2 p)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
     (hS : ∀ e, keepL m e = false →
       Sk₁ e (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e))
     (Sk₀ : (e : linkSig.Event) → linkSig.Resp e → Prop)
@@ -750,7 +763,7 @@ theorem ruttF_contracts_targetDA {m : HaxModule} {σ : AbiLayout}
     (h1 : compileRegion σ a p linked = some (P, bytes)) (hcf : p.callFree = false)
     (tE : TreeCallEnv leafSig nfDialect) (Sk₁ : (e : leafSig.Event) → leafSig.Resp e → Prop)
     (hchain : ChainSA Sk₁ tE q.2 p)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
     (hS : ∀ e, keepL m e = false →
       Sk₁ e (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e))
     (Sk₀ : (e : linkSig.Event) → linkSig.Resp e → Prop)
@@ -866,7 +879,7 @@ theorem r3FA_of_front {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lpr
       (p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy q.1)]), haxToNF σ m = some q →
       (extChain (linkedDecls m CatCrypt.Crypto.Hax.hax64WExit) _ q.1).run q.2
         = some p → ChainSA Sk₁ tE q.2 p)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, ChainRA e₁ e₂ a₁ a₂)
     (hS : ∀ e, keepL m e = false →
       Sk₁ e (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
@@ -1061,13 +1074,15 @@ theorem chainSA_typed {m : HaxModule}
       tE.call f as rs a = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy)
       (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p0 : NFProg nfDialect Γ [t]}
     {p : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (hp : (extChain D Γ t).run p0 = some p) :
@@ -1077,13 +1092,13 @@ theorem chainSA_typed {m : HaxModule}
       fun l hl => not_catName_of_linkNameOk (hlk l hl)
   refine chainSA_of_skip (Sk₃ := fun e a => innerHead e.name = true →
       a = (montEnv (fieldEnv CallEnv.empty)).call e.name e.argTys e.resTys e.args)
-    hbi D tE htE ?_ ?_ (fun _ _ _ _ _ hi h => h hi) hp
+    hbi D tE htE ?_ ?_ (fun _ _ _ _ _ hi h => h hi) hD hp
   · intro e a hc ha
     rcases ha with ⟨hk, -⟩ | rfl
     · obtain ⟨l, hl, hn, -⟩ := linked_of_keepL hk
       exact absurd (hn ▸ hc) (not_catName_of_linkNameOk (hlk l hl))
     · rfl
-  · intro e₀ e hC a₀ ha₀
+  · intro e₀ e hC hX a₀ ha₀
     rcases ha₀ with ⟨hk, ht⟩ | rfl
     · obtain ⟨a, ha⟩ := compRA_extMap_word (ret_of_typedSk hpar hk ht) hC a₀
       refine ⟨a, fun hi => absurd hi ?_, ha⟩
@@ -1094,7 +1109,7 @@ theorem chainSA_typed {m : HaxModule}
       rw [hE.1, ← hn, hin l hl]
       decide
     · exact ⟨h₃ e, fun hi => hinner e.name e.argTys e.resTys e.args hi,
-        fun e₁ hE hM => ⟨h₂ e₁, hh₂ _ _ hE, hh₃ _ _ hM⟩⟩
+        fun e₁ hE hM => ⟨h₂ e₁, hh₂ _ _ hE hX, hh₃ _ _ _ hE hX hM⟩⟩
 
 /-- **The relation of the call trees of a module at the separation contracts at the typing
     predicate, from the front.** `r3FA_of_front` at `Sk₁ := TypedSk m` and
@@ -1117,14 +1132,15 @@ theorem r3FA_typed {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
       tE.call f as rs a = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy)
       (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ChainRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
@@ -1160,12 +1176,12 @@ theorem r3FA_typed {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lprog}
             (fun fuelT => targetTree aMachine pc sym (linkRead m) fuelT 0 sa) := by
   refine r3FA_of_front hc hnd hk hn hpt hcf tE (TypedSk m)
     (fun q p hq hp => chainSA_typed (haxToNF_eq_some hq).2.2.1 hpar hin _ tE htE h₂ h₃ hh₂ hh₃
-      hinner hp)
+      hinner (fun _ hd => linkResOk_of_mem_linkedDecls hd) hp)
     ?_ ?_ hpar hword hin hev _ ?_ hfront A
-  · intro e₁ e₂ hC a₁ ha₁
+  · intro e₁ e₂ hC hX a₁ ha₁
     rcases ha₁ with ⟨hk, ht⟩ | rfl
     · exact chainRA_word (ret_of_typedSk hpar hk ht) hC a₁
-    · exact ⟨h₃ e₂, hhC e₁ e₂ hC⟩
+    · exact ⟨h₃ e₂, hhC e₁ e₂ hC hX⟩
   · intro e _
     exact Or.inr rfl
   · intro e₀ e₁ hF a₀ ha₀

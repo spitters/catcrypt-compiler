@@ -195,12 +195,14 @@ theorem ruttS_extChainCore_compileRegion_callFree
     (D : List ExtDecl) (tE : TreeCallEnv leafSig nfDialect)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ → MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     (RE : (nfCallSig jasminDialect).Event → (TargetCallTree.kSig AState).Event → Prop)
     (RA : (e₁ : (nfCallSig jasminDialect).Event) → (e₂ : (TargetCallTree.kSig AState).Event) →
       (nfCallSig jasminDialect).Resp e₁ → (TargetCallTree.kSig AState).Resp e₂ → Prop)
@@ -216,8 +218,10 @@ theorem ruttS_extChainCore_compileRegion_callFree
     (sa : AState) (hV : AbiValOf σ sa (NarrowWords.mapVal (ctMapValD (mapVal V))))
     (hreg : σ.Regions sa) (tf fuel : Nat) (hle : tf ≤ fuel) :
     ∃ fuelT, RuttS (leafHandler (tableOf bi))
-      (CompRE (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x)) RE)
-      (CompRA (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x)) RE
+      (CompRE (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+        ExtEv e₀) RE)
+      (CompRA (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀) RE
         (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x)) RA)
       (Relation.Comp
@@ -232,9 +236,9 @@ theorem ruttS_extChainCore_compileRegion_callFree
   obtain ⟨fuelT, hT⟩ := ruttS_compileRegion_callFree h₃ RE RA h hcf hd hnc sym rd sa _ hV hreg
     fuel
   refine ⟨fuelT, RuttS.trans (h₁ := h₃) ?_ ?_
-    (ruttS_extChainCore hbi D tE h₂ h₃ hh₂ hh₃ hinner hq V hin tf fuel hle) hT⟩
-  · rintro e₀ e ⟨e₁, he₁, he₂⟩ e₁' he₁' he₂'
-    exact ⟨h₂ e₁', hh₂ _ _ he₁', hh₃ _ _ he₂'⟩
+    (ruttS_extChainCore hbi D tE h₂ h₃ hh₂ hh₃ hinner hD hq V hin tf fuel hle) hT⟩
+  · rintro e₀ e ⟨-, hX⟩ e₁' he₁' he₂'
+    exact ⟨h₂ e₁', hh₂ _ _ he₁' hX, hh₃ _ _ _ he₁' hX he₂'⟩
   · rintro r₀ r₁ ⟨r, h₁, h₂⟩ rfl
     have : r = none := by
       cases r with

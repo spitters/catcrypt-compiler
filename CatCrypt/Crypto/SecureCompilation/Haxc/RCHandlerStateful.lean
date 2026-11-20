@@ -887,14 +887,15 @@ theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
       tE.call f as rs x = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → NFProgCallTreeChain.ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ChainRA e₁ e₂
       (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
