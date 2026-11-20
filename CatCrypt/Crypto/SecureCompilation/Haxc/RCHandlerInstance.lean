@@ -9,7 +9,7 @@ public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeGoodCall
 public import CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSPFuel
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RCInstance
 public import CatCryptCore.Crypto.RCHandler
-public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeR3Handlers
+public import CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeR3Linked
 
 /-!
 # Robust compilation over the handlers of the linked functions
@@ -67,7 +67,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (tableOf entryCtx entryEnvOf crateBi)
 open CatCrypt.Crypto.Hax (HaxModule LinkedFn hax64WExit)
-open CatCrypt.Crypto.Hax.NFInline (crateOp)
+open CatCrypt.Crypto.Hax.NFInline (crateOp crateBody)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
@@ -128,7 +128,9 @@ theorem HandlerRC.zero {m : HaxModule} {σ : AbiLayout} {pc : List RInstr} {sym 
 /-- **Robust compilation over the handlers of the linked functions, for the hax compiler.** Let
     `compileA` compile the module `m` to `(P, bytes)` under the hypotheses of
     `r3FG_of_shape_int`, with its handlers those of the linked functions of `m`
-    (`linkedHandlerC`, `linkedHandlerJ`, which meet its handler hypotheses), and those of
+    (`linkedHandlerC`, `linkedHandlerJ`, which meet its handler hypotheses) and its hypothesis
+    `hgood` from the conditions `hfp`, `hbody`, `hintB` on the functions of `m`
+    (`NFCallTreeR3Linked.goodCall_of_bodies`), and those of
     `haxc_rc_proved_all`, among them the termination `hterm` of the source run. The bytes decode to a calling body `pc` followed by the shifted linked code
     `Q`; the decoded program satisfies the gate conclusion and robust compilation at `0` of
     `haxc_rc_proved_all`; and `HandlerRC` holds at `pc`: robust compilation at `ε + δ` over the
@@ -165,8 +167,11 @@ theorem haxc_rcH (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLayout} {fn
       (p : NFProg nfDialect (entryCtx (abiEntry σ)) [q.1]), haxToNF σ m = some q →
       nfSrcProgC (m.prepared nfBody ++ m.linkedFns) σ (bindConsts σ.consts m.entry)
         = some ⟨q.1, p⟩ → ∀ o, p.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
-    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
-      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk (NFCallTreeFrontModule.GoodCall m) o)
+    (hfp : ∀ f ∈ m.fns, ∀ p ∈ f.params, p.2 ≠ .int)
+    (hbody : ∀ f ∈ m.fns, (crateBody (m.prepared nfBody) (f.prep nfBody) (entryCtx f.params)
+      f.res m.linkSig).isSome = true)
+    (hintB : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
     (hck : haxToNFCTBL s (pairStage m σ).2 (pairStage m σ).1 = true) (F fuelC : Nat)
     (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry (pairStage m σ).2))),
       (pairStage m σ).2.Regions sa → AbiValOf (pairStage m σ).2 sa
@@ -192,7 +197,8 @@ theorem haxc_rcH (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLayout} {fn
     (fun _ e₁ e₂ _ _ hm => linkedHandler_mapRA m e₁ e₂ hm)
     (fun f as rs x hf => linkedHandlerJ_inner m f as rs x hf)
     (fun e₁ e₂ h hX => linkedHandler_chainRA hin e₁ e₂ h hX)
-    hpar hword hin d tr₀ hev hspine hfs hint hgood
+    hpar hword hin d tr₀ hev hspine hfs hint
+    (NFCallTreeR3Linked.goodCall_of_bodies hc hn hpt hfp hbody hintB)
   refine ⟨pc, Q, sym, hd, haxc_rc_proved_all s m σ fname P bytes hc hck F fuelC hterm hL hnds hd
     hnd hk, ?_⟩
   intro sa hsa env henv fC fuel ε δ hε hδ

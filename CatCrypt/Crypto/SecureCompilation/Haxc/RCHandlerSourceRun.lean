@@ -55,7 +55,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (tableOf entryCtx entryEnvOf crateBi)
 open CatCrypt.Crypto.Hax (HaxModule LinkedFn hax64WExit)
-open CatCrypt.Crypto.Hax.NFInline (crateOp)
+open CatCrypt.Crypto.Hax.NFInline (crateOp crateBody)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
@@ -197,8 +197,11 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
       (p : NFProg nfDialect (entryCtx (abiEntry σ)) [q.1]), haxToNF σ m = some q →
       nfSrcProgC (m.prepared nfBody ++ m.linkedFns) σ (bindConsts σ.consts m.entry)
         = some ⟨q.1, p⟩ → ∀ o, p.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
-    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
-      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk (NFCallTreeFrontModule.GoodCall m) o)
+    (hfp : ∀ f ∈ m.fns, ∀ p ∈ f.params, p.2 ≠ .int)
+    (hbody : ∀ f ∈ m.fns, (crateBody (m.prepared nfBody) (f.prep nfBody) (entryCtx f.params)
+      f.res m.linkSig).isSome = true)
+    (hintB : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
     (hck : haxToNFCTBL s (pairStage m σ).2 (pairStage m σ).1 = true) (F fuelC : Nat)
     (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry (pairStage m σ).2))),
       (pairStage m σ).2.Regions sa → AbiValOf (pairStage m σ).2 sa
@@ -220,7 +223,7 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
           (idealObs (pubOf σ))) ∧
       HandlerRCRuns m σ pc sym := by
   obtain ⟨pc, Q, sym, hd, hg, hH⟩ := haxc_rcH s hc hnd hk hn hpt hcf tE htE hpar hword hin d
-    tr₀ hev hspine hfs hint hgood hck F fuelC hterm hL hnds
+    tr₀ hev hspine hfs hint hfp hbody hintB hck F fuelC hterm hL hnds
   exact ⟨pc, Q, sym, hd, hg, HandlerRC.runs hH⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerSourceRun

@@ -690,7 +690,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (tableOf entryCtx)
 open CatCrypt.Crypto.Hax (HaxModule LinkedFn hax64WExit)
-open CatCrypt.Crypto.Hax.NFInline (crateOp)
+open CatCrypt.Crypto.Hax.NFInline (crateOp crateBody)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute (abiEntry)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
@@ -871,9 +871,8 @@ theorem handlerRCKeyed_of_handlerRCSt {σ : AbiLayout} {pc : List RInstr} {sym :
   rwa [stTgt_keyedSt, stSrc_keyedSt] at hk
 
 /-- **Robust compilation over stateful oracles, for the hax compiler.** Let `compileA` compile
-    the module `m` to `(P, bytes)` under the hypotheses of `r3FA_of_shape_linkedHandlers`. The
-    bytes decode
-    to a calling body `pc` followed by the shifted linked code `Q`, and `HandlerRCSt` holds at
+    the module `m` to `(P, bytes)` under the hypotheses of
+    `NFCallTreeR3Linked.r3FA_of_shape_linked`. The bytes decode to a calling body `pc` followed by the shifted linked code `Q`, and `HandlerRCSt` holds at
     `pc` for every stateful oracle of `m`. -/
 theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
     {bytes : List (BitVec 8)} (hc : compileA m σ fname = some (P, bytes))
@@ -889,15 +888,6 @@ theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
       ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
     (hin : ∀ l ∈ m.linked, innerHead l.name = false)
-    (hev : ∀ (T : CalleeTab), T.fns.Sublist (m.linked.filterMap LinkedFn.calleeData) →
-      ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
-        (p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy q.1)])
-        (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy)
-          ([mapTy (catTy q.1)].map NarrowWords.wideTy)), haxToNF σ m = some q →
-      (extChain (linkedDecls m hax64WExit) _ q.1).run q.2 = some p →
-      NarrowWords.narrowPrep p = some q' →
-      ∀ (tf : Nat) (V : Ctxt.Valuation (entryCtx (abiEntry σ))),
-        AllEv (EvOK T) (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
     (hspine : NFCallTreeInlineSpine.spineArgsOk m.entry.erase = true)
     (hfs : ∀ f ∈ m.fns, NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
     (hint : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
@@ -905,14 +895,17 @@ theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
       nfSrcProgC (m.prepared nfBody ++ m.linkedFns) σ (bindConsts σ.consts m.entry)
         = some ⟨q.1, p⟩ → ∀ o, p.HasOp o →
           NFCallTreeFrontModule.OpOk NFCallTreeGoodCall.IntArgFree o)
-    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
-      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk (NFCallTreeFrontModule.GoodCall m) o) :
+    (hfp : ∀ f ∈ m.fns, ∀ p ∈ f.params, p.2 ≠ .int)
+    (hbody : ∀ f ∈ m.fns, (crateBody (m.prepared nfBody) (f.prep nfBody) (entryCtx f.params)
+      f.res m.linkSig).isSome = true)
+    (hintB : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk NFCallTreeGoodCall.IntArgFree o) :
     ∃ (pc Q : List RInstr) (sym : Nat → String),
       decodeLprog bytes = some (pc ++ shiftProg pc.length Q) ∧
       ∀ O : StOracle m, HandlerRCSt m σ pc sym O := by
   obtain ⟨pc, Q, sym, hd, hrel⟩ :=
-    NFCallTreeR3Handlers.r3FA_of_shape_linkedHandlers hc hnd hk hn hpt hcf tE htE hpar hword hin
-      hev hspine hfs hint hgood
+    NFCallTreeR3Linked.r3FA_of_shape_linked hc hnd hk hn hpt hcf tE htE hpar hword hin
+      hspine hfs hint hfp hbody hintB
   refine ⟨pc, Q, sym, hd, fun O sa hsa env henv fC fuel ε δ hδ => ?_⟩
   refine (robustCompilationH_iff_sdist _ _ _ _).mpr fun h hh => ?_
   rw [sdist_sym]
