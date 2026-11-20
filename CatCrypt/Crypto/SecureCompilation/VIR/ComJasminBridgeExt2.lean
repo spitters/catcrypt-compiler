@@ -33,8 +33,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeExt
 
 * `sext_denote_eq_signExtend` — the mirror sign-extend output
   `BitVec.signExtend szo.bits w` is the same `BitVec` as the method-call spelling
-  `w.signExtend szo.bits` used by the reference `evalSop1 (Osignext …)` /
-  `signExtendWord`. The signed analogue of
+  `w.signExtend szo.bits` used by the reference `signExtendWord`. The signed analogue of
   `ComJasminBridgeExt.castW_denote_eq_setWidth`.
 
 ## Scope
@@ -42,7 +41,7 @@ public import CatCrypt.Crypto.SecureCompilation.VIR.ComJasminBridgeExt
 The jasmin `Com` dialect (`JasminOp`) has no signed width-cast op — its `castW`
 denotes `BitVec.zeroExtend` only. The `signext` bridge here is therefore stated
 at the mirror + JasminPrint `Store` level, with value coincidence against the
-reference `evalSop1 (Osignext …)` sign-extension (`BitVec.signExtend`). The
+reference sign-extension `signExtendWord` (`BitVec.signExtend`). The
 `Pget`/`stackLoad` array read is *not* closed here: it reads a `.Varr n a` source
 slot, and `StateBijection.encodeRegVal` collapses every non-`Vword` value to the
 default `reg 0` `DynVal`, so `StateCorrReg`/`RegCorr` carries no array-cell
@@ -103,7 +102,7 @@ theorem sextOpSem_sem (szo szi : WSize) (w : BitVec szi.bits) :
 
 /-- **Value coincidence (signed).** The mirror sign-extend output
     `BitVec.signExtend szo.bits w` is the *same* `BitVec` as the method-call
-    spelling `w.signExtend szo.bits` that the reference `evalSop1 (Osignext …)`
+    spelling `w.signExtend szo.bits` that the reference sign-extension
     computes (`signExtendWord wsi wso v = v.signExtend wso.bits`). The signed
     analogue of `ComJasminBridgeExt.castW_denote_eq_setWidth`. -/
 theorem sext_denote_eq_signExtend (szo szi : WSize) (w : BitVec szi.bits) :
