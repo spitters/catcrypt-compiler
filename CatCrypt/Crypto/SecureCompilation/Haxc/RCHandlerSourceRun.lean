@@ -177,18 +177,6 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
     (tE : TreeCallEnv leafSig nfDialect)
     (htE : ∀ (f : String) (as rs : List NfTy) (x : Ctxt.Valuation (d := nfDialect) as),
       tE.call f as rs x = .ret none)
-    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
-    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, NFProgCallTreeExt.ExtRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ →
-      NFProgCallTreeExt.ExtRA e₁ e₂ (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₀ e₁ e₂, NFProgCallTreeExt.ExtRE e₀ e₁ → NFProgCallTreeChain.ExtEv e₀ →
-      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
-      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
-    (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
-      innerHead f = true →
-        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ChainRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
       ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
@@ -201,7 +189,8 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
       (extChain (linkedDecls m hax64WExit) _ q.1).run q.2 = some p →
       NarrowWords.narrowPrep p = some q' →
       ∀ (tf : Nat) (V : Ctxt.Valuation (entryCtx (abiEntry σ))),
-        AllEv (GoodEv m d T h₃) (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
+        AllEv (GoodEv m d T (NFCallTreeR3Handlers.linkedHandlerJ m))
+          (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
     (hspine : NFCallTreeInlineSpine.spineArgsOk m.entry.erase = true)
     (hfs : ∀ f ∈ m.fns, NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
     (hint : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
@@ -230,8 +219,8 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
             (haxcTgtRes σ (pc ++ shiftProg pc.length Q)))
           (idealObs (pubOf σ))) ∧
       HandlerRCRuns m σ pc sym := by
-  obtain ⟨pc, Q, sym, hd, hg, hH⟩ := haxc_rcH s hc hnd hk hn hpt hcf tE htE h₂ h₃ hh₂ hh₃ hinner
-    hhC hpar hword hin d tr₀ hev hspine hfs hint hgood hck F fuelC hterm hL hnds
+  obtain ⟨pc, Q, sym, hd, hg, hH⟩ := haxc_rcH s hc hnd hk hn hpt hcf tE htE hpar hword hin d
+    tr₀ hev hspine hfs hint hgood hck F fuelC hterm hL hnds
   exact ⟨pc, Q, sym, hd, hg, HandlerRC.runs hH⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerSourceRun

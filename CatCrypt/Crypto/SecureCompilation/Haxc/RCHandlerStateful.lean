@@ -6,7 +6,6 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed
-public import CatCrypt.Crypto.SecureCompilation.Haxc.NFTreeFuelMono
 public import CatCryptCore.Relational.CouplingMass
 
 /-!
@@ -872,7 +871,8 @@ theorem handlerRCKeyed_of_handlerRCSt {σ : AbiLayout} {pc : List RInstr} {sym :
   rwa [stTgt_keyedSt, stSrc_keyedSt] at hk
 
 /-- **Robust compilation over stateful oracles, for the hax compiler.** Let `compileA` compile
-    the module `m` to `(P, bytes)` under the hypotheses of `r3FA_of_shape_int`. The bytes decode
+    the module `m` to `(P, bytes)` under the hypotheses of `r3FA_of_shape_linkedHandlers`. The
+    bytes decode
     to a calling body `pc` followed by the shifted linked code `Q`, and `HandlerRCSt` holds at
     `pc` for every stateful oracle of `m`. -/
 theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
@@ -885,18 +885,6 @@ theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
     (tE : TreeCallEnv leafSig nfDialect)
     (htE : ∀ (f : String) (as rs : List NfTy) (x : Ctxt.Valuation (d := nfDialect) as),
       tE.call f as rs x = .ret none)
-    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
-    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ExtRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → NFProgCallTreeChain.ExtEv e₀ →
-      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
-      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
-    (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
-      innerHead f = true →
-        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ChainRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
       ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
@@ -922,8 +910,9 @@ theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
     ∃ (pc Q : List RInstr) (sym : Nat → String),
       decodeLprog bytes = some (pc ++ shiftProg pc.length Q) ∧
       ∀ O : StOracle m, HandlerRCSt m σ pc sym O := by
-  obtain ⟨pc, Q, sym, hd, hrel⟩ := NFCallTreeR3TypedAns.r3FA_of_shape_int hc hnd hk hn hpt hcf
-    tE htE h₂ h₃ hh₂ hh₃ hinner hhC hpar hword hin hev hspine hfs hint hgood
+  obtain ⟨pc, Q, sym, hd, hrel⟩ :=
+    NFCallTreeR3Handlers.r3FA_of_shape_linkedHandlers hc hnd hk hn hpt hcf tE htE hpar hword hin
+      hev hspine hfs hint hgood
   refine ⟨pc, Q, sym, hd, fun O sa hsa env henv fC fuel ε δ hδ => ?_⟩
   refine (robustCompilationH_iff_sdist _ _ _ _).mpr fun h hh => ?_
   rw [sdist_sym]

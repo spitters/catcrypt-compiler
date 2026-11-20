@@ -230,7 +230,7 @@ theorem handlerRCLazy_of_handlerRCKeyed {σ : AbiLayout} {pc : List RInstr} {sym
 
 /-- **Robust compilation over keyed oracles with a lazily drawn key, for the hax compiler.** Let
     `compileA` compile the module `m` to `(P, bytes)` under the hypotheses of
-    `r3FA_of_shape_int`. The bytes decode to a calling body `pc` followed by the shifted linked
+    `r3FA_of_shape_linkedHandlers`. The bytes decode to a calling body `pc` followed by the shifted linked
     code `Q`, and `HandlerRCLazy` holds at `pc` for every keyed oracle of `m` whose key
     distribution is discardable. -/
 theorem haxc_rcHLazy {σ : AbiLayout} {fname : String} {P : Lprog}
@@ -243,18 +243,6 @@ theorem haxc_rcHLazy {σ : AbiLayout} {fname : String} {P : Lprog}
     (tE : TreeCallEnv leafSig nfDialect)
     (htE : ∀ (f : String) (as rs : List NfTy) (x : Ctxt.Valuation (d := nfDialect) as),
       tE.call f as rs x = .ret none)
-    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
-    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ExtRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → NFProgCallTreeChain.ExtEv e₀ →
-      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
-      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
-    (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
-      innerHead f = true →
-        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → NFProgCallTreeChain.ExtEv e₁ → ChainRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
       ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
@@ -280,8 +268,8 @@ theorem haxc_rcHLazy {σ : AbiLayout} {fname : String} {P : Lprog}
     ∃ (pc Q : List RInstr) (sym : Nat → String),
       decodeLprog bytes = some (pc ++ shiftProg pc.length Q) ∧
       ∀ O : KeyedOracle m, Discardable O.keyDist → HandlerRCLazy m σ pc sym O := by
-  obtain ⟨pc, Q, sym, hdec, hrc⟩ := haxc_rcHKeyed hc hnd hk hn hpt hcf tE htE h₂ h₃ hh₂ hh₃
-    hinner hhC hpar hword hin hev hspine hfs hint hgood
+  obtain ⟨pc, Q, sym, hdec, hrc⟩ := haxc_rcHKeyed hc hnd hk hn hpt hcf tE htE hpar hword hin
+    hev hspine hfs hint hgood
   exact ⟨pc, Q, sym, hdec, fun O hO => handlerRCLazy_of_handlerRCKeyed hO (hrc O)⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
