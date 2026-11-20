@@ -49,8 +49,10 @@ word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
 * `Slot`, `FOp`, `ChainOp`, `chainF`, `invChain`: chains of squarings and products between
   the slots of the state; `invChain` is the ref10 / fiat-crypto chain of `z2 ^ (2^255 - 21)`
   (`254` squarings, `11` products).
-* `chainThen`: a chain on the state array, each field operation a straight-line block of
-  `lo` and each run of squarings a counted loop of `sqBodyAt` with a literal trip count.
+* `fopBodyAt`, `chainThen`: a chain on the state array, each field operation a straight-line
+  block of `lo` that loads the `n` words of its source slots and stores the `n` words of its
+  destination slot (`Slot.idx`, `storeVal_encW`), and each run of squarings a counted loop
+  of `fopBodyAt (.sq .t .t)` with a literal trip count.
 * `x25519Body`: one kernel over `[k; u]`, a state array and an output array of `n` words:
   the ladder loop, the inversion chain of `z2`, and `x2 · t` into the output array.
 
@@ -1716,6 +1718,107 @@ theorem Holds.set {Δ : Ctxt jasminDialect} {E : ZMod p → ListDenote (Rn n)} {
 
 end LimbSt
 
+/-- The position of a slot in the state array: the limbs of the slot `i` are the words
+    `i.idx * n .. i.idx * n + n - 1` of `encW`. -/
+def Slot.idx : Slot → Nat
+  | .u => 0
+  | .x2 => 1
+  | .z2 => 2
+  | .x3 => 3
+  | .z3 => 4
+  | .t => 5
+
+/-- The position of a slot is below `6`. -/
+theorem Slot.idx_lt (i : Slot) : i.idx < 6 := by
+  cases i <;> decide
+
+section SlotArray
+
+variable {n : Nat}
+
+/-- The words of a slot lie in the state array. -/
+theorem Slot.idx_mul_add_le (i : Slot) : i.idx * n + n ≤ 6 * n := by
+  have h := Nat.mul_le_mul_right n (Nat.succ_le_of_lt i.idx_lt)
+  rwa [Nat.succ_mul] at h
+
+/-- Storing limbs from index `j` keeps every word at an index past the stored ones. -/
+theorem storeVal_get_past {N : Nat} (o : Fin N → BitVec 64) (i : Nat) :
+    ∀ {m : Nat} (j : Nat) (L : ListDenote (Rn m)), j + m ≤ i → i < N →
+      stackGet (storeVal o j L) i = stackGet o i
+  | 0, _, _, _, _ => rfl
+  | m + 1, j, .cons x L, hji, hi => by
+      change stackGet (storeVal (stackSet o j x) (j + 1) L) i = _
+      rw [storeVal_get_past _ i (j + 1) L (by omega) hi]
+      obtain ⟨n', rfl⟩ : ∃ n', N = n' + 1 := ⟨N - 1, by omega⟩
+      simp only [stackGet, stackSet]
+      rw [ite_eq_right]
+      intro he
+      have := congrArg Fin.val he
+      simp only [Nat.mod_eq_of_lt (show i < n' + 1 by omega),
+        Nat.mod_eq_of_lt (show j < n' + 1 by omega)] at this
+      omega
+
+/-- Arrays with the same `m` words from index `j` agree at each index `j + r` with `r < m`. -/
+theorem stackGet_eq_of_arrLimbs {N : Nat} (A B : Fin N → BitVec 64) :
+    ∀ (m j : Nat), arrLimbs A m j = arrLimbs B m j → ∀ r, r < m →
+      stackGet A (j + r) = stackGet B (j + r)
+  | 0, _, _, _, hr => absurd hr (Nat.not_lt_zero _)
+  | m + 1, j, h, r, hr => by
+    change (HVector.cons (stackGet A j) (arrLimbs A m (j + 1)) : ListDenote (Rn (m + 1)))
+      = (HVector.cons (stackGet B j) (arrLimbs B m (j + 1)) : ListDenote (Rn (m + 1))) at h
+    injection h with _ _ h₁ h₂
+    rcases r with _ | r
+    · exact h₁
+    · rw [show j + (r + 1) = j + 1 + r by omega]
+      exact stackGet_eq_of_arrLimbs A B m (j + 1) h₂ r (by omega)
+
+/-- Two state arrays with the same six chunks are equal. -/
+theorem arr6_ext (A B : Fin (6 * n) → BitVec 64)
+    (h : ∀ k, k < 6 → arrLimbs A n (k * n) = arrLimbs B n (k * n)) : A = B := by
+  funext i
+  rw [← stackGet_id A i, ← stackGet_id B i]
+  have hi6 : i.val < n * 6 := by have := i.isLt; omega
+  have hn : 0 < n := by omega
+  have hk : i.val / n < 6 := Nat.div_lt_of_lt_mul hi6
+  rw [← Nat.div_add_mod' i.val n]
+  exact stackGet_eq_of_arrLimbs A B n _ (h _ hk) _ (Nat.mod_lt _ hn)
+
+/-- The chunk at a slot of `encW E s` holds the limbs of the element at that slot. -/
+theorem arrLimbs_encW_slot (E : ZMod p → ListDenote (Rn n)) (s : LadderState p) (i : Slot) :
+    arrLimbs (encW E s) n (i.idx * n) = E (s.get i) := by
+  cases i <;> exact arrLimbs_encW E s _ (by decide)
+
+/-- The chunks of `encW E (s.set i v)`: the limbs of `v` at the slot `i`, those of `s`
+    elsewhere. -/
+theorem arrLimbs_encW_set (E : ZMod p → ListDenote (Rn n)) (s : LadderState p) (i : Slot)
+    (v : ZMod p) (k : Nat) (hk : k < 6) :
+    arrLimbs (encW E (s.set i v)) n (k * n)
+      = if k = i.idx then E v else arrLimbs (encW E s) n (k * n) := by
+  rw [arrLimbs_encW E _ k hk, arrLimbs_encW E s k hk]
+  interval_cases k <;> cases i <;> rfl
+
+/-- **A store of the limbs of `v` at a slot** of `encW E s` gives `encW E (s.set i v)`. -/
+theorem storeVal_encW (E : ZMod p → ListDenote (Rn n)) (s : LadderState p) (i : Slot)
+    (v : ZMod p) : storeVal (encW E s) (i.idx * n) (E v) = encW E (s.set i v) := by
+  have hi := i.idx_mul_add_le (n := n)
+  refine arr6_ext _ _ fun k hk => ?_
+  rw [arrLimbs_encW_set E s i v k hk]
+  split_ifs with hki
+  · subst hki
+    exact arrLimbs_storeVal _ _ _ hi
+  · have hk6 : (k + 1) * n ≤ 6 * n := Nat.mul_le_mul_right n hk
+    rw [Nat.succ_mul] at hk6
+    refine arrLimbs_congr _ _ n (k * n) fun j h₁ h₂ => ?_
+    rcases Nat.lt_or_gt_of_ne hki with hlt | hlt
+    · have hle : (k + 1) * n ≤ i.idx * n := Nat.mul_le_mul_right n hlt
+      rw [Nat.succ_mul] at hle
+      exact storeVal_get_lt _ j _ _ (by omega) hi
+    · have hle : (i.idx + 1) * n ≤ k * n := Nat.mul_le_mul_right n hlt
+      rw [Nat.succ_mul] at hle
+      exact storeVal_get_past _ j _ _ (by omega) (by omega)
+
+end SlotArray
+
 section Chain
 
 variable {n : Nat} (lo : LimbBlocks n)
@@ -1732,28 +1835,40 @@ def fopSt (o : FOp) {bs : List JasminTy} {Δ : Ctxt jasminDialect} (h : LimbSt n
       (appendHom (h.get a) (appendHom (h.get b) nilHom)) (finProg p) fun r vs =>
         k r ((h.map r).set d (hdHom (hvToHom vs)))
 
-/-- A field operation between slots at the variables `w`, `o`: the loads of the state array,
-    `fopSt`, the stores into `o`. -/
-def fopBodyAt (o : FOp) {Δ : Ctxt jasminDialect} (w o' : Var Δ (arrTy (6 * n))) :
+/-- A field operation between slots in place on the state array `w`: the loads of the `n`
+    words of each source slot at its offset, the lowering of `sqProg` or `finProg` by the
+    blocks of `lo`, and the stores of the `n` result words at the offset of the destination
+    slot. -/
+def fopBodyAt (o : FOp) {Δ : Ctxt jasminDialect} (w : Var Δ (arrTy (6 * n))) :
     MC Δ [arrTy (6 * n)] :=
-  loadSt w fun r₀ h₀ => fopSt lo (p := p) o h₀ fun r₁ h₁ => storeSt (r₁ (r₀ o')) h₁
+  match o with
+  | .sq a d =>
+    loadLimbs n (a.idx * n) w fun r₀ ha =>
+    (loweringOf lo).lowerRM (Γ := fctx p 1) (ts := fctx p 1) (appendHom ha nilHom) (sqProg p)
+      fun r₁ vs => storeLimbs n (d.idx * n) (r₁ (r₀ w)) (hdHom (hvToHom vs))
+  | .mul a b d =>
+    loadLimbs n (a.idx * n) w fun r₀ ha =>
+    loadLimbs n (b.idx * n) (r₀ w) fun r₁ hb =>
+    (loweringOf lo).lowerRM (Γ := fctx p 2) (ts := fctx p 1)
+      (appendHom (fun v => r₁ (ha v)) (appendHom hb nilHom)) (finProg p)
+      fun r₂ vs => storeLimbs n (d.idx * n) (r₂ (r₁ (r₀ w))) (hdHom (hvToHom vs))
 
 /-- **A chain on the state array `w` with a continuation**: a field operation is `fopBodyAt`
-    in place; `sqn k` is a counted loop of `k` trips of `sqBodyAt` on the carried state array,
-    with the trip count a literal. The continuation receives the renaming of the context and
-    the final state array. -/
+    in place; `sqn k` is a counted loop of `k` trips of `fopBodyAt (.sq .t .t)` on the carried
+    state array, with the trip count a literal. The continuation receives the renaming of the
+    context and the final state array. -/
 def chainThen {us : List JasminTy} : (ops : List ChainOp) → {Γ : Ctxt jasminDialect} →
     Var Γ (arrTy (6 * n)) →
     (∀ {Δ : Ctxt jasminDialect}, Ctxt.Hom Γ Δ → Var Δ (arrTy (6 * n)) →
       NFProg jasminDialect Δ us) → NFProg jasminDialect Γ us
   | [], _, w, K => K (fun v => v) w
   | .op o :: ops, _, w, K =>
-    nfThen (fopBodyAt lo (p := p) o w w) fun r vs =>
+    nfThen (fopBodyAt lo (p := p) o w) fun r vs =>
       chainThen ops vs.head fun r' w' => K (fun v => r' (r v)) w'
   | .sqn k :: ops, _, w, K =>
     .var (wConst k) <|
     .forLoop .here (.cons w.there .nil)
-      (NFProg.ofCom (sqBodyAt lo (p := p) .here .here |>.toComHead))
+      (NFProg.ofCom (fopBodyAt lo (p := p) (.sq .t .t) .here |>.toComHead))
       (chainThen ops .here fun r' w' => K (fun v => r' v.there.there) w')
 
 /-- The context of the X25519 kernel: the packed input `[k; u]`, the state array and the output
@@ -1837,12 +1952,38 @@ theorem fopSt_denote (o : FOp) {bs : List JasminTy} {Δ : Ctxt jasminDialect} (h
 
 include hsq hM hQ hn in
 /-- A field operation at a variable holding `encW s` returns `encW (o.apply s)`. -/
-theorem fopBodyAt_value (o : FOp) {Δ : Ctxt jasminDialect} (w o' : Var Δ (arrTy (6 * n)))
+theorem fopBodyAt_value (o : FOp) {Δ : Ctxt jasminDialect} (w : Var Δ (arrTy (6 * n)))
     (W : Valuation Δ) (s : LadderState p) (hw : w.lookup W = encW (encF lo enc p) s) :
-    (fopBodyAt lo (p := p) o w o').denote W = .cons (encW (encF lo enc p) (o.apply s)) .nil := by
-  refine loadSt_denote _ hn w _ W _ s hw fun r₀ h₀ W₀ p₀ hh₀ => ?_
-  refine fopSt_denote lo enc Good hsq hM hQ o h₀ _ W₀ _ s hh₀ fun r₁ h₁ W₁ p₁ hh₁ => ?_
-  exact storeSt_denote _ hn _ h₁ W₁ _ hh₁
+    (fopBodyAt lo (p := p) o w).denote W = .cons (encW (encF lo enc p) (o.apply s)) .nil := by
+  cases o with
+  | sq a d =>
+    have ha := a.idx_mul_add_le (n := n)
+    have hd := d.idx_mul_add_le (n := n)
+    refine loadLimbs_denote n (a.idx * n) w _ W _ (by omega) fun r₀ h₀ W₀ p₀ e₀ => ?_
+    refine (loweringOf lo).lowerRM_denote_on enc Good hsq _ (sqProg p) _ W₀
+      (.cons (s.get a) .nil) _ (sqProg_covered Good hQ) ?_ fun r₁ vs W₁ p₁ hvs => ?_
+    · rw [pullV_appendHom, e₀, hw, arrLimbs_encW_slot]
+      rfl
+    · rw [sqProg_denote] at hvs
+      rw [storeLimbs_denote (by omega) n (d.idx * n) _ _ W₁ hd, p₁ _, p₀ w, hw,
+        pullV_hdHom _ W₁ _ _ ((pullV_hvToHom W₁ vs).trans hvs), storeVal_encW]
+      rfl
+  | mul a b d =>
+    have ha := a.idx_mul_add_le (n := n)
+    have hb := b.idx_mul_add_le (n := n)
+    have hd := d.idx_mul_add_le (n := n)
+    refine loadLimbs_denote n (a.idx * n) w _ W _ (by omega) fun r₀ h₀ W₀ p₀ e₀ => ?_
+    refine loadLimbs_denote n (b.idx * n) _ _ W₀ _ (by omega) fun r₁ h₁ W₁ p₁ e₁ => ?_
+    refine (loweringOf lo).lowerRM_denote_on enc Good hsq _ (finProg p) _ W₁
+      (.cons (s.get a) (.cons (s.get b) .nil)) _ (finProg_covered Good hM) ?_
+      fun r₂ vs W₂ p₂ hvs => ?_
+    · rw [pullV_appendHom, pullV_appendHom, pullV_comp_pres p₁ h₀, e₀, e₁, p₀ w, hw,
+        arrLimbs_encW_slot, arrLimbs_encW_slot]
+      rfl
+    · rw [finProg_denote] at hvs
+      rw [storeLimbs_denote (by omega) n (d.idx * n) _ _ W₂ hd, p₂ _, p₁ _, p₀ w, hw,
+        pullV_hdHom _ W₂ _ _ ((pullV_hvToHom W₂ vs).trans hvs), storeVal_encW]
+      rfl
 
 include hsq hM hQ hn in
 /-- **A chain on an array holding `encW s`** denotes its continuation at an array holding
@@ -1861,7 +2002,7 @@ theorem chainThen_denote (fuel : Nat) {us : List JasminTy} :
   | [], _, w, _, W, _, _, _, hw, hK => hK (fun v => v) w W (Pres.id W) hw
   | .op o :: ops, _, w, Kc, W, R, s, hops, hw, hK => by
     refine nfThen_denote fuel _ _ _ _ fun r vs W' hr hv => ?_
-    rw [fopBodyAt_value lo enc Good hsq hM hQ hn o w w W s hw] at hv
+    rw [fopBodyAt_value lo enc Good hsq hM hQ hn o w W s hw] at hv
     cases vs with
     | cons w' rest =>
       cases rest
@@ -1890,7 +2031,7 @@ theorem chainThen_denote (fuel : Nat) {us : List JasminTy} :
         (fun k' hk' => hops k' (List.mem_cons_of_mem _ hk')) rfl
         fun r' w'' W'' hr' hw'' => hK _ w'' W'' (fun v => hr' v.there.there) hw''
     intro s' i
-    have hb := sqBodyAt_value lo enc Good hsq hQ hn Var.here Var.here
+    have hb := fopBodyAt_value lo enc Good hsq hM hQ hn (.sq .t .t) Var.here
       (hvAppend (HVector.cons (encW (encF lo enc p) s') .nil)
         (HVector.cons (HasWord64.ofNat (d := jasminDialect) i)
           (W.extend ((wConst k).denote W : BitVec 64)))) s' rfl
