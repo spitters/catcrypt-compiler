@@ -3804,7 +3804,7 @@ lean_lib HaxAscent where
 -- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, and with the
 -- `CATCRYPT_KAT_MS_SCALE` factor of `#kat` that CI sets).
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "130e2e7848757df39f0021d57f183b66062ba1ef"
+  "https://github.com/spitters/CatCrypt-core.git" @ "e4d558a5c291c23342e80bdb8657c2fbe8368ddb"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
