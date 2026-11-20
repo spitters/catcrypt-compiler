@@ -33,8 +33,8 @@ constant-time assembly.
 The ascent (`CatCrypt/Crypto/SecureCompilation/Ascent/`, described in
 [ASCENT.md](ASCENT.md)) follows the AutoCorres abstraction of C programs (Greenaway,
 Andronick, Klein, ITP 2012; Greenaway, Lim, Andronick, Klein, PLDI 2014) as ported to
-Lean by Sebastian Graf in [sgraf812/ascent](https://github.com/sgraf812/ascent)
-("WIP AutoCorres2 in Lean"). The package takes the design of the calculus from that
+Lean by Sebastian Graf in [sgraf812/distillery](https://github.com/sgraf812/distillery)
+(formerly `sgraf812/ascent`, "WIP AutoCorres2 in Lean"). The package takes the design of the calculus from that
 port: a `Corres` correspondence relation, abstraction in AutoCorres phases (the port
 develops type strengthening and word abstraction, with heap examples in its tests), and
 the names `Ascent`, `ascend` and `Corres`. The port states its correspondence over the
@@ -48,7 +48,10 @@ port's `Corres`, described in its README, was an abstract-interpretation inequal
 between `Std.Internal.Do` weakest preconditions; at revision `1fdcb17` (2026-07-10) its
 judgment is `RTriple`, a triple over the relational weakest precondition `rwp` of a
 `Concretization` with value and exception couplings, and its `ascend` engine is a
-worklist driver over registered rules. A comparison of the 293 distinct declaration names in the port's Lean
+worklist driver over registered rules. At revision `a5cc0e2` (2026-11-20) the
+repository is named distillery; its judgement is the refinement `⦃P⦄ c ⪯[γ] a ⦃Q; E⦄`,
+defined by a weakest refinement precondition `wrp` over `Std.WP`, its abstract programs are
+demonic predicate transformers, and its automation is `distill`, a fork of `vcgen`. A comparison of the 293 distinct declaration names in the port's Lean
 files (revision `1fdcb17`) with the declarations of the package's `Ascent` modules finds
 two common names, `Heap` and `incr`, with different definitions, and no declaration
 taken from the port. The port's repository has no license file.

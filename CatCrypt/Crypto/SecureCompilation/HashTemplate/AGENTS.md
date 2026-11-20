@@ -12,6 +12,12 @@ round count.
 | `Sha2` | the SHA-2 family (`Sha2FamilyParams`; SHA-224/256/384/512/512-224/512-256) |
 | `Blake2` | BLAKE2b and BLAKE2s (`Blake2Params`) |
 | `Keccak` | Keccak-f[1600] |
+| `ChaCha` | the ChaCha20 block function of RFC 8439 on 32-bit words (`chachaBlockBody`) |
+| `Gf128` | the GF(2^128) multiplication at the GCM modulus as a branch-free program on 64-bit words (`gf128MulBody`): Karatsuba over bit-serial carry-less products and two folds by `0x87`; `gf128MulBody_value`, `gf128MulBody_events` |
+| `AesBitslice` | the AES-128 round and final round on `w` blocks at once, one word per state bit, with the Boyar–Peralta S-box circuit (`aesRoundBody`, `aesFinalRoundBody`; `aesRoundBody_value`, `aesRoundBody_events`) |
+| `NarrowKernel` | narrow-width template kernels: region-compiled linked kernels over 8-, 16- and 32-bit words held zero extended in 64-bit slots (`NarrowProgKernelData`) |
+| `Sha256Linked`, `ChaChaLinked`, `Blake2sLinked` | the narrow-width linked kernels `sha256Kernel`, `chachaKernel` and `blake2sKernel` with their System V forms (`*KernelAbi`); the meaning of each is the reference function on arguments below `2 ^ 32` |
+| `Sha256MultiRef` | multi-block SHA-256 of `Primitives.SHA256` as the iteration of the template's compression (`sha256Multi_eq_ref`) |
 | `TemplateKernel` | region kernels and template kernels (`ProgKernelData`, `TemplateKernelData`): the linked function of the bytes of `compileRegion`, its contract (`meets`) and its linked-kernel structure (`linked`), and the check at the frame of the code (`frameCheck`) |
 | `TemplateKernelAbi` | the same kernels at the System V convention (`abiKernel`, `meets_abi`, `linked_abi`): the clobber set `abiClob` without the callee-saved registers, which the code saves and restores (`regionBack_restores`) |
 | `Sha2Linked`, `Blake2Linked`, `KeccakLinked`, `LinkedAbi` | the SHA-512, BLAKE2b and Keccak-f kernels (`sha512Kernel`, `blake2bKernel`, `keccakFKernel`) and their System V forms (`*KernelAbi`), the objects of `bench/hash_linked_compare/gen/` |
