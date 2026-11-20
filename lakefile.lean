@@ -3796,21 +3796,21 @@ require catcryptCore from git
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
 -- CatCrypt dialect folders `Veir/Dialects/{Catcrypt,Memref,Polynomial,Vector,X86vector}`.
 require Veir from git
-  "https://github.com/spitters/veir-catcrypt" @ "v4.35.0-catcrypt.1"
+  "https://github.com/spitters/veir-catcrypt" @ "v4.36.0-catcrypt.1"
 
 -- ParamTransfer (proof-transfer bridge), pinned by commit on its `lean-upgrade-4.35`
 -- branch, + CompPoly (NTT algebraic theory).
 require paramTransfer from git
   "https://github.com/spitters/ParamTransfer.git" @ "40916765d6df5954da9105db764858233cdada86"
 require CompPoly from git
-  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.35.0"
+  "https://github.com/Verified-zkEVM/CompPoly" @ "v4.36.0"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
   "https://github.com/spitters/hax-lean.git" @ "918bdd1985c7669dce192e01521a445752994971"
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.35.0"
+  "https://github.com/leanprover-community/mathlib4" @ "v4.36.0"
 
 -- API documentation (opt-in, dev only — not in the normal build closure).
 --   lake -R -Kenv=doc build CatCryptCompiler:docs
@@ -3819,7 +3819,7 @@ require mathlib from git
 -- library build.
 meta if get_config? env = some "doc" then
 require «doc-gen4» from git
-  "https://github.com/leanprover/doc-gen4" @ "v4.35.0"
+  "https://github.com/leanprover/doc-gen4" @ "v4.36.0"
 
 -- Executables whose root modules live in this package. A dependent package invokes
 -- them through `lake exe`, which resolves executable targets across the workspace.
