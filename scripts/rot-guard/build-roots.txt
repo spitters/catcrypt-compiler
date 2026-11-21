@@ -429,6 +429,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
 CatCrypt.Crypto.SecureCompilation.Haxc.DeriveAbiBounds
+CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBoundsTest
 CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldChainCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
@@ -466,6 +467,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuelBr
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionRemat
 CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
 CatCrypt.Crypto.SecureCompilation.Haxc.TraitLinkAccept
 CatCrypt.Crypto.SecureCompilation.Haxc.WorkedKernelCorollaries
