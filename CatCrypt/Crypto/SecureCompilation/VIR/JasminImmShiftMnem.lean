@@ -298,7 +298,7 @@ theorem toList_mnem (m : String) (k : Nat) :
 theorem base_no_colon {m : String}
     (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR") :
     ∀ c ∈ m.toList, c ≠ ':' := by
-  rcases hm with rfl | rfl | rfl | rfl <;> decide
+  rcases hm with rfl | rfl | rfl | rfl <;> simp
 
 /-- A shift base, the separator and a decimal count carry no `^`. -/
 theorem mnem_no_caret {m : String} (hm : m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m = "ROR")
