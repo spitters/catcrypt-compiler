@@ -209,13 +209,13 @@ theorem regionsOwn_fp_subset (σ : Haxc.AbiLayout) (rv : String → BitVec 64) :
     | nil => intro x hx; exact absurd hx (Set.notMem_empty x)
     | cons p L ih =>
       rintro x (hx | hx)
-      · exact Set.mem_biUnion (hL p List.mem_cons_self) hx
+      · exact Set.mem_iUnion₂.2 ⟨p, hL p List.mem_cons_self, hx⟩
       · exact ih (fun q hq => hL q (List.mem_cons_of_mem _ hq)) hx
   rintro x (hx | hx)
   · exact hc _ (fun p hp => (List.mem_filter.1 hp).1) hx
   · obtain ⟨P, hP, hx⟩ := mem_fp_bigSep.1 hx
     obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hP
-    exact Set.mem_biUnion (List.mem_filter.1 hp).1 hx
+    exact Set.mem_iUnion₂.2 ⟨p, (List.mem_filter.1 hp).1, hx⟩
 
 /-- **The locations of the precondition of the contract**: the registers of the layout, the
     scratch registers, the flags, the return word, the `frame` bytes below the stack register,
@@ -793,7 +793,7 @@ theorem framedPre_at_call {frame : String → Option (BitVec 64)}
         · cases he
         · exact hr'
       · rw [hr] at hR
-        exact Set.mem_biUnion hrn hR
+        exact Set.mem_iUnion₂.2 ⟨_, hrn, hR⟩
   obtain ⟨q, A, n, j, y, hq, hj, hA, hy, rfl⟩ := passed_cell hargs hc hpar ret hreg
   rcases mem_callerFrameA_fp hx with ⟨q', b, z, hb, hz, he⟩ |
     ⟨q', A', n', j', z, hq', hj', hA', hz, he⟩ | ⟨_, hr', -⟩

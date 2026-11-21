@@ -1157,7 +1157,7 @@ theorem isRecognizedOpn_eq_false_of_untagCaret {o b : String}
     have hP : b.toList <+: (LprogAsmPrinter.stripAbiTag o).toList := by
       have hpre : b.toList <+: o.toList := hT ▸ List.takeWhile_prefix _
       have hcol : ∀ c ∈ b.toList, (c != ':') = true := by
-        rcases hb with rfl | rfl <;> decide
+        rcases hb with rfl | rfl <;> simp
       unfold LprogAsmPrinter.stripAbiTag
       split
       · rw [String.toList_ofList]
