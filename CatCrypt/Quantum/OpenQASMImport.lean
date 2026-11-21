@@ -710,6 +710,14 @@ def importGates (n : ℕ) (src : String) : Option (List (Gate n)) :=
   (statements src.toList).bind fun ss =>
     (ss.mapM fun s => parseOps n (String.ofList s)).map List.flatten
 
+theorem mapM_map_option {α β γ : Type} (f : α → Option β) (g : β → γ) (l : List α) :
+    l.mapM (fun s => (f s).map g) = (l.mapM f).map (List.map g) := by
+  induction l with
+  | nil => rfl
+  | cons a l ih =>
+    cases h : f a <;> simp [List.mapM_cons, ih, h]
+    cases h' : l.mapM f <;> simp
+
 /-- The gates of a file are the lowering of its statements. -/
 theorem importGates_eq_importQ (n : ℕ) (src : String) :
     importGates n src = (importQ n src).map (·.flatMap lowerQ) := by
@@ -723,9 +731,8 @@ theorem importGates_eq_importQ (n : ℕ) (src : String) :
   | cons l ls ih =>
     cases h : parseQ n (String.ofList l) <;>
       cases h' : ls.mapM (fun s => parseQ n (String.ofList s)) <;>
-      simp_all [List.mapM_cons, List.flatMap_append]
-    obtain ⟨a, ha, ha'⟩ := ih
-    simp [ha, ha']
+      simp [List.mapM_cons, List.flatMap_append, mapM_map_option, h, h'] <;>
+      (simp [mapM_map_option, h'] at ih; simp [ih])
 
 /-- **The circuit a file denotes**, `none` if any statement text is unrecognised. -/
 def importQASM (n : ℕ) (src : String) : Option (Circuit n) :=

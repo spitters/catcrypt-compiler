@@ -414,7 +414,7 @@ theorem sum_star_mul_smul_of_mul_conjTranspose_eq_one {M : Type*} [AddCommMonoid
   have hk : ∀ a b, ∑ k, star (u a k) * u b k = if a = b then 1 else 0 := by
     intro a b
     have := congrFun (congrFun hu b) a
-    simp only [mul_apply, conjTranspose_apply, one_apply] at this
+    simp only [Matrix.mul_apply, conjTranspose_apply, Matrix.one_apply] at this
     rw [show (if a = b then (1 : ℂ) else 0) = if b = a then 1 else 0 from by
       by_cases hab : a = b
       · subst hab; rfl
@@ -598,11 +598,11 @@ theorem isCorrectableBy_of_knillLaflamme (code : QuantumCode) {numErrors : ℕ}
     rw [Finset.sum_congr rfl fun a _ => Finset.sum_smul.symm, ← Finset.sum_smul]
     congr 1
     have hkl := congrFun (congrFun hdiag k) l
-    rw [diagonal_apply, mul_apply, Function.comp_apply] at hkl
+    rw [diagonal_apply, Matrix.mul_apply, Function.comp_apply] at hkl
     rw [← hkl]
     rw [Finset.sum_comm]
     refine Finset.sum_congr rfl fun b _ => ?_
-    rw [mul_apply, Finset.sum_mul]
+    rw [Matrix.mul_apply, Finset.sum_mul]
     refine Finset.sum_congr rfl fun a _ => ?_
     rw [conjTranspose_apply]
     ring

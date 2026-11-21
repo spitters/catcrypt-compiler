@@ -77,13 +77,13 @@ theorem schmidt (ψ : Fin (dA * dB) → ℂ) :
 theorem partialTrace₂_vecMulVec (ψ : Fin (dA * dB) → ℂ) :
     partialTrace₂ (vecMulVec ψ (star ψ)) = coeff ψ * (coeff ψ)ᴴ := by
   ext i i'
-  simp [partialTrace₂_apply, vecMulVec_apply, coeff, mul_apply, conjTranspose_apply]
+  simp [partialTrace₂_apply, vecMulVec_apply, coeff, Matrix.mul_apply, conjTranspose_apply]
 
 /-- `(1 ⊗ V) ψ` has coefficient matrix `coeff ψ Vᵀ`. -/
 theorem coeff_one_kronecker_mulVec (V : Matrix (Fin dB) (Fin dB) ℂ) (ψ : Fin (dA * dB) → ℂ) :
     coeff (((1 : Matrix (Fin dA) (Fin dA) ℂ) ⊗ₖ V) *ᵥ ψ) = coeff ψ * Vᵀ := by
   ext i j
-  simp only [coeff, Matrix.of_apply, mulVec, dotProduct, mul_apply, transpose_apply]
+  simp only [coeff, Matrix.of_apply, mulVec, dotProduct, Matrix.mul_apply, transpose_apply]
   rw [NoCommunication.sum_finProd]
   simp [TensorProduct.kronecker_apply, Matrix.one_apply, mul_comm]
 

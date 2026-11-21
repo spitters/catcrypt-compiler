@@ -113,7 +113,7 @@ def ShiftBase (m : String) : Prop := m = "SHL" ∨ m = "SHR" ∨ m = "SAR" ∨ m
 
 /-- A shift base carries no separator. -/
 theorem ShiftBase.no_colon {m : String} (hm : ShiftBase m) : ∀ c ∈ m.toList, c ≠ ':' := by
-  rcases hm with rfl | rfl | rfl | rfl <;> decide
+  rcases hm with rfl | rfl | rfl | rfl <;> simp
 
 /-- The four heads of the fragment: the immediate shifts and the rotate. -/
 inductive ShiftKind where
