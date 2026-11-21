@@ -404,9 +404,11 @@ theorem pubOf_abiEnter (σ : AbiLayout) (e t : AState) :
   rw [read64_congr (Footprinted.agreeOn_anti ?_ (abiEnter_agreeOn σ e t))]
   · rfl
   intro l hl
-  exact Or.inl (Set.mem_biUnion hreg (Set.mem_biUnion (t := wordLocs)
-    (show e.regs p.1 + BitVec.ofNat 64 (8 * j) ∈ regionWords (e.regs p.1) p.2 from
-      ⟨j, List.mem_range.1 hj, rfl⟩) hl))
+  have h1 : l ∈ wordsLocs (regionWords (e.regs p.1) p.2) :=
+    Set.mem_biUnion (t := wordLocs)
+      (show e.regs p.1 + BitVec.ofNat 64 (8 * j) ∈ regionWords (e.regs p.1) p.2 from
+        ⟨j, List.mem_range.1 hj, rfl⟩) hl
+  exact Or.inl (Set.mem_iUnion₂.2 ⟨p, hreg, h1⟩)
 
 /-- The exit state of a halting run of `prog` from `s`, when one exists (`halts_det` makes it
     unique); `s` otherwise. -/
