@@ -21,11 +21,12 @@ stage lemmas stated on `fieldDomB` apply to the members of `fieldDomB'` through 
 `compileA_isSome_of_fieldDom` states that `compileA` accepts every member, under the
 hypothesis `S : FieldDomStages`. The fields of `FieldDomStages` are the stage facts, one per
 refusing stage of the compiler; the docstring of each field names the row that proves it. The
-proof composes them in pipeline order: the front stages `F1`-`F10`
-(`haxToNF`, `extChain`, `regionExportableB`, `narrowPrep`, the legalised gate, `exportR`, the
-callee table, the allocation `regionLprogC`, the first printed body, the gated encoder), the
-conjuncts `G1`-`G21` of the gate `regionCoB` as named by `regionCoStage`, and the three
-conjuncts `C1`-`C3` of the constant-time gate `regionCtB`. The two bridges
+proof composes them in pipeline order: the front stages (`haxToNF`, `extChain`,
+`regionExportableB`, `narrowPrep`, the legalised gate, `exportR`, the callee table, the
+allocation `regionLprogC`, the first printed body, the gated encoder), the 21 conjuncts of the
+gate `regionCoB` as named by `regionCoStage` (`gateStages`, from `coClass` to `cellRegions`),
+and the three conjuncts of the constant-time gate `regionCtB` (`regionLeakB`, `printedAddrWB`,
+`imgGateCW`). The two bridges
 `regionCoB_of_regionCoStage_eq_none` and `compileRegion_isSome_of_stages` connect the stage
 facts to the definitions of the gate and of the back half.
 
@@ -231,8 +232,8 @@ theorem regionCoB_of_regionCoStage_eq_none {σ : AbiLayout} {nm : String → Str
   simp only [regionCoB, renImageB, h1, h2, h3, h4, h5, h6, h7, h8, h9, h10, h11, h13, h14,
     h15, h16, h18, h19, h20, h21, h22, h23, Bool.and_self]
 
-/-- The stages of the gate `regionCoStage` at no callee table, `G1`-`G21`, in the order of its
-    definition. -/
+/-- The stages of the gate `regionCoStage` at no callee table, from `coClass` to `cellRegions`,
+    in the order of its definition. -/
 def gateStages : List String :=
   ["coClass", "coCfgB", "coEntryFix", "renB", "coResultName", "coResultCopy", "regionResultB",
     "regMerge", "regionNopB", "fuseOKL", "fuseResultName", "regionFoldB", "ownedCheckMC",
@@ -371,7 +372,7 @@ theorem fieldDomE_wide {e : _root_.Hax.TExpr} {k n : Nat} (h : fieldDomE e = som
     · cases h
   · cases h
 
-/-- Stage `F0`: on the field domain `compileA` is the hax entry at no linked function, since
+/-- The entry step: on the field domain `compileA` is the hax entry at no linked function, since
     the layout narrows no register and has no pair tail. -/
 theorem fieldDom_compileA_eq {e : _root_.Hax.TExpr} {σ : AbiLayout} (fname : String)
     (h : fieldDomB e σ = true) :
@@ -400,188 +401,190 @@ def FieldBody (e : _root_.Hax.TExpr) (σ : AbiLayout) (fname : String) (b : Lcmd
       ∧ t = NarrowWords.wideTy t0
 
 /-- **The stage facts of `compileA` on the field domain**, one field per refusing stage in
-    pipeline order: the front stages `F1`-`F10`, the conjuncts `G1`-`G21` of the gate
-    `regionCoB` as named by `regionCoStage`, and the conjuncts `C1`-`C3` of the constant-time
-    gate `regionCtB`. The docstring of each field names the row that proves it. The fields
-    `exportRSome`, `regionLprogCSome` and `firstBodySome` are the stages `F6`, `F8` and `F9`;
-    their names carry a suffix because later field types mention `exportR`, `regionLprogC` and
-    `firstBody`. -/
+    pipeline order: the front stages, the 21 conjuncts of the gate `regionCoB` as named by
+    `regionCoStage`, and the three conjuncts of the constant-time gate `regionCtB`. The
+    docstring of each field names the row that proves it. The fields `exportRSome`,
+    `regionLprogCSome` and `firstBodySome` are the export, the allocation and the first printed
+    body; their names carry a suffix because later field types mention `exportR`,
+    `regionLprogC` and `firstBody`. -/
 structure FieldDomStages : Prop where
-  /-- Stage `F1`: the translation `haxToNF` refuses nothing on the field domain (`crateArrOk`,
+  /-- The translation check: `haxToNF` refuses nothing on the field domain (`crateArrOk`,
       `haxFrontShapeOk`, `linkNameOk`). Proved by row R2. -/
   refusal {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB' e σ = true) :
     (HaxModule.single e).refusal? σ = none
-  /-- Stage `F2`: on a module `refusal?` accepts, the translation and the chain `extChain`
+  /-- The chain check: on a module `refusal?` accepts, the translation and the chain `extChain`
       return a program. Proved as `fieldDom_chainNF` (`Haxc/FieldDomFront.lean`) from
       `HaxModule.refusal?_eq_none_imp_extChain_isSome`. -/
   chainNF {m : HaxModule} {σ : AbiLayout} (hr : m.refusal? σ = none) :
     ∃ x, haxEntry.chainNF m σ = some x
-  /-- Stage `F3`: the output of the chain on a module `refusal?` accepts passes
+  /-- The export test: the output of the chain on a module `refusal?` accepts passes
       `regionExportableB`. Proved as `fieldDom_exportable` (`Haxc/FieldDomFront.lean`) from
       `HaxModule.refusal?_eq_none_imp_export_isSome`. -/
   exportable {m : HaxModule} {σ : AbiLayout} {t : JasminTy}
     {q : NFProg jasminDialect (nfCtx σ) [t]} (hr : m.refusal? σ = none)
     (hq : haxEntry.chainNF m σ = some ⟨t, q⟩) : regionExportableB q = true
-  /-- Stage `F4` is `NarrowWords.narrowPrep_of_exportable`. Stage `F5`: the legalised program
-      passes `regionExportableB`. Proved as `fieldDom_legalize` (`Haxc/FieldDomFront.lean`) from
-      `regionExportableB_legalizeRegion` and `regionExportableRorB_eq`. -/
+  /-- The narrow-word preparation is `NarrowWords.narrowPrep_of_exportable`. The legalisation:
+      the legalised program passes `regionExportableB`. Proved as `fieldDom_legalize`
+      (`Haxc/FieldDomFront.lean`) from `regionExportableB_legalizeRegion` and
+      `regionExportableRorB_eq`. -/
   legalize {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} (hq : regionExportableB q = true) :
     regionExportableB (legalizeRegion q) = true
-  /-- Stage `F6`: the export returns code on a program that passes `regionExportableB`. Proved
+  /-- The export: it returns code on a program that passes `regionExportableB`. Proved
       as `fieldDom_exportRSome` (`Haxc/FieldDomFront.lean`) from
       `exportR_isSome_of_regionExportableB`. -/
   exportRSome {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {q : NFProg jasminDialect Γ ts} (hq : regionExportableB q = true) (nArgs : Nat)
     (fn : String) (d n : Nat) : ∃ r0, exportR nArgs fn q d n = some r0
-  /-- Stage `F7`: the output of the chain on the field domain has no `call`, so the callee
-      table is empty (`regionCallee_of_callFree`). Proved by row R2. -/
+  /-- The call-freeness check: the output of the chain on the field domain has no `call`, so the
+      callee table is empty (`regionCallee_of_callFree`). Proved by row R2. -/
   callFree {e : _root_.Hax.TExpr} {σ : AbiLayout} {t : JasminTy}
     {q : NFProg jasminDialect (nfCtx σ) [t]} (h : fieldDomB' e σ = true)
     (hq : haxEntry.chainNF (HaxModule.single e) σ = some ⟨t, q⟩) : q.callFree = true
-  /-- Stage `F8`: the allocation `regionLprogC` returns a program when the export does. Proved
+  /-- The allocation: `regionLprogC` returns a program when the export does. Proved
       as `fieldDom_regionLprogCSome` (`Haxc/FieldDomFront.lean`), as in
       `regionLprog_isSome_iff_exportR`. -/
   regionLprogCSome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {r0 : Exported} (ex : List String)
     (hr0 : exportR Γ.length a.fname q Γ.length 0 = some r0) :
     ∃ P cert, regionLprogC a q none ex = some (P, cert)
-  /-- Stage `F9`: the printed program of an allocation has a first body. Proved as `fieldDom_firstBodySome`
-      (`Haxc/FieldDomFront.lean`). -/
+  /-- The first printed body: the printed program of an allocation has a first body. Proved as
+      `fieldDom_firstBodySome` (`Haxc/FieldDomFront.lean`). -/
   firstBodySome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {ex : List String} {P : Lprog}
     {cert : List (String × String)} (hP : regionLprogC a q none ex = some (P, cert)) :
     ∃ b, firstBody (regionPrinted P) = some b
-  /-- Stage `F10`: the gated encoder accepts the printed body of the field domain. Proved by row
-      R5, from `encodable_of_printedAddrWB` at stage `G15`. -/
+  /-- The gated encoder accepts the printed body of the field domain. Proved by row R5, from
+      `encodable_of_printedAddrWB` at the printed-class check `regionPrintedB`. -/
   encode {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     (X86Backend.LprogBytes.encodeLfundefBytesChecked b).isSome = true
-  /-- Stage `G1`: the code with the result copies is in the class `clsB` and free of `mulx`.
-      Proved by row R3, from `regionCoStage_ne_coClass`. -/
+  /-- The class check `coClass`: the code with the result copies is in the class `clsB` and free of
+      `mulx`. Proved by row R3, from `regionCoStage_ne_coClass`. -/
   coClass {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coClass"
-  /-- Stage `G2`: the coalescing check `coCfgB`. Proved by row R3, from
+  /-- The coalescing check `coCfgB`. Proved by row R3, from
       `regionCoStage_accept_of_classes`. -/
   coCfgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB"
-  /-- Stage `G3`: the entry names are fixed by the alias map. Proved by row R3, from
-      `regionCoStage_accept_of_classes`. -/
+  /-- The entry-name check `coEntryFix`: the entry names are fixed by the alias map.
+      Proved by row R3, from `regionCoStage_accept_of_classes`. -/
   coEntryFix {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coEntryFix"
-  /-- Stage `G4`: the renaming check `renB`. Proved by row R4. -/
+  /-- The renaming check `renB`. Proved by row R4. -/
   renB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "renB"
-  /-- Stage `G5`: the observed arrays are names of the coalesced code. Proved by row R4. -/
+  /-- The result-name check `coResultName`: the observed arrays are names of the coalesced code.
+      Proved by row R4. -/
   coResultName {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultName"
-  /-- Stage `G6`: the result copy names are names of the coalesced code, fixed by the renaming.
-      Proved by row R4. -/
+  /-- The result-copy check `coResultCopy`: the result copy names are names of the coalesced
+      code, fixed by the renaming. Proved by row R4. -/
   coResultCopy {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultCopy"
-  /-- Stage `G7`: the result check `regionResultB`. Proved by row R4. -/
+  /-- The result check `regionResultB`. Proved by row R4. -/
   regionResultB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionResultB"
-  /-- Stage `G8`: the merge check `regionMergeB`. Proved by row R4, from
+  /-- The merge check `regionMergeB`. Proved by row R4, from
       `mergeSep_regionLprogC_complete`. -/
   regMerge {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regMerge"
-  /-- Stage `G9`: the check `regionNopB`. Proved by row R4. -/
+  /-- The liveness check `regionNopB`. Proved by row R4. -/
   regionNopB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionNopB"
-  /-- Stage `G10`: the fusion check `fuseOKL`. Proved by row R4. -/
+  /-- The fusion check `fuseOKL`. Proved by row R4. -/
   fuseOKL {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseOKL"
-  /-- Stage `G11`: the fusion sites check `regionSitesB`. Proved by row R4. -/
+  /-- The fusion sites check `regionSitesB`. Proved by row R4. -/
   fuseResultName {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseResultName"
-  /-- Stage `G12`: the cell fold check `regionFoldB`. Proved by row R4. -/
+  /-- The cell fold check `regionFoldB`. Proved by row R4. -/
   regionFoldB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionFoldB"
-  /-- Stage `G13`: the translation validation `ownedCheckMC` of the reference against the cell
+  /-- The translation validation `ownedCheckMC` of the reference against the cell
       image of the printed body. Proved by row R7b, from `ownedCheckMC_of_res` of row R7a. -/
   ownedCheckMC {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "ownedCheckMC"
-  /-- Stage `G14`: the index invariant check `idxInvCheckB`. Proved by row R8. -/
+  /-- The index invariant check `idxInvCheckB`. Proved by row R8. -/
   idxInvCheckB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "idxInvCheckB"
-  /-- Stage `G15`: the printed body is in the class `regionPrintedB` (`printedAddrWB`). Proved by
-      row R5, with the fixes of rows R5a and R6. -/
+  /-- The printed-class check: the printed body is in the class `regionPrintedB` (`printedAddrWB`).
+      Proved by row R5, with the fixes of rows R5a and R6. -/
   regionPrintedB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionPrintedB"
-  /-- Stage `G16`: the physical image check `physImgB`. Proved by row R9. -/
+  /-- The physical image check `physImgB`. Proved by row R9. -/
   physImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "physImgB"
-  /-- Stage `G17`: the image gate `calleeImgBT none`. Proved by row R9, from
+  /-- The image gate `calleeImgBT none`. Proved by row R9, from
       `imgGateBW_of_legal`. -/
   regionImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionImgB"
-  /-- Stage `G18`: the frame check `frameOkB`. Proved by row R4. -/
+  /-- The frame check `frameOkB`. Proved by row R4. -/
   frameOkB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "frameOkB"
-  /-- Stage `G19`: the entry check `entryB`. Proved by row R4. -/
+  /-- The entry check `entryB`. Proved by row R4. -/
   entryB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "entryB"
-  /-- Stage `G20`: the cell names check `cellNamesRB`. Proved by row R4. -/
+  /-- The cell names check `cellNamesRB`. Proved by row R4. -/
   cellNamesRB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB"
-  /-- Stage `G21`: the cell regions check. Proved by row R4. -/
+  /-- The cell regions check. Proved by row R4. -/
   cellRegions {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellRegions"
-  /-- Stage `C1`: the leak check `regionLeakB`. Proved by row R3 (its first four conjuncts) and
+  /-- The leak check `regionLeakB`. Proved by row R3 (its first four conjuncts) and
       row R7c (`ownedCheckML`). -/
   regionLeakB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionLeakB σ exportReg b t r.code r.res cert = true
-  /-- Stage `C2`: the printed body passes `printedAddrWB`. Proved by row R5. -/
+  /-- The printed-body check: the printed body passes `printedAddrWB`. Proved by row R5. -/
   printedAddrWB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) : printedAddrWB b = true
-  /-- Stage `C3`: the constant-time image gate `imgGateCW`. Proved by row R9, from
+  /-- The constant-time image gate `imgGateCW`. Proved by row R9, from
       `imgGateCW_of_imgGateBW`. -/
   imgGateCW {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB' e σ = true)
@@ -600,7 +603,7 @@ section Gate
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
   {r : Exported} {cert : List (String × String)}
 
-/-- The gate names no refusing stage on the field domain: stages `G1`-`G21`. -/
+/-- The gate names no refusing stage on the field domain: all 21 conjuncts of `gateStages`. -/
 theorem fieldDom_regionCoStage (S : FieldDomStages) (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname = none := by
@@ -616,7 +619,8 @@ theorem fieldDom_regionCoStage (S : FieldDomStages) (h : fieldDomB' e σ = true)
     S.physImgB h hB, S.regionImgB h hB, S.frameOkB h hB,
     S.entryB h hB, S.cellNamesRB h hB, S.cellRegions h hB]
 
-/-- The constant-time gate passes on the field domain: stages `C1`-`C3`. -/
+/-- The constant-time gate passes on the field domain: `regionLeakB`, `printedAddrWB`,
+    `imgGateCW`. -/
 theorem fieldDom_regionCtB (S : FieldDomStages) (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCtB σ exportReg b t r.code r.res cert = true := by
@@ -628,10 +632,10 @@ end Gate
 /-! ## 5. The composition -/
 
 /-- **`compileA` accepts every member of the field domain.** The stages of `compileA` in
-    pipeline order: `F0` (`fieldDom_compileA_eq`), the front `F1`-`F3`, the narrow-word stages
-    `F4` (`NarrowWords.narrowPrep_of_exportable`), the legalised gate `F5`, the export `F6`,
-    the empty callee table `F7`, the allocation `F8`, the first printed body `F9`, the encoder
-    `F10`, the gate `G1`-`G21` (`fieldDom_regionCoStage`) and the constant-time gate `C1`-`C3`
+    pipeline order: the entry step (`fieldDom_compileA_eq`), the translation, chain and export
+    tests of the front, the narrow-word preparation (`NarrowWords.narrowPrep_of_exportable`),
+    the legalised gate, the export, the empty callee table, the allocation, the first printed
+    body, the encoder, the gate (`fieldDom_regionCoStage`) and the constant-time gate
     (`fieldDom_regionCtB`), assembled by `compileRegion_isSome_of_stages`. -/
 theorem compileA_isSome_of_fieldDom (S : FieldDomStages) {e : _root_.Hax.TExpr}
     {σ : AbiLayout} (fname : String)

@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomAssemble
 import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomInputAcc
 
 /-!
-# The image conjunct of the region gate on the field domain (stage `G16`)
+# The image conjunct of the region gate on the field domain (`physImgB`)
 
 The statement of the field `physImgB` of `FieldDomOpen`: for every member of `fieldDomB''` and
 every printed body `FieldBody e σ fname b t r cert`, the region gate does not name `physImgB` as
@@ -104,8 +104,8 @@ def FieldPhysImgSide (e : _root_.Hax.TExpr) (σ : AbiLayout) (fname : String) : 
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String}
 
-/-- **Stage `G16` on `fieldDomB''`**: the region gate does not name `physImgB` as the refusing
-    stage on a printed body of a member of `fieldDomB''`, under the side conditions
+/-- **The check `physImgB` on `fieldDomB''`**: the region gate does not name `physImgB` as the
+    refusing stage on a printed body of a member of `fieldDomB''`, under the side conditions
     `FieldPhysImgSide` of the printer passes. -/
 theorem fieldDom_physImgB_of_side (hS : FieldPhysImgSide e σ fname) {b : Lcmd} {t : JasminTy}
     {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)

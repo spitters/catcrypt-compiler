@@ -14,7 +14,7 @@ The last conjunct of the region gate reads each cell array of the parts: the par
 stands for under the pairs, `unren ps`, is a region of the layout at the length of the cell
 array, and the pairs send that parameter back to the cell array. A cell array of the parts is
 the renamed name `renOf ps (argName j)` of a word-array parameter of the layout, at its length.
-The renaming check `renB`, which the gate passes on the field domain (stages `G1`-`G4`), states
+The renaming check `renB`, which the gate passes on the field domain (`fieldDom_renB`), states
 `unren ps (renOf ps (argName j)) = argName j` for every parameter; and every region of the
 field layout has the `n` words of every parameter.
 
@@ -23,7 +23,7 @@ field layout has the `n` words of every parameter.
 * `renB_of_stages`: a gate that refuses at none of its first four stages passes the renaming
   check.
 * `regLen_rsOf_fieldAbi`: every region of the field layout has the length of the parameters.
-* `fieldDom_cellRegions`: the stage `G21` on the field domain.
+* `fieldDom_cellRegions`: the cell regions check on the field domain.
 -/
 
 set_option autoImplicit false
@@ -118,7 +118,7 @@ theorem regionCoStage_ne_cellRegions {nm : String → String} {code : List Linst
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G21` on the field domain**: the gate does not refuse at the cell regions. -/
+/-- **The cell regions check on the field domain**: the gate does not refuse at the cell regions. -/
 theorem fieldDom_cellRegions (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellRegions" := by
   have hR := renB_of_stages (fieldDom_coClass h hB) (fieldDom_coCfgB' h hB)

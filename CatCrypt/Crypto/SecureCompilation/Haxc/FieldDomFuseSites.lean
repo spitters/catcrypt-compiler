@@ -31,8 +31,8 @@ the removal of array self-moves replaces an instruction by a 64-bit move (`selfN
   have no fusion site.
 * `sites_eq_false_of_hiFree`: the parts of code of `HiFree` instructions without shadows have
   no fusion site.
-* `fieldDom_fuseOKL_of_hiFree`: the stage `G10` on the field domain when the exported code has
-  no `MULXHI`.
+* `fieldDom_fuseOKL_of_hiFree`: the fusion check `fuseOKL` on the field domain when the exported
+  code has no `MULXHI`.
 -/
 
 set_option autoImplicit false
@@ -286,7 +286,7 @@ def ExportHiFree (e : _root_.Hax.TExpr) (σ : AbiLayout) (fname : String) : Prop
         ((nfCtx σ).map NarrowWords.wideTy).length 0 = some r0 →
     ∀ i ∈ r0.code, HiFree i.1
 
-/-- **Stage `G10` on the field domain** when the exported code has no `MULXHI`
+/-- **The fusion check `fuseOKL` on the field domain** when the exported code has no `MULXHI`
     (`ExportHiFree`): the parts have no fusion site. -/
 theorem fieldDom_fuseOKL_of_hiFree (h : fieldDomB e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hH : ExportHiFree e σ fname) :

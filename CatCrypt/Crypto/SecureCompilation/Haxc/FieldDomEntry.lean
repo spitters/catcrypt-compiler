@@ -31,7 +31,7 @@ parameter is a frame name of the body, and no move of the body reads a stack-arg
 * `not_mem_frameNames` — a name that begins with none of `k`, `q`, `f` has no frame word.
 * `entryB_fieldAbi` — the entry check passes under `fieldAbi k n` on a body with the prologue
   facts.
-* `fieldDom_entryB` — the stage `G19` on `fieldDomB'` under `EntryPrologue`.
+* `fieldDom_entryB` — the entry check `entryB` on `fieldDomB'` under `EntryPrologue`.
 -/
 
 set_option autoImplicit false
@@ -156,7 +156,7 @@ theorem entryB_fieldAbi {k n : Nat} (hk : k = 1 ∨ k = 2) (hn : n ≤ 2 ^ 61)
       e0, e1, e2, x0, x1, x2, p0, p1, p2, g0, g1, g2, ga0, ga1, ga2, f0, f1, f2, fr0, fr1, fr2]
     exact ⟨⟨by simpa [x0] using s0, by simpa [x1] using s1, by simpa [x2] using s2⟩, by omega⟩
 
-/-! ## 3. The stage `G19` -/
+/-! ## 3. The entry check `entryB` -/
 
 /-- The gate does not refuse at `entryB` when the entry check accepts. -/
 theorem regionCoStage_ne_entryB {nm : String → String} {code : List LinstrRM}
@@ -175,8 +175,8 @@ theorem fieldDomE_k {k n : Nat} (h : fieldDomE e = some (k, n)) : k = 1 ∨ k = 
   simp only [fieldMethods, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hm
   omega
 
-/-- **Stage `G19` on `fieldDomB'`**: the gate does not refuse at the entry check, when the
-    printed body has the prologue facts. -/
+/-- **The entry check `entryB` on `fieldDomB'`**: the gate does not refuse at the entry check,
+    when the printed body has the prologue facts. -/
 theorem fieldDom_entryB (h : fieldDomB' e σ = true) (_hB : FieldBody e σ fname b t r cert)
     (hP : EntryPrologue σ b) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "entryB" := by

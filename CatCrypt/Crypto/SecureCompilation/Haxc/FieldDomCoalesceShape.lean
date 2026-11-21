@@ -31,7 +31,8 @@ only (`FieldLetsOnly`).
 * `isLopn_regionCoCode_webs`: so is the code with the result copies of its webs.
 * `fieldDom_straight`: on the field domain, the code with the result copies of the webs is
   straight-line when the narrowed output of the chain is built of bindings only.
-* `fieldDom_coalesce_of_letsOnly`: stages `G2` and `G3` from `FieldLetsOnly` and `WriteKills`.
+* `fieldDom_coalesce_of_letsOnly`: the checks `coCfgB` and `coEntryFix` from
+  `FieldLetsOnly` and `WriteKills`.
 -/
 
 set_option autoImplicit false
@@ -142,7 +143,7 @@ theorem fieldDom_straight (hF : FieldLetsOnly e σ) (hB : FieldBody e σ fname b
     (exportR_isLopn_of_letsOnlyB (legalizeRegion q') (hF t0 q q' hq hq') _ _ _ hr0) σ exportReg _
       _ _)
 
-/-- **Stages `G2` and `G3` from `FieldLetsOnly` and `WriteKills`.** -/
+/-- **The checks `coCfgB` and `coEntryFix` from `FieldLetsOnly` and `WriteKills`.** -/
 theorem fieldDom_coalesce_of_letsOnly (h : fieldDomB e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hF : FieldLetsOnly e σ)
     (hW : WriteKills (canonMemrefName (regionAliasTab σ exportReg t none r.res

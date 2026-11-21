@@ -37,7 +37,7 @@ The one condition read off the printed body is that it names no cell of a rename
   without a call.
 * `cellNamesRB_of_fieldDom` — the cell names check passes on `fieldDomB'` when the printed
   body names no cell of a renamed parameter.
-* `fieldDom_cellNamesRB` — the stage `G20` on `fieldDomB'` under `CellNameFree`.
+* `fieldDom_cellNamesRB` — the cell names check `cellNamesRB` on `fieldDomB'` under `CellNameFree`.
 -/
 
 set_option autoImplicit false
@@ -310,7 +310,7 @@ theorem regionCells_mem {nm : String → String} {ps : List (String × String)} 
     ∃ j a, σ.args[j]? = some a ∧ a.kind = .words p.2 ∧ p.1 = renOf ps (argName j) :=
   X86Backend.ImageAddrRouteW.cellArrsR_mem (regionCells_sub σ nm ps body code p hp)
 
-/-! ## 4. The stage `G20` -/
+/-! ## 4. The cell names check `cellNamesRB` -/
 
 /-- The gate does not refuse at `cellNamesRB` when the cell names check accepts. -/
 theorem regionCoStage_ne_cellNamesRB {nm : String → String} {code : List LinstrRM}
@@ -325,8 +325,8 @@ theorem regionCoStage_ne_cellNamesRB {nm : String → String} {code : List Linst
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G20` on `fieldDomB'`**: the gate does not refuse at the cell names, when the
-    printed body names no cell of a renamed parameter. -/
+/-- **The cell names check `cellNamesRB` on `fieldDomB'`**: the gate does not refuse at the
+    cell names, when the printed body names no cell of a renamed parameter. -/
 theorem fieldDom_cellNamesRB (h : fieldDomB' e σ = true) (hB : FieldBody e σ fname b t r cert)
     (hfree : CellNameFree σ (certArgs σ cert) b) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB" := by

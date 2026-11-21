@@ -18,17 +18,19 @@ body reads the save slot of the register of each parameter (`fieldArgReadersB`).
 pipeline conjuncts compute the allocated function `fieldAllocFn?` of `e` under `σ` at the
 symbol `""`; the allocation depends on the symbol only through the name of its one function
 (`regionAllocC_fname`), so the function is the one of every symbol (`fieldAllocFn?_eq`). On
-`fieldDomB''` the frame check `G18` (`fieldDom_frameOkB`) and the save-slot readers of the
-entry check `G19` (`argReaders_of_fieldArgReadersB`) are theorems.
+`fieldDomB''` the frame check `frameOkB` (`fieldDom_frameOkB`) and the save-slot readers of the
+entry check `entryB` (`argReaders_of_fieldArgReadersB`) are theorems.
 
 `FieldDomOpen` collects the stage facts of `compileA` on `fieldDomB''` that have no proof at
-the field domain: the fusion check of the product (`G10`), the fold positions of the cell fold
-check (`G12`), the translation validation `ownedCheckMC` (`G13`), the class `printedAddrWB` of
-the printed body (`C2`), the physical image and image gates (`G16`, `G17`) and the leak
-validation `ownedCheckML` (fifth conjunct of `C1`). The printed class `G15` is `C2`
-(`fieldDom_regionPrintedB_open`), the encoder `F10` follows from `C2`
-(`fieldDom_encode_open`), and the constant-time image gate `C3` is a conjunct of the image gate
-of `G17` (`fieldDom_imgGateCW_open`). Every other stage is filled from its theorem.
+the field domain: the fusion check `fuseOKL` of the product, the fold positions of the cell
+fold check `regionFoldB`, the translation validation `ownedCheckMC`, the class `printedAddrWB`
+of the printed body, the physical image check `physImgB` and the image gate `regionImgB`, and
+the leak validation `ownedCheckML` (fifth conjunct of the leak check `regionLeakB`). The
+printed-class check `regionPrintedB` is the class `printedAddrWB`
+(`fieldDom_regionPrintedB_open`), the gated encoder follows from `printedAddrWB`
+(`fieldDom_encode_open`), and the constant-time image gate `imgGateCW` is a conjunct of the
+image gate `regionImgB` (`fieldDom_imgGateCW_open`). Every other stage is filled from its
+theorem.
 
 ## Main definitions
 
@@ -43,8 +45,8 @@ of `G17` (`fieldDom_imgGateCW_open`). Every other stage is filled from its theor
 
 * `exportR_fn_eq`, `regionAllocC_fname` — the export and the allocation stage depend on the
   function symbol only through the name of the allocated function.
-* `fieldDom_frameOkB` — stage `G18` on `fieldDomB''`.
-* `argReaders_of_fieldArgReadersB` — the hypothesis `ArgReaders` of stage `G19` on
+* `fieldDom_frameOkB` — the frame check `frameOkB` on `fieldDomB''`.
+* `argReaders_of_fieldArgReadersB` — the hypothesis `ArgReaders` of the entry check `entryB` on
   `fieldDomB''`.
 * `fieldDom_regionCoStage_open` — the gate names no refusing stage on `fieldDomB''`.
 * `fieldDom_regionCtB_open` — the constant-time gate passes on `fieldDomB''`.
@@ -224,13 +226,13 @@ theorem fieldDomB''_fieldAbi {e : _root_.Hax.TExpr} {k n : Nat} (h : fieldDomE e
     field is a stage fact of `FieldDomStages` at a member of `fieldDomB''`, or the hypothesis
     of the theorem that proves that stage under a condition. -/
 structure FieldDomOpen : Prop where
-  /-- Stage `G10` for the product and the square: the fusion check `fuseOKL`. The sum and the
-      difference are `fieldDom_fuseOKL_addSub`. -/
+  /-- The fusion check `fuseOKL` for the product and the square. The sum and the difference
+      are `fieldDom_fuseOKL_addSub`. -/
   fuseOKL_mul {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hA : ¬ FieldAddSub e) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseOKL"
-  /-- Stage `G12`: the fold positions of the fused code, the hypothesis of
+  /-- The cell fold check: the fold positions of the fused code, the hypothesis of
       `fieldDom_regionFoldB_of_foldPos`. -/
   foldPos {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
@@ -240,31 +242,31 @@ structure FieldDomOpen : Prop where
       FoldPos (regionCoParts σ exportReg b t r.code r.res cert).cells
         ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop
           (regionCoParts σ exportReg b t r.code r.res cert).pre.length) k i
-  /-- Stage `G13`: the translation validation `ownedCheckMC`. -/
+  /-- The translation validation `ownedCheckMC`. -/
   ownedCheckMC {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "ownedCheckMC"
-  /-- Stage `G14`: the index invariant check `idxInvCheckB`. -/
+  /-- The index invariant check `idxInvCheckB`. -/
   idxInvCheckB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "idxInvCheckB"
-  /-- Stage `C2`: the printed body passes `printedAddrWB`. -/
+  /-- The printed-body check: the printed body passes `printedAddrWB`. -/
   printedAddrWB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) : printedAddrWB b = true
-  /-- Stage `G16`: the physical image check `physImgB`. -/
+  /-- The physical image check `physImgB`. -/
   physImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "physImgB"
-  /-- Stage `G17`: the image gate `calleeImgBT none`. -/
+  /-- The image gate `calleeImgBT none`. -/
   regionImgB {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionImgB"
-  /-- The fifth conjunct of stage `C1`: the leak validation `ownedCheckML`. -/
+  /-- The fifth conjunct of the leak check `regionLeakB`: the leak validation `ownedCheckML`. -/
   ownedCheckML {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
     {t : JasminTy} {r : Exported} {cert : List (String × String)} (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
@@ -303,8 +305,9 @@ theorem regionCoStage_ne_frameOkB {nm : String → String} {code : List LinstrRM
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G18` on the bounded field domain**: the printed body of a member is the body of
-    `fieldAllocFn?` after the frame trim, which passes `frameOkB` by `fieldFrameFitB`. -/
+/-- **The frame check `frameOkB` on the bounded field domain**: the printed body of a member
+    is the body of `fieldAllocFn?` after the frame trim, which passes `frameOkB` by
+    `fieldFrameFitB`. -/
 theorem fieldDom_frameOkB (h : fieldDomB'' e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "frameOkB" := by
   obtain ⟨t0, q, q', P0, f, hq, hq', hx, hf, hb⟩ := fieldBody_printedBody hB
@@ -315,7 +318,7 @@ theorem fieldDom_frameOkB (h : fieldDomB'' e σ = true) (hB : FieldBody e σ fna
 
 /-- **The image gate of a body the gate accepts**: when `regionCoStage` names no refusing
     stage, the body passes `regionImgB` at the slot map `regionSl`, the cell arrays and the
-    observed names of its parts (stage `G17`). -/
+    observed names of its parts (the image gate `regionImgB`). -/
 theorem regionImgB_of_regionCoStage_eq_none {nm : String → String} {code : List LinstrRM}
     {res : List LOperand} {fn : String}
     (h : regionCoStage σ nm b t code res cert none fn = none) :
@@ -328,13 +331,15 @@ theorem regionImgB_of_regionCoStage_eq_none {nm : String → String} {code : Lis
   obtain ⟨h19, -⟩ := ite_false_eq_none h
   simpa only [calleeImgBT_none, calleeCodeT_none] using h19
 
-/-- Stage `G15` on the bounded field domain, from stage `C2`. -/
+/-- The printed-class check `regionPrintedB` on the bounded field domain, from the printed-body
+    check `printedAddrWB`. -/
 theorem fieldDom_regionPrintedB_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionPrintedB" :=
   regionCoStage_ne_regionPrintedB (O.printedAddrWB h hB)
 
-/-- Stage `F10` on the bounded field domain, from stage `C2`: the gated encoder accepts the
+/-- The gated encoder on the bounded field domain, from the printed-body check
+    `printedAddrWB`: the gated encoder accepts the
     printed body (`encodable_of_printedAddrWB`). -/
 theorem fieldDom_encode_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
@@ -344,7 +349,7 @@ theorem fieldDom_encode_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (O.printedAddrWB h hB))]
   rfl
 
-/-- Stage `G10` on the bounded field domain: the sum and the difference by
+/-- The fusion check `fuseOKL` on the bounded field domain: the sum and the difference by
     `fieldDom_fuseOKL_addSub`, the product and the square from `O`. -/
 theorem fieldDom_fuseOKL_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
@@ -353,7 +358,7 @@ theorem fieldDom_fuseOKL_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
   · exact fieldDom_fuseOKL_addSub (fieldDomB_of_fieldDomB'' h) hA hB
   · exact O.fuseOKL_mul h hA hB
 
-/-- The gate names no refusing stage on the bounded field domain: stages `G1`-`G21`. -/
+/-- The gate names no refusing stage on the bounded field domain: all conjuncts of `gateStages`. -/
 theorem fieldDom_regionCoStage_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname = none := by
@@ -374,8 +379,8 @@ theorem fieldDom_regionCoStage_open (O : FieldDomOpen) (h : fieldDomB'' e σ = t
       (argReaders_of_fieldArgReadersB (fieldArgReadersB_of_fieldDomB'' h) fname),
     fieldDom_cellNamesRB' h' hB, fieldDom_cellRegions h0 hB]
 
-/-- Stage `C3` on the bounded field domain, from the gate: the cell body passes `imgGateCW`,
-    a conjunct of the image gate `regionImgB` of stage `G17`. -/
+/-- The constant-time image gate `imgGateCW` on the bounded field domain, from the gate:
+    the cell body passes `imgGateCW`, a conjunct of the image gate `regionImgB`. -/
 theorem fieldDom_imgGateCW_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     imgGateCW (X86Backend.ImageStraightCells.frameMarkC
@@ -389,7 +394,8 @@ theorem fieldDom_imgGateCW_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
   unfold regionImgCoreB at hI
   exact (Bool.and_eq_true_iff.mp (Bool.and_eq_true_iff.mp hI).1).2
 
-/-- The constant-time gate passes on the bounded field domain: stages `C1`-`C3`. -/
+/-- The constant-time gate passes on the bounded field domain: `regionLeakB`, `printedAddrWB`,
+    `imgGateCW`. -/
 theorem fieldDom_regionCtB_open (O : FieldDomOpen) (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :
     regionCtB σ exportReg b t r.code r.res cert = true := by
@@ -406,8 +412,8 @@ end Gate
 
 /-- **`compileA` accepts every member of the bounded field domain under the open stage
     facts.** The stages in pipeline order as in `compileA_isSome_of_fieldDom`: the front
-    `F1`-`F9` from their theorems, the encoder `F10` from `C2`, the gate `G1`-`G21`
-    (`fieldDom_regionCoStage_open`) and the constant-time gate `C1`-`C3`
+    stages from their theorems, the gated encoder from `printedAddrWB`, the gate
+    (`fieldDom_regionCoStage_open`) and the constant-time gate
     (`fieldDom_regionCtB_open`), assembled by `compileRegion_isSome_of_stages`. -/
 theorem compileA_isSome_of_fieldDom_open (O : FieldDomOpen) {e : _root_.Hax.TExpr}
     {σ : AbiLayout} (fname : String)

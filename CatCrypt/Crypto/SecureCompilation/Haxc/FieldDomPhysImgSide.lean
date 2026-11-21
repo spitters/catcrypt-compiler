@@ -14,7 +14,8 @@ This module proves the side conditions `physImgSideB` of the region gate on the 
 function with split intervals `regionAllocFnSplit` of an exported code (`RegionExp`) from the
 optimizer condition on the straight runs of the post-pass body (`hopt`) and the absence of
 64-bit moves between two memory names in it (`hhold`), and so reduces the hypothesis
-`FieldDomPhysImg.FieldPhysImgSide` of stage `G16` on `fieldDomB''` to these two conditions.
+`FieldDomPhysImg.FieldPhysImgSide` of the physical image check `physImgB` on `fieldDomB''` to
+these two conditions.
 
 The tied flag compares (conjunct 7) and the free compare scratch (conjunct 8) are carried over
 the body with split intervals `physBodySplit`: each chunk of an operation is made of moves
@@ -39,8 +40,8 @@ The register-indexed operands of the allocator input are in its accesses
   `cmpAccFreeB false` on the body of `regionAllocFnSplit`.
 * `physImgSideB_of_exportSplit_opt`: `physImgSideB` on `regionAllocFnSplit` from `hopt` and
   `hhold`.
-* `fieldPhysImgSide_of_opt`, `fieldDom_physImgB_of_opt`: `FieldPhysImgSide` and stage `G16` on
-  `fieldDomB''` from the optimizer conditions `FieldOptSide` and `FieldMemMovFree`.
+* `fieldPhysImgSide_of_opt`, `fieldDom_physImgB_of_opt`: `FieldPhysImgSide` and the check
+  `physImgB` on `fieldDomB''` from the optimizer conditions `FieldOptSide` and `FieldMemMovFree`.
 -/
 
 set_option autoImplicit false
@@ -705,9 +706,10 @@ theorem fieldPhysImgSide_of_opt (h : fieldDomB'' e σ = true) (hopt : FieldOptSi
     (regionExp_webs ex hr0) hts' fd0 hnd hacc harr (noIdxB_regionAllocBody _ _ _ hts' hC) hne
     _ _ ho hh
 
-/-- **Stage `G16` on `fieldDomB''` from the optimizer conditions**: the region gate does not
-    name `physImgB` as the refusing stage on a printed body of a member of `fieldDomB''` under
-    the optimizer condition `FieldOptSide` and the holder condition `FieldMemMovFree`. -/
+/-- **The check `physImgB` on `fieldDomB''` from the optimizer conditions**: the region
+    gate does not name `physImgB` as the refusing stage on a printed body of a member of
+    `fieldDomB''` under the optimizer condition `FieldOptSide` and the holder condition
+    `FieldMemMovFree`. -/
 theorem fieldDom_physImgB_of_opt (hopt : FieldOptSide e σ fname)
     (hhold : FieldMemMovFree e σ fname) {b : Lcmd} {t : JasminTy} {r : Exported}
     {cert : List (String × String)} (h : fieldDomB'' e σ = true)

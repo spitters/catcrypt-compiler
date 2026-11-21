@@ -40,8 +40,8 @@ domain is region-free and has no call (`fieldDom_callFree`), hence is built of b
   output on the field domain are region-free.
 * `letsOnlyB_of_regionFreeB`: a region-free program without call is built of bindings only.
 * `fieldLetsOnly`: `FieldLetsOnly e σ` on every member of the field domain.
-* `fieldDom_coalesce_of_writeKills`: stages `G2` and `G3` on the field domain from
-  `WriteKills` alone.
+* `fieldDom_coalesce_of_writeKills`: the checks `coCfgB` and `coEntryFix` on the field
+  domain from `WriteKills` alone.
 -/
 
 set_option autoImplicit false
@@ -771,8 +771,8 @@ theorem fieldLetsOnly {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB e �
   exact letsOnlyB_of_regionFreeB q' (regionFreeB_narrowPrep (fieldDom_chain_regionFreeB h hq) hq')
     ((NarrowWords.callFree_narrowPrep hq').trans (fieldDom_callFree h hq))
 
-/-- **Stages `G2` and `G3` from `WriteKills` alone**: `fieldDom_coalesce_of_letsOnly` with
-    `FieldLetsOnly` discharged by `fieldLetsOnly`. -/
+/-- **The checks `coCfgB` and `coEntryFix` from `WriteKills` alone**:
+    `fieldDom_coalesce_of_letsOnly` with `FieldLetsOnly` discharged by `fieldLetsOnly`. -/
 theorem fieldDom_coalesce_of_writeKills {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String}
     {b : Lcmd} {t : JasminTy} {r : Exported}
     {cert : List (String × String)} (h : fieldDomB e σ = true)

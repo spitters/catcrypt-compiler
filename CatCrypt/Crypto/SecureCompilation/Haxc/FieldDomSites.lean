@@ -12,7 +12,7 @@ The stage `fuseResultName` of the region gate repeats the fusion check `fuseOKL`
 stage before it has passed, and asks that the renamed alias of each returned array and each
 target of the result copy is not `R15`, the scratch register the fused code changes. On the
 field domain there is no target of the result copy. The alias of a returned array is a name of
-the coalesced code (stage `G5`): a name of the code, which has the shape of a name of the
+the coalesced code (check `coResultName`): a name of the code, which has the shape of a name of the
 export (`CodeName`), or the image of one under the coalescing renaming, which keeps that shape.
 The pairs of the allocation certificate send such a name to itself or to the register the
 allocation gives it, and `R15` is never an allocation target (`physRegName_ne_R15`).
@@ -22,7 +22,7 @@ allocation gives it, and `R15` is never an allocation target (`physRegName_ne_R1
 * `physRegName_ne_R15`, `allocName_ne_R15`: the allocation never names `R15`.
 * `canon_codeName`: the coalescing renaming of a region export keeps the names of the code.
 * `regionCoStage_ne_fuseResultName`: the stage from the condition on the result names alone.
-* `fieldDom_fuseResultName`: the stage `G11` on the field domain.
+* `fieldDom_fuseResultName`: the fusion result-name check `fuseResultName` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -207,8 +207,8 @@ theorem regionCoStage_ne_fuseResultName {nm : String → String} {code : List Li
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G11` on the field domain**: the gate does not refuse at the result names of the
-    fusion sites. -/
+/-- **The check `fuseResultName` on the field domain**: the gate does not refuse at the result names
+    of the fusion sites. -/
 theorem fieldDom_fuseResultName (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseResultName" := by
   have hG5 := coResultName_of_stages (fieldDom_coClass h hB) (fieldDom_coCfgB' h hB)

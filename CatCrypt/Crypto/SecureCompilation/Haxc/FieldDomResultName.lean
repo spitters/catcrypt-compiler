@@ -25,7 +25,7 @@ plain tag has its alias among the names of the renamed instruction
   by `ExportClass` and returns one operand naming an array it writes.
 * `coResultName_of_written`: the condition of the stage from a returned array that the code
   writes.
-* `fieldDom_coResultName`: the stage `G5` on the field domain.
+* `fieldDom_coResultName`: the result-name check `coResultName` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -236,7 +236,7 @@ theorem coResultName_of_written {σ : AbiLayout} {nm : String → String} {t : J
         exact ⟨m', by omega, by simp [resCopyStep]⟩
       · rfl
 
-/-! ## 4. The stage `G5` -/
+/-! ## 4. The result-name check `coResultName` -/
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
   {r : Exported} {cert : List (String × String)}
@@ -311,7 +311,7 @@ theorem written_webRen (tab : X86Backend.ArrWebs.WebSt × Std.HashSet Nat × Std
   rw [hc.2, webB_exit hacc y (hobs y hyobs)] at hw'
   exact hw'
 
-/-- **Stage `G5` on the field domain**: the gate does not refuse at `coResultName`. -/
+/-- **The check `coResultName` on the field domain**: the gate does not refuse at `coResultName`. -/
 theorem fieldDom_coResultName (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultName" := by
   refine regionCoStage_ne_coResultName ?_

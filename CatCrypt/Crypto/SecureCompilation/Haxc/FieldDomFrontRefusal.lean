@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFront
 /-!
 # The refusal stage and the calls of the front on the field domain
 
-The fields `refusal` (`F1`) and `callFree` (`F7`) of `FieldDomComplete.FieldDomStages`, proved
+The fields `refusal` and `callFree` of `FieldDomComplete.FieldDomStages`, proved
 as theorems with the types of the fields. On a member of the field domain the front passes
 return the literal `fieldLit m p k` unchanged (`fieldLit_front`), and `impToNF` translates it,
 from the parameters of `fieldAbi k n`, to one call of the head `fieldHead m p` at arrays of
@@ -21,8 +21,9 @@ its input and the field dialect step leaves no call.
 * `fieldDom_haxToNF` — `haxToNF` returns a program whose field calls are tagged at moduli of
   at least `2^31`.
 * `extChain_callFree_of_wide` — the chain returns a program without `call` on such a source.
-* `fieldDom_refusal` — stage `F1`: the translation refuses no member of the field domain.
-* `fieldDom_callFree` — stage `F7`: the output of the chain on the field domain has no `call`.
+* `fieldDom_refusal` — the translation check: the translation refuses no member of the field domain.
+* `fieldDom_callFree` — the call-freeness check: the output of the chain on the field domain has no
+  `call`.
 -/
 
 set_option autoImplicit false
@@ -228,7 +229,7 @@ theorem fieldDom_haxToNF {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB 
       simp [wideOpB, NfOp.isAbort, opFieldDecls, ht, wideTagB, FieldWideDecl.wideDecl, hlt, h31]
   · cases h
 
-/-- **Stage `F1`**: the translation `haxToNF` refuses no member of the field domain. -/
+/-- **The translation check**: the translation `haxToNF` refuses no member of the field domain. -/
 theorem fieldDom_refusal {e : _root_.Hax.TExpr} {σ : AbiLayout} (h : fieldDomB e σ = true) :
     (HaxModule.single e).refusal? σ = none := by
   obtain ⟨T, p0, hp, -⟩ := fieldDom_haxToNF h
@@ -460,8 +461,8 @@ theorem extChain_callFree_of_wide {Γ : Ctxt nfDialect} {t : NfTy}
     ExportChainOps.callsLoopsAll_carriedGo]
   exact h5
 
-/-- **Stage `F7`**: the output of the chain on the field domain has no `call`: the translation
-    calls only the head of the member, tagged at a modulus of at least `2^64`
+/-- **The call-freeness check**: the output of the chain on the field domain has no `call`: the
+    translation calls only the head of the member, tagged at a modulus of at least `2^64`
     (`fieldDom_haxToNF`), and the chain removes every such call (`extChain_callFree_of_wide`). -/
 theorem fieldDom_callFree {e : _root_.Hax.TExpr} {σ : AbiLayout} {t : JasminTy}
     {q : NFProg jasminDialect (nfCtx σ) [t]} (h : fieldDomB e σ = true)

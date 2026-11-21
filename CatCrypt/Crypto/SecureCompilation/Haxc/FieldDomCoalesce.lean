@@ -38,9 +38,9 @@ that array, followed by the copy into the result buffer.
 * `CoalesceComplete.interf_of_writeKills`: no interference on a straight-line body whose
   writes kill their classes.
 * `fieldDom_coalesce_of_shape`: on the field domain, from `FieldCoalesceShape`, the gate does
-  not refuse at `coCfgB` (stage `G2`) nor at `coEntryFix` (stage `G3`).
-* `fieldDom_coCfgB`, `fieldDom_coEntryFix`: the stages `G2` and `G3` with the types of the
-  fields of `FieldDomStages`, from `FieldCoalesceShape` on every member.
+  not refuse at `coCfgB` nor at `coEntryFix`.
+* `fieldDom_coCfgB`, `fieldDom_coEntryFix`: the checks `coCfgB` and `coEntryFix` with the types
+  of the fields of `FieldDomStages`, from `FieldCoalesceShape` on every member.
 -/
 
 set_option autoImplicit false
@@ -129,9 +129,9 @@ def FieldCoalesceShape (σ : AbiLayout) (t : JasminTy) (r : Exported) : Prop :=
       (calleeAAT none) (calleeAOT none)
       (regionCoObs t (regionOut (regionCopy σ exportReg t none r.code r.res) r.res))
 
-/-- **Stages `G2` and `G3` from the coalescing shape**: on a member of the field domain whose
-    webs have the shape `FieldCoalesceShape`, the gate `regionCoStage` refuses neither at
-    `coCfgB` nor at `coEntryFix`. -/
+/-- **The checks `coCfgB` and `coEntryFix` from the coalescing shape**: on a member of the
+    field domain whose webs have the shape `FieldCoalesceShape`, the gate `regionCoStage`
+    refuses neither at `coCfgB` nor at `coEntryFix`. -/
 theorem fieldDom_coalesce_of_shape (h : fieldDomB e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hS : FieldCoalesceShape σ t r) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB" ∧
@@ -156,7 +156,7 @@ theorem fieldDom_coalesce_of_shape (h : fieldDomB e σ = true)
     (fieldDom_legalize hE') hc hr0 σ exportReg hlen hgp _ (interf_of_writeKills hS.1 hS.2) b
     cert fname
 
-/-- **Stage `G2`**: when the webs of every member of the field domain have the coalescing
+/-- **The check `coCfgB`**: when the webs of every member of the field domain have the coalescing
     shape, the gate does not refuse at `coCfgB`. -/
 theorem fieldDom_coCfgB
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
@@ -168,8 +168,8 @@ theorem fieldDom_coCfgB
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB" :=
   (fieldDom_coalesce_of_shape h hB (hS h hB)).1
 
-/-- **Stage `G3`**: when the webs of every member of the field domain have the coalescing
-    shape, the gate does not refuse at `coEntryFix`. -/
+/-- **The check `coEntryFix`**: when the webs of every member of the field domain have the
+    coalescing shape, the gate does not refuse at `coEntryFix`. -/
 theorem fieldDom_coEntryFix
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
       {t : JasminTy} {r : Exported} {cert : List (String × String)},
