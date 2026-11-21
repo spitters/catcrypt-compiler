@@ -544,7 +544,7 @@ structure MonoInfo where
     command-line build and in the coverage executable. -/
 def ascendExtraction (ns : Name) (only? : Option (List String) := none) :
     TermElabM (Array FnReport × Array String) :=
-  withTheReader Core.Context (fun c => { c with options := Elab.async.set c.options false }) do
+  withTheReader Core.Context (fun c => c.setOptions (Elab.async.set c.options false)) do
   let env ← getEnv
   let clsName := Name.str ns (lastStr ns ++ "Deps")
   let anchor ← if env.contains clsName then pure clsName else
