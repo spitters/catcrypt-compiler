@@ -251,9 +251,9 @@ def iterLeaf : Leaf
     | none => some v
   | _ => none
 
-/-- `truncate`: `Hax.truncate`, the array. -/
+/-- `truncate`: `Hax.truncate`, the first `n` elements of the array. -/
 def truncateLeaf : Leaf
-  | [.array vs, .int _] => some (.array vs)
+  | [.array vs, .int n] => some (.array (vs.take n.toNat))
   | _ => none
 
 /-- `is_empty`: `Hax.is_empty`. -/
@@ -447,7 +447,8 @@ theorem iterLeaf_range (lo hi : Int) :
     iterLeaf [rangeVal lo (some hi)] = some (enc (Hax.range lo hi)) := rfl
 
 theorem truncateLeaf_enc (a : Array α) (n : Int) :
-    truncateLeaf [enc a, .int n] = some (enc (Hax.truncate a n)) := rfl
+    truncateLeaf [enc a, .int n] = some (enc (Hax.truncate a n)) := by
+  simp [truncateLeaf, Hax.truncate, List.map_take]
 
 theorem isEmptyLeaf_enc (a : Array α) :
     isEmptyLeaf [enc a] = some (.bool (Hax.is_empty a)) := by
