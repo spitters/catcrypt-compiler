@@ -98,9 +98,11 @@ theorem abiArg_read_congr {σ : AbiLayout} {a : AbiArg} (ha : a ∈ σ.args) {s 
     refine List.map_congr_left fun j hj => ?_
     rw [read64_congr (Footprinted.agreeOn_anti ?_ hm)]
     intro l hl
-    exact Set.mem_biUnion hreg (Set.mem_biUnion (t := wordLocs)
-      (show s.regs a.reg + BitVec.ofNat 64 (8 * j) ∈ regionWords (s.regs a.reg) n from
-        ⟨j, List.mem_range.1 hj, rfl⟩) hl)
+    have h1 : l ∈ wordsLocs (regionWords (s.regs a.reg) n) :=
+      Set.mem_biUnion (t := wordLocs)
+        (show s.regs a.reg + BitVec.ofNat 64 (8 * j) ∈ regionWords (s.regs a.reg) n from
+          ⟨j, List.mem_range.1 hj, rfl⟩) hl
+    exact Set.mem_iUnion₂.2 ⟨(a.reg, n), hreg, h1⟩
 
 /-- At the entry state the source reads (`narrowEntry`), the value a parameter denotes depends
     on the state only at its register and, for an array parameter, at the words of its region:
@@ -296,7 +298,7 @@ theorem haxc_contract (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lpr
     | mem x =>
       refine (hkeep x (by rwa [hrsp]) fun q hq hx => hrgn ?_).symm
       rw [hrg q hq] at hx
-      exact Set.mem_biUnion hq hx
+      exact Set.mem_iUnion₂.2 ⟨q, hq, hx⟩
 
 /-- **The frame rule at the compiler contract.** For the result of `compileA` on a module
     without linked functions whose read-back reads only locations of the write set, every

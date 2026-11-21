@@ -92,7 +92,7 @@ def frameSig (l : LinkedFn) (args : List String) (res : Option String) : CalleeS
   res := res
   clob := fun x => l.clob.contains x
   pre s := ∃ a, (l.entryAt a).holds s
-  foot s x := ∃ a, (l.entryAt a).holds s ∧ l.contractWrites a (.mem x)
+  foot s x := ∃ a, (l.entryAt a).holds s ∧ Loc.mem x ∈ l.contractWrites a
   post s s' := ∃ a, (l.entryAt a).holds s ∧ (l.framePost a).holds s'
   pub := l.pubRegsAgree
 

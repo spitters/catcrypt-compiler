@@ -493,7 +493,7 @@ theorem printParts_name_ne_nil (g : QGate n) : (printParts g).1.toList ≠ [] :=
 /-- The operation name of a printed statement is letters and digits. -/
 theorem printParts_name_alnum (g : QGate n) :
     ∀ c ∈ (printParts g).1.toList, c.isAlphanum = true := by
-  cases g <;> simp only [printParts] <;> decide
+  cases g <;> simp only [printParts] <;> simp
 
 /-- The operation name of a printed statement is not skipped. -/
 theorem printParts_name_not_skipped (g : QGate n) :
@@ -675,6 +675,7 @@ theorem ascii_toQASM (g : QGate n) (hg : Emitted g) :
   all_goals and_intros
   all_goals first
     | decide
+    | (simp; done)
     | exact hpi _
     | exact hdig _
 
@@ -692,10 +693,10 @@ theorem ascii_headerLines : ∀ s ∈ headerLines n, ∀ c ∈ s.toList, c.toNat
   have hdig : ∀ c ∈ Nat.toDigits 10 n, c.toNat < 128 ∧ c ≠ '\n' := fun c hc =>
     ⟨ascii_toDigits n c hc, fun h => not_mem_toDigits_of n '\n' (by decide) (h ▸ hc)⟩
   simp only [headerLines, List.forall_mem_cons]
-  refine ⟨by decide, by decide, ?_, fun _ h => absurd h List.not_mem_nil⟩
+  refine ⟨by simp, by simp, ?_, fun _ h => absurd h List.not_mem_nil⟩
   simp only [toString, Nat.repr_eq_ofList_toDigits, String.toList_append, String.toList_ofList,
     List.forall_mem_append]
-  exact ⟨⟨by decide, hdig⟩, by decide⟩
+  exact ⟨⟨by simp, hdig⟩, by simp⟩
 
 /-- Appending the separator to an intercalation is intercalating one more, empty, element. -/
 theorem intercalate_append_sep {α : Type} (sep : List α) (ls : List (List α)) (h : ls ≠ []) :

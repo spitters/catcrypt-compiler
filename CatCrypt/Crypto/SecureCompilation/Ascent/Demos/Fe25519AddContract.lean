@@ -78,12 +78,12 @@ def FeAddPre (s : AState) : Prop :=
 /-- The locations the field addition may change from the entry state `s`: the registers
     other than `%rsp` and the callee-saved ones, the flags, the 32 bytes at `%rdi` and the 48
     bytes below `%rsp`. -/
-def feAddWrites (s : AState) : Set Loc := fun l =>
+def feAddWrites (s : AState) : Set Loc := {l |
   match l with
   | .reg r => r ≠ "%rsp" ∧ r ∉ calleeSavedRegs
   | .flag _ => True
   | .mem x => x ∈ (⟨s.regs "%rdi", 32⟩ : Rng 64)
-      ∨ x ∈ (⟨s.regs "%rsp" + BitVec.ofInt 64 (-48), 48⟩ : Rng 64)
+      ∨ x ∈ (⟨s.regs "%rsp" + BitVec.ofInt 64 (-48), 48⟩ : Rng 64)}
 
 /-- The contract of the field addition, with the entry state as logical variable: the
     precondition `FeAddPre`, the sum modulo `2 ^ 255 - 19` at the entry `%rdi`, the write set
