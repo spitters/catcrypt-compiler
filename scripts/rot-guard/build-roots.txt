@@ -230,7 +230,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineRRel
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaWP
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
@@ -282,6 +282,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RightUnitOffName
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockLoopTriple
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockWP
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
@@ -428,6 +429,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
 CatCrypt.Crypto.SecureCompilation.Haxc.DeriveAbiBounds
+CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBoundsTest
 CatCrypt.Crypto.SecureCompilation.Haxc.ExportSafety
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldChainCT
 CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomG14
@@ -465,6 +467,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogSplit
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgLoad
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionPrintedFuelBr
+CatCrypt.Crypto.SecureCompilation.Haxc.RegionRemat
 CatCrypt.Crypto.SecureCompilation.Haxc.RoundCodecSpec
 CatCrypt.Crypto.SecureCompilation.Haxc.TraitLinkAccept
 CatCrypt.Crypto.SecureCompilation.Haxc.WorkedKernelCorollaries
