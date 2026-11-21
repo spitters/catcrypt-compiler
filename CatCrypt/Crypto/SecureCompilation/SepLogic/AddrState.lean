@@ -259,21 +259,21 @@ def storeR? (frame : String → Option (BitVec 64)) (i : LinstrRM) (r : LstateN)
 /-- The locations one step of `i` from `s` may write: the destination registers, the program
     counter, the three flags and the bytes of the range `storeR?`. -/
 def writesA (frame : String → Option (BitVec 64)) (i : LinstrRM) (s : LstateA) : Set Loc :=
-  fun l => match l with
+  {l | match l with
     | .reg r => r ∈ dstNames i.1
     | .pc => True
     | .flag _ => True
-    | .mem x => ∃ R, storeR? frame i s.reg = some R ∧ x ∈ R
+    | .mem x => ∃ R, storeR? frame i s.reg = some R ∧ x ∈ R}
 
 /-- The locations one step of `i` from `s` may read: the registers of `readsI` and the
     destination registers, the program counter, the three flags and the bytes of the words of
     `loadsA`. -/
 def readsA (frame : String → Option (BitVec 64)) (i : LinstrRM) (s : LstateA) : Set Loc :=
-  fun l => match l with
+  {l | match l with
     | .reg r => readsI i.1 r ∨ r ∈ dstNames i.1
     | .pc => True
     | .flag _ => True
-    | .mem x => ∃ a ∈ loadsA frame i s.reg, x ∈ (⟨a, 8⟩ : Rng 64)
+    | .mem x => ∃ a ∈ loadsA frame i s.reg, x ∈ (⟨a, 8⟩ : Rng 64)}
 
 /-! ## Steps from states that differ in memory -/
 
@@ -819,7 +819,8 @@ theorem fstepA_frame (frame : String → Option (BitVec 64)) (i : LinstrRM) {s :
     {zf : Bool} {p : LstateA × Bool} (h : fstepA frame i s zf = some p)
     (R : SAssert (LstateA × Bool) Loc) (hd : Disjoint R.fp (writesA frame i s))
     (hR : R.holds (s, zf)) : R.holds p :=
-  R.supp _ _ (agreeOn_anti (fun _ hl hw => Set.disjoint_left.1 hd hl hw)
+  R.supp _ _ (agreeOn_anti (show R.fp ⊆ (writesA frame i s)ᶜ from
+      fun _ hl hw => Set.disjoint_left.1 hd hl hw)
     (fstepA_writesIn frame i h)) hR
 
 /-! ## Read locality of one step -/
@@ -863,8 +864,8 @@ theorem fstepA_local (frame : String → Option (BitVec 64)) (i : LinstrRM) {s t
     fun _ hq => fstepA_writesIn frame i hq
   have hst : storeR? frame i r' = storeR? frame i r := (storeR?_congr frame i hN).symm
   have hWeq : writesA frame i ⟨r', m', c, o⟩ = writesA frame i ⟨r, m, c, o⟩ := by
-    funext l
-    cases l <;> simp only [writesA, hst]
+    ext l
+    cases l <;> simp only [writesA, hst, Set.mem_ofPred_eq]
   revert hM hC hWs hWt
   cases fstepA frame i ⟨r, m, c, o⟩ zf <;> cases fstepA frame i ⟨r, m', c, o⟩ zf <;>
     cases fstepA frame i ⟨r', m', c, o⟩ zf <;> intro hM hC hWs hWt
