@@ -55,7 +55,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.RInstrAddrMem (aMachine)
 open CatCrypt.Crypto.Hax.NFToCat
 open CatCrypt.Crypto.Hax.ImpToNF (tableOf entryCtx entryEnvOf crateBi)
 open CatCrypt.Crypto.Hax (HaxModule LinkedFn hax64WExit)
-open CatCrypt.Crypto.Hax.NFInline (crateOp)
+open CatCrypt.Crypto.Hax.NFInline (crateOp crateBody)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFToRoute
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
@@ -177,17 +177,6 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
     (tE : TreeCallEnv leafSig nfDialect)
     (htE : ∀ (f : String) (as rs : List NfTy) (x : Ctxt.Valuation (d := nfDialect) as),
       tE.call f as rs x = .ret none)
-    (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
-    (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, NFProgCallTreeExt.ExtRE e₁ e₂ → NFProgCallTreeExt.ExtRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
-      MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
-    (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
-      innerHead f = true →
-        h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
-      (leafHandler (tableOf (m.linkTable hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
       ∧ c.arrArgs = (fun _ => none) ∧ ∀ a ∈ c.args, X86Backend.DecodePrinted.gpOk a = true)
@@ -200,15 +189,19 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
       (extChain (linkedDecls m hax64WExit) _ q.1).run q.2 = some p →
       NarrowWords.narrowPrep p = some q' →
       ∀ (tf : Nat) (V : Ctxt.Valuation (entryCtx (abiEntry σ))),
-        AllEv (GoodEv m d T h₃) (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
+        AllEv (GoodEv m d T (NFCallTreeR3Handlers.linkedHandlerJ m))
+          (mfTree tf q' (NarrowWords.mapVal (ctMapValD (mapVal V)))))
     (hspine : NFCallTreeInlineSpine.spineArgsOk m.entry.erase = true)
     (hfs : ∀ f ∈ m.fns, NFCallTreeInlineSpine.spineArgsOk f.texpr.erase = true)
     (hint : ∀ (q : Σ t : NfTy, NFProg nfDialect (entryCtx (abiEntry σ)) [t])
       (p : NFProg nfDialect (entryCtx (abiEntry σ)) [q.1]), haxToNF σ m = some q →
       nfSrcProgC (m.prepared nfBody ++ m.linkedFns) σ (bindConsts σ.consts m.entry)
         = some ⟨q.1, p⟩ → ∀ o, p.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
-    (hgood : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
-      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk (NFCallTreeFrontModule.GoodCall m) o)
+    (hfp : ∀ f ∈ m.fns, ∀ p ∈ f.params, p.2 ≠ .int)
+    (hbody : ∀ f ∈ m.fns, (crateBody (m.prepared nfBody) (f.prep nfBody) (entryCtx f.params)
+      f.res m.linkSig).isSome = true)
+    (hintB : ∀ g as r b, crateOp (m.prepared nfBody) (.call g as r) m.linkSig = some b →
+      ∀ o, b.HasOp o → NFCallTreeFrontModule.OpOk IntArgFree o)
     (hck : haxToNFCTBL s (pairStage m σ).2 (pairStage m σ).1 = true) (F fuelC : Nat)
     (hterm : ∀ (sa : AState) (V : Ctxt.Valuation (entryCtx (abiEntry (pairStage m σ).2))),
       (pairStage m σ).2.Regions sa → AbiValOf (pairStage m σ).2 sa
@@ -229,8 +222,8 @@ theorem haxc_rcH_of_runs (s : _root_.Hax.FnSecrecy) {m : HaxModule} {σ : AbiLay
             (haxcTgtRes σ (pc ++ shiftProg pc.length Q)))
           (idealObs (pubOf σ))) ∧
       HandlerRCRuns m σ pc sym := by
-  obtain ⟨pc, Q, sym, hd, hg, hH⟩ := haxc_rcH s hc hnd hk hn hpt hcf tE htE h₂ h₃ hh₂ hh₃ hinner
-    hhC hpar hword hin d tr₀ hev hspine hfs hint hgood hck F fuelC hterm hL hnds
+  obtain ⟨pc, Q, sym, hd, hg, hH⟩ := haxc_rcH s hc hnd hk hn hpt hcf tE htE hpar hword hin d
+    tr₀ hev hspine hfs hint hfp hbody hintB hck F fuelC hterm hL hnds
   exact ⟨pc, Q, sym, hd, hg, HandlerRC.runs hH⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerSourceRun

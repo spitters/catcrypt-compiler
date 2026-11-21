@@ -68,7 +68,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree (TreeCallEnv nfCallSi
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (leafSig leafHandler linkReader
   OutRel ExtRE ExtRA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt (MapRE MapRA)
-open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA ExtEv
+  linkResOk_of_mem_linkedDecls)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont (mfTree innerHead)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montEnv)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeEvents (AllEv)
@@ -130,15 +131,17 @@ theorem ruttF_front_targetD {m : HaxModule} {D : List ExtDecl} {σ : AbiLayout}
       tE.call f as rs x = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ChainRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₃ e₂))
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     (hlinked : linked = m.linked.filterMap LinkedFn.calleeData) :
     ∃ (q' : NFProg jasminDialect ((nfCtx σ).map NarrowWords.wideTy)
         ([mapTy (catTy q.1)].map NarrowWords.wideTy)) (T : CalleeTab) (b : Lcmd)
@@ -183,7 +186,7 @@ theorem ruttF_front_targetD {m : HaxModule} {D : List ExtDecl} {σ : AbiLayout}
       fun l hl => not_catName_of_linkNameOk (hlk l hl)
   obtain ⟨q', T, b, pc, hq', hsub, hbs, hpc, hnd, hdec, hR⟩ :=
     NFProgCallTreeAssembly.ruttF_extChain_target hbi D tE htE h₂ h₃ hh₂ hh₃ hinner
-      hhC hp h1 hcf
+      hhC hD hp h1 hcf
   refine ⟨q', T, b, pc, hq', hsub, hbs, hpc, hnd, hdec,
     fun kind X hK PT hTc hword hin sa hreg env
     henv V hV tf G hGT hG sym rd hsum hsym t₀ hfront => ?_⟩
@@ -223,15 +226,17 @@ theorem ruttF_contracts_targetD {m : HaxModule} {D : List ExtDecl} {σ : AbiLayo
       tE.call f as rs x = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ChainRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₃ e₂))
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     (hnd : (m.linked.map (·.name)).Nodup) (hk : ∀ l ∈ m.linked, LinkedKernel l)
     (hlinked : linked = m.linked.filterMap LinkedFn.calleeData) (hout : OutTy q.1)
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
@@ -264,7 +269,7 @@ theorem ruttF_contracts_targetD {m : HaxModule} {D : List ExtDecl} {σ : AbiLayo
         RuttF (linkHandler m) (contractREG m) (contractRAC m) (resRel σ sa) srcFail t₀
           fun n => targetTree aMachine pc sym (linkRead m) n 0 sa) := by
   obtain ⟨q', T, b, pc, hq', hsub, hbs, hpc, hnd', hdec, hR⟩ := ruttF_front_targetD
-    hq hp h1 hcf tE htE h₂ h₃ hh₂ hh₃ hinner hhC hlinked
+    hq hp h1 hcf tE htE h₂ h₃ hh₂ hh₃ hinner hhC hD hlinked
   subst hlinked
   refine ⟨q', T, b, pc, hq', hsub, hbs, hpc, hnd', hdec,
     fun hword hin sa hreg env henv V hV tf G hGT hG
@@ -337,14 +342,15 @@ theorem r3FG_of_front {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lpr
       tE.call f as rs x = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ → ExtRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Ctxt.Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ → ChainRA e₁ e₂
       (leafHandler (tableOf (m.linkTable CatCrypt.Crypto.Hax.hax64WExit)) e₁) (h₃ e₂))
     (hpar : ∀ l ∈ m.linked, (∀ p ∈ l.params, p.2 = .word 64 ∨ p.2 = .int) ∧ l.res = .word 64)
     (hword : ∀ c ∈ m.linked.filterMap LinkedFn.calleeData, (∃ r, c.res = .reg r)
@@ -385,7 +391,7 @@ theorem r3FG_of_front {m : HaxModule} {σ : AbiLayout} {fname : String} {P : Lpr
   have hout : OutTy q.1 := outTy_of_outTyB q.1 (haxToNF_eq_some_res hq)
   obtain ⟨q', T, b, pc, hq', hsub, hbs, hpc, hndT, hdec, hR⟩ :=
     ruttF_contracts_targetD hq hp h1 (hcf q p hq hp) tE htE h₂ h₃ hh₂ hh₃
-      hinner hhC hnd hk rfl hout hpar d tr₀
+      hinner hhC (fun _ hd => linkResOk_of_mem_linkedDecls hd) hnd hk rfl hout hpar d tr₀
   obtain ⟨hdB, hsym⟩ := hdec _ (decode_moduleBlock hnd hk hsub)
   refine ⟨pc, regionProg (T.regionEntries fun c => moduleBlock m.linked c.name),
     symOf T pc.length, hdB, fun sa hreg env henv fuelC fuel => ?_⟩

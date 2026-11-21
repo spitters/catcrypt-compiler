@@ -313,7 +313,8 @@ meta def evalBool (e : Expr) : TermElabM Bool := do
     `loᵢ ≤ xᵢ ≤ hiᵢ` (of the value of a word, of the bit of a Boolean, of each element of an
     array). It reads `f` (`reifyAeneas%`), proves the reading complete (`completeAeneas%`),
     decides that the program is free of `whileLoop` and that the interval checker accepts it
-    from the intervals, and applies `RangeEntry.noPanic_of_isSome`. Each failing step is a
+    from the intervals within `coverBudget` bisections, and applies `RangeEntry.noPanic_of_cover`
+    to the decided cover check. Each failing step is a
     refusal that names it. -/
 elab "aeneasRange% " f:ident " [" Is:term,* "]" : term => do
   let C ← try withoutErrToSorry <| elabTerm (← `(completeAeneas% (reifyAeneas% $f))) none

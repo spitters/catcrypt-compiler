@@ -36,7 +36,7 @@ to the register of the piece and every other operand through the allocation tabl
   export with split intervals is `FoldOK` when the allocator input has the access form
   `InputAcc`.
 * `allocFoldOK_of_allocInputAcc` — `AllocFoldOK` on `fieldDomB'` from `AllocInputAcc`.
-* `fieldDom_cellNamesRB_of_allocInputAcc` — the stage `G20` on `fieldDomB'` from
+* `fieldDom_cellNamesRB_of_allocInputAcc` — the cell names check `cellNamesRB` on `fieldDomB'` from
   `AllocInputAcc`.
 -/
 
@@ -1108,7 +1108,8 @@ theorem stackReadFreeB_of_allocInputAcc (h : fieldDomB' e σ = true)
     X86Backend.ImageAddrRoute.stackReadFreeB b = true :=
   stackReadFreeB_of_allocFoldOK hB (allocFoldOK_of_allocInputAcc h hA)
 
-/-- **Stage `G20` on `fieldDomB'`** from the access form of the allocator input. -/
+/-- **The cell names check `cellNamesRB` on `fieldDomB'`** from the access form of the
+    allocator input. -/
 theorem fieldDom_cellNamesRB_of_allocInputAcc (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hA : AllocInputAcc e σ fname) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB" :=

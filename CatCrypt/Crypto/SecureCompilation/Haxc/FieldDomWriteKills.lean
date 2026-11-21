@@ -9,9 +9,9 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldWideLeak
 /-!
 # Write-kills from the store-chain shape, and the shape of the field templates
 
-The coalescing stages `G2` and `G3` hold on the field domain once every write of the exported
-code kills its storage class (`WriteKills`, `fieldDom_coalesce_of_writeKills`). The argument
-has a code-level end and a template end.
+The coalescing checks `coCfgB` and `coEntryFix` hold on the field domain once every write of the
+exported code kills its storage class (`WriteKills`, `fieldDom_coalesce_of_writeKills`). The
+argument has a code-level end and a template end.
 
 At the level of code, a straight body whose array writes form one chain per storage class has
 the property: when every name is read only after its writes, a name that a store consumes (reads
@@ -64,8 +64,8 @@ bind no load, store, zeroed array or leaf call (`montBlocks_memFree`, `solinasBl
 * `wideBlockOf_loadsChain`: the body of a wide tagged call has the shape `LoadsChain`, at every
   modulus with a registered wide template and every method.
 * `fieldDom_coalesce_of_chainShape`, `fieldDom_coCfgB_of_chainShape`,
-  `fieldDom_coEntryFix_of_chainShape`: the stages `G2` and `G3` on the field domain from the
-  store-chain shape of the code (`FieldChainShape`), at the types of the fields of
+  `fieldDom_coEntryFix_of_chainShape`: the checks `coCfgB` and `coEntryFix` on the field
+  domain from the store-chain shape of the code (`FieldChainShape`), at the types of the fields of
   `FieldDomStages` under that hypothesis.
 * `bindOps_store`, `bindOps_load`, `bindOps_memFree`: the export of a binding of a store, a
   load or a memory-free operation is one instruction, which writes the array of its slot and
@@ -429,9 +429,9 @@ def FieldChainShape (σ : AbiLayout) (t : JasminTy) (r : Exported) : Prop :=
     (calleeAAT none) (calleeAOT none)
     (regionCoObs t (regionOut (regionCopy σ exportReg t none r.code r.res) r.res))
 
-/-- **Stages `G2` and `G3` from the store-chain shape**: on a member of the field domain whose
-    code has the shape `FieldChainShape`, the gate refuses neither at `coCfgB` nor at
-    `coEntryFix`. -/
+/-- **The checks `coCfgB` and `coEntryFix` from the store-chain shape**: on a member of the
+    field domain whose code has the shape `FieldChainShape`, the gate refuses neither at
+    `coCfgB` nor at `coEntryFix`. -/
 theorem fieldDom_coalesce_of_chainShape {e : _root_.Hax.TExpr} {σ : AbiLayout}
     {fname : String} {b : Lcmd} {t : JasminTy} {r : Exported} {cert : List (String × String)}
     (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert)
@@ -440,7 +440,7 @@ theorem fieldDom_coalesce_of_chainShape {e : _root_.Hax.TExpr} {σ : AbiLayout}
       regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coEntryFix" :=
   fieldDom_coalesce_of_writeKills h hB (writeKills_of_chain hC)
 
-/-- **Stage `G2`** when the code of every member of the field domain has the store-chain
+/-- **The check `coCfgB`** when the code of every member of the field domain has the store-chain
     shape. -/
 theorem fieldDom_coCfgB_of_chainShape
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}
@@ -452,7 +452,7 @@ theorem fieldDom_coCfgB_of_chainShape
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB" :=
   (fieldDom_coalesce_of_chainShape h hB (hS h hB)).1
 
-/-- **Stage `G3`** when the code of every member of the field domain has the store-chain
+/-- **The check `coEntryFix`** when the code of every member of the field domain has the store-chain
     shape. -/
 theorem fieldDom_coEntryFix_of_chainShape
     (hS : ∀ {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd}

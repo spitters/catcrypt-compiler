@@ -8,7 +8,7 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomFuseSites
 import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomCoalesceShape
 
 /-!
-# Stage `G10` on the sum and the difference of the field domain
+# The fusion check `fuseOKL` on the sum and the difference of the field domain
 
 On a member of the field domain whose method is the sum or the difference, the program the
 export receives binds no high word `mulhi` of a widening multiplication: the translation binds
@@ -37,7 +37,7 @@ instruction under `MULXHI` (`ExportHiFree`), and the gate does not refuse at `fu
 * `allOps_narrowPrep_hi`: neither do the narrow-word stages.
 * `fieldDom_chain_hi`: the output of the chain on a sum or a difference binds no `mulhi`.
 * `exportHiFree_addSub`: `ExportHiFree` on the sum and the difference.
-* `fieldDom_fuseOKL_addSub`: the stage `G10` on the sum and the difference.
+* `fieldDom_fuseOKL_addSub`: the fusion check `fuseOKL` on the sum and the difference.
 * `p256Add_fieldAddSub`, `p256Sub_fieldAddSub`: the sum and the difference at the P-256 base
   prime are sums and differences.
 -/
@@ -784,8 +784,8 @@ theorem exportHiFree_addSub (h : fieldDomB e σ = true) (hA : FieldAddSub e) :
     allOps_narrowPrep_hi (fieldDom_chain_regionFreeB h hq) (fieldDom_chain_hi h hA hq) hq'
   exact hiFree_exportR (legalizeRegion q') (fieldLetsOnly h t0 q q' hq hq') hEx.1.1 hHi _ _ _ hr0
 
-/-- **Stage `G10` on the sum and the difference of the field domain**: the parts have no
-    fusion site, so the gate does not refuse at `fuseOKL`. -/
+/-- **The fusion check `fuseOKL` on the sum and the difference of the field domain**: the parts
+    have no fusion site, so the gate does not refuse at `fuseOKL`. -/
 theorem fieldDom_fuseOKL_addSub (h : fieldDomB e σ = true) (hA : FieldAddSub e)
     (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "fuseOKL" :=

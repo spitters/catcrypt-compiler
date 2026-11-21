@@ -201,9 +201,12 @@ tables with the accepted programs.
   (`noPanic_of_cover`, `aeneas_noPanic`), with signed arguments of negative lower bound
   (`memI_cases`, `memI_neg`). `nfToRustM` reads an NF program into the Aeneas monad and
   `nfToRustM_sim` (`AeneasFront/Loops.lean`) shows that its values are values of the compiler's
-  denotation. The flat certificate `f xs = .ok y` is the leaf `ok y` of upstream's
+  denotation. `xcheck_sound` (`AeneasFront/XCheck.lean`) states that when the canonical forms of
+  the hax and the Aeneas translations of a function are equal, a hax run and an Aeneas run from
+  one entry state return the same value. The flat certificate `f xs = .ok y` is the leaf `ok y` of upstream's
   interaction-tree monad: `RustM.toITree` with `toITree_eq_ok_iff` and `loop_toITree_of_ok`
-  (hax-lean `HaxLean/Rust/ITreeResult.lean`). The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
+  ([the module `ITreeResult` of hax-lean](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean)).
+  The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
   hax-lean literal that enters `compileA`, with `leanFront_correct` and
   `leanFront_correct_mixed` (section "The Lean front" below). On a module with linked functions,
   `compileRegion` reads the table of their data (`CalleeTab`) and checks the calling body
@@ -476,7 +479,16 @@ simulator are at distance `ε` in every context. The statements below instantiat
   `CatCryptCore.Crypto.RCHandler`): at bound `ε + δ`, with `ε` the failure weight of the
   target interpretation and `δ` that of the source read-back. `haxc_rcH` (same module) gives,
   for a result of `compileA`, the decoding of the bytes, the conclusion of
-  `haxc_rc_proved_all` and `HandlerRC`; `HandlerRC.zero` is the case of bound `0`.
+  `haxc_rc_proved_all` and `HandlerRC`, with the handlers of the intermediate dialects
+  instantiated at the handlers of the linked functions (`linkedHandlerJ`, `linkedHandlerC`,
+  `Haxc/NFCallTreeR3Handlers.lean`); `HandlerRC.zero` is the case of bound `0`.
+  `HandlerRC.of_runs` and `haxc_rcH_of_runs` (`Haxc/RCHandlerSourceRun.lean`) take a run of the
+  source relation and give the bound `ε` of the target alone. The source oracles of the linked
+  functions can also be keyed with a key drawn before the run (`HandlerRCKeyed`,
+  `haxc_rcHKeyed` in `Haxc/RCHandlerKeyed.lean`), keyed with the key drawn at the first call
+  (`HandlerRCLazy`, `haxc_rcHLazy` in `Haxc/RCHandlerLazyKey.lean`), or stateful (`HandlerRCSt`,
+  `haxc_rcHSt` in `Haxc/RCHandlerStateful.lean`), where source and target handlers are coupled
+  up to failure.
   `HandlerRC.toω` (`Haxc/CallTreeInterpSPFuelSource.lean`) removes the source fuel: the
   source interpretations along the diagonal of the fuels form a chain whose supremum
   `interpSrcω` is attained at some fuel, and `HandlerRCω` states robust compilation at
@@ -495,7 +507,11 @@ simulator are at distance `ε` in every context. The statements below instantiat
   realization at `Z.input.rounds * ε` for every handler coupled with the meanings of the
   linked functions, where `ε` bounds the failure weight of the target interpretation;
   `haxc_rrcH_of_handlerRC` takes `HandlerRC` and the gate conclusion as hypotheses, and
-  `haxc_rrcH_zero` is the form at `0`. These are robust-compilation statements at the ABI
+  `haxc_rrcH_zero` is the form at `0`. For linked functions answered by a key drawn once per
+  run, `haxc_rrcHKeyed` (`Haxc/RCReactiveLinkedState.lean`) gives the statement from
+  `HandlerRCKeyed`, and the stateless form is its instance at the point oracle
+  (`Haxc/RCReactiveLinkedDet.lean`); for stateful oracles whose state persists across
+  activations, `haxc_rrcHSt` (`Haxc/RCReactiveLinkedStateful.lean`) gives it. These are robust-compilation statements at the ABI
   view; the source system is not an ideal functionality, and the simulator replaces only the
   leakage trace by one computed from public data.
 - Oracle answers. `R3StatementFA` (`Haxc/NFProgCallTreeOracle.lean`) relates the source call
@@ -505,8 +521,10 @@ simulator are at distance `ε` in every context. The statements below instantiat
   admits every answer that decodes at the result type of the linked function, it is the
   statement at oracle contexts, and it implies `R3StatementFG`
   (`r3StatementFG_of_r3StatementFA_typed`). The module states `R3StatementFA` as an
-  interface and proves the consequences above; no theorem asserts `R3StatementFA TypedAns`
-  for the results of `compileA`.
+  interface and proves the consequences above. `r3FA_of_shape_int`
+  (`Haxc/NFCallTreeR3TypedAns.lean`) gives the conclusion of `R3StatementFA TypedAns` at the
+  result of `compileA` from the shape of the module, and `r3FA_of_shape_linkedHandlers`
+  (`Haxc/NFCallTreeR3Handlers.lean`) gives it at the handlers of the linked functions.
 
 ### Reference semantics of prime-ir calls
 

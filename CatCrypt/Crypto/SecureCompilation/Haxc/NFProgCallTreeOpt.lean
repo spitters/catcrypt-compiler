@@ -16,7 +16,9 @@ of a stage to the call tree of its output. A stage that changes the dialect give
 `RuttS` at relations of events and answers; a stage within a dialect gives the refinement
 `RefinesT`. `RuttS.trans_refinesT` composes the two, under a target handler whose answers at
 related events are related to the source handler's, which is the condition under which a
-skipped event of the intermediate tree may be skipped in the source tree as well.
+skipped event of the intermediate tree may be skipped in the source tree as well. At skip
+predicates (`RuttSA`, `RefinesTA`) the condition is that every admitted source answer has a
+related admitted target answer (`RuttSA.trans_refinesTA`).
 
 The e-graph pass `aegraphOptNF` keeps every node `call` with its symbol, in its position, on
 the renamed arguments (`AegraphNF.nfGo`), and rewrites only let-bindings, which are no events
@@ -26,17 +28,19 @@ in a dialect with a pure denotation. Its output has the call tree of its input
 ## Main results
 
 * `RuttS.trans_refinesT`: a relation `RuttS` followed by a refinement `RefinesT` is a relation
-  `RuttS`.
+  `RuttS`; `RuttSA.trans_refinesTA`: its analog at skip predicates.
 * `treeAt_var_pure`: a let-binding of a dialect with a pure denotation has the tree of its
   continuation at the extended valuation.
 * `treeAt_nfGo`: under a state sound for `V`, the traversal of the e-graph pass has the tree of
   its input at the valuation pulled back along the renaming.
-* `treeAt_aegraphOptNF`, `refinesT_aegraphOptNF`: the stage lemma of `aegraphStep`.
-* `spliceNF?_elimQ`, `ruttS_castRetHead`: a spliced block and a carried result type keep a
-  property of the call tree.
+* `treeAt_aegraphOptNF`, `refinesT_aegraphOptNF`, `refinesTA_aegraphOptNF`: the stage lemma of
+  `aegraphStep`, at a handler and at a skip predicate.
+* `spliceNF?_elimQ`, `ruttS_castRetHead`, `ruttSA_castRetHead`: a spliced block and a carried
+  result type keep a property of the call tree.
 * `map?_ruttS`: the stage lemma of the lowering `map?` along a partial block lowering (the step
   `mapStep catToJasmin`): each call is the event with the mapped signature and the
-  transported arguments (`MapRE`), answered by the transported source answer (`MapRA`).
+  transported arguments (`MapRE`), answered by the transported source answer (`MapRA`);
+  `map?_ruttSA`: the same relation at every skip predicate.
 
 The lowering `map?` keeps every node `call` with its symbol and lowers each let-binding to a
 block of let-bindings, so its stage lemma relates the trees event by event without skips.
@@ -56,6 +60,8 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+  (RuttSA RefinesTA RuttSA.mono RefinesTA.refl ruttSA_obind ruttSA_ofoldl ruttSA_owhileIter)
 open Ctxt (Var Valuation)
 
 /-! ## Composition -/
@@ -88,6 +94,39 @@ theorem RuttS.trans_refinesT {E₁ E₂ : EventSig} {R₁ β : Type}
       exact .vis he fun a₁ a₂ ha => ih a₁ a₂ ha (hk' a₂ a₂ HEq.rfl)
     | skip hk' => exact .skip (ih _ _ (hh _ _ he) hk')
   | skip _ ih => exact .skip (ih h23)
+
+/-- **A relation followed by a refinement at skip predicates is a relation.** Let every source
+    answer admitted by `Sk₁` at an event related to a target event have a related target answer
+    admitted by `Sk₂`, and let a leaf related to `none` be a failed source leaf. Then
+    `RuttSA Sk₁ RE RA RR Fail t₁ t₂` and `RefinesTA Sk₂ t₂ t₃` give
+    `RuttSA Sk₁ RE RA RR Fail t₁ t₃`: an event of `t₂` that `t₃` skips is skipped in `t₁` at
+    every answer of `Sk₁`. -/
+theorem RuttSA.trans_refinesTA {E₁ E₂ : EventSig} {R₁ β : Type}
+    {Sk₁ : (e : E₁.Event) → E₁.Resp e → Prop} {Sk₂ : (e : E₂.Event) → E₂.Resp e → Prop}
+    {RE : E₁.Event → E₂.Event → Prop}
+    {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
+    {RR : R₁ → Option β → Prop} {Fail : R₁ → Prop}
+    (hh : ∀ e₁ e₂, RE e₁ e₂ → ∀ a₁, Sk₁ e₁ a₁ → ∃ a₂, Sk₂ e₂ a₂ ∧ RA e₁ e₂ a₁ a₂)
+    (hRR : ∀ r₁, RR r₁ none → Fail r₁)
+    {t₁ : CallTree E₁ R₁} {t₂ t₃ : CallTree E₂ (Option β)}
+    (h12 : RuttSA Sk₁ RE RA RR Fail t₁ t₂) (h23 : RefinesTA Sk₂ t₂ t₃) :
+    RuttSA Sk₁ RE RA RR Fail t₁ t₃ := by
+  induction h12 generalizing t₃ with
+  | ret h =>
+    cases h23 with
+    | ret h' => subst h'; exact .ret h
+    | fail h' => subst h'; exact .fail (hRR _ h)
+  | fail h => exact .fail h
+  | vis he _ ih =>
+    cases h23 with
+    | vis he' hk' =>
+      subst he'
+      exact .vis he fun a₁ a₂ ha => ih a₁ a₂ ha (hk' a₂ a₂ HEq.rfl)
+    | skip hk' =>
+      refine .skip fun a₁ ha₁ => ?_
+      obtain ⟨a₂, hs₂, ha₂⟩ := hh _ _ he a₁ ha₁
+      exact ih a₁ a₂ ha₂ (hk' a₂ hs₂)
+  | skip _ ih => exact .skip fun a ha => ih a ha h23
 
 /-! ## The e-graph pass -/
 
@@ -204,6 +243,15 @@ theorem refinesT_aegraphOptNF (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty}
   rw [treeAt_aegraphOptNF]
   exact RefinesT.refl _
 
+/-- **The stage lemma of `aegraphStep` at a skip predicate**: the call tree of the output of the
+    e-graph pass refines the call tree of its input up to events skipped at every `Sk`. -/
+theorem refinesTA_aegraphOptNF (R : RuleSet d) {Γ : Ctxt d} {ts : List d.Ty}
+    (p : NFProg d Γ ts) (fuel : Nat) (V : Valuation Γ)
+    (Sk : (e : (nfCallSig d).Event) → (nfCallSig d).Resp e → Prop) :
+    RefinesTA Sk (nfProgTree fuel p V) (nfProgTree fuel (aegraphOptNF R p) V) := by
+  rw [treeAt_aegraphOptNF]
+  exact RefinesTA.refl _
+
 end Aegraph
 
 /-! ## The lowering along a partial block lowering -/
@@ -273,6 +321,27 @@ theorem ruttS_castRetHead {E₁ : EventSig} {R₁ : Type} {h₁ : ∀ e : E₁.E
       (nfProgTree fuel (castRetHead h p) W) := by
   subst h
   refine RuttS.mono (fun o o' ho x hx => ?_) hp
+  obtain ⟨y, hy, hR⟩ := ho x hx
+  refine ⟨y, hy, ?_⟩
+  rcases y with _ | ⟨y, ys⟩
+  exact hR
+
+/-- A program carried along an equality of its first result type keeps a relation of trees with
+    skips at an answer predicate, the first result read back along the equality. -/
+theorem ruttSA_castRetHead {E₁ : EventSig} {R₁ : Type}
+    {Sk : (e : E₁.Event) → E₁.Resp e → Prop}
+    {RE : E₁.Event → (nfCallSig d').Event → Prop}
+    {RA : (e₁ : E₁.Event) → (e₂ : (nfCallSig d').Event) → E₁.Resp e₁ →
+      (nfCallSig d').Resp e₂ → Prop}
+    {Δ : Ctxt d'} {a b : d'.Ty} {ts : List d'.Ty} (h : a = b) (p : NFProg d' Δ (a :: ts))
+    (fuel : Nat) (W : Valuation Δ) {R : R₁ → Valuation (a :: ts) → Prop}
+    {t : CallTree E₁ (Option R₁)}
+    (hp : RuttSA Sk RE RA (OutRel R) (fun o => o = none) t (nfProgTree fuel p W)) :
+    RuttSA Sk RE RA (OutRel fun x (y : Valuation (b :: ts)) =>
+        R x (.cons (tyCast h.symm y.head) y.tail)) (fun o => o = none) t
+      (nfProgTree fuel (castRetHead h p) W) := by
+  subst h
+  refine RuttSA.mono (fun o o' ho x hx => ?_) hp
   obtain ⟨y, hy, hR⟩ := ho x hx
   refine ⟨y, hy, ?_⟩
   rcases y with _ | ⟨y, ys⟩
@@ -367,6 +436,109 @@ theorem map?_ruttS (hT : P.RegionTypes)
       (ruttS_owhileIter (fun a a' ha => ?_) fuel fuel le_rfl _ _ rfl) fun acc acc' hacc => ?_
     · subst ha
       refine RuttS.mono (fun o o' ho x hx => ?_) (ruttS_castRetHead hT.bit_eq b fuel _
+        (ihb hb _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ a) b hbq))
+      obtain ⟨y, hy, hxy⟩ := ho x hx
+      refine ⟨y, hy, ?_⟩
+      rcases x with _ | ⟨x, xs⟩
+      rcases y with _ | ⟨y, ys⟩
+      obtain ⟨h1, h2⟩ := HVector.cons.inj hxy
+      refine ⟨h2, ?_⟩
+      rw [tyCast_eq_of_symm hT.bit_eq h1, hR.toBool_trans]
+      rfl
+    · subst hacc
+      exact ihk hk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
+  | call f args k ih =>
+    intro Δ ren V W hren q hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [nfProgTree, treeAt]
+    refine .vis ?_ fun a₁ a₂ ha => ?_
+    · simp only [MapRE]
+      rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    · cases a₁ with
+      | none => exact .fail rfl
+      | some y =>
+        cases eq_of_heq (ha y rfl)
+        exact ih hp _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ y) k' hkq
+
+/-- **The stage lemma of a lowering along a partial block lowering at a skip predicate.** Under
+    the hypotheses of `map?_ruttS`, the call trees are related by `RuttSA` at every skip
+    predicate `Sk`: the lowering relates the trees event by event, without skips. -/
+theorem map?_ruttSA (hT : P.RegionTypes)
+    (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
+    (hVar : P.VarTransports transTy mapVal)
+    (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
+      ∀ blk, P.lowerExprBlock? e = some blk →
+      ∀ V : Valuation Γ, blk.denote (mapVal V) = transTy (e.denote V))
+    (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
+    (Sk : (e : (nfCallSig d).Event) → (nfCallSig d).Resp e → Prop) (fuel : Nat) {Γ : Ctxt d}
+    {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good) :
+    ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (P.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
+      pullV ren W = mapVal V → ∀ q, map? P hT p ren = some q →
+      RuttSA Sk (MapRE P transTy) (MapRA P transTy)
+        (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
+        (nfProgTree fuel p V) (nfProgTree fuel q W) := by
+  induction p with
+  | ret vs =>
+    intro Δ ren V W hren q hq
+    cases hq
+    refine .ret fun x hx => ⟨_, rfl, ?_⟩
+    cases hx
+    exact lookupArgs_mapArgs P transTy mapVal hVar ren V W hren vs
+  | var e k ih =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hg, hk⟩ := hp
+    obtain ⟨blk, hblk, hq⟩ := Option.bind_eq_some_iff.mp hq
+    rw [nfProgTree, treeAt_var_pure]
+    refine spliceNF?_elimQ (fun q W => RuttSA Sk (MapRE P transTy) (MapRA P transTy)
+        (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
+        (treeAt pureReader eventEnv fuel k (V.extend (e.denote V))) (nfProgTree fuel q W))
+      (fun e k W hk => by rwa [nfProgTree, treeAt_var_pure]) _ _ W
+      (fun ren' res W' h1 h2 q' hq' => ?_) q hq
+    refine ih hk _ (V.extend (e.denote V)) W' ?_ q' hq'
+    refine pullV_bodyHom P transTy mapVal hExt ren ren' res V _ W W' hren h1 ?_
+    rw [h2, FieldDialectBlockDescent.Com.denote_rename, hren, hBlk e hg blk hblk V]
+  | forLoop count inits body k ihb ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hb, hk⟩ := hp
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [nfProgTree, treeAt]
+    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toNat_trans,
+      lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    refine ruttSA_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
+      (ruttSA_ofoldl (fun acc acc' i hacc => ?_) _ _ _ rfl) fun acc acc' hacc => ?_
+    · subst hacc
+      rw [← hR.ofNat_trans i]
+      exact ihb hb _ _ _ (pullV_appHom P transTy mapVal hExt _ _ _
+        (pullV_liftTo P transTy mapVal hExt _ ren V W _ _ hren rfl) _ acc) b hbq
+    · subst hacc
+      exact ihk hk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
+  | ifThenElse cond thn els k iht ihe ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨ht, he, hk⟩ := hp
+    obtain ⟨a, haq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [nfProgTree, treeAt]
+    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toBool_trans]
+    refine ruttSA_obind (R := fun r r' => r' = transArgs P.mapTy transTy r) ?_
+      fun r r' hr => ?_
+    · cases HasBoolBit.toBool (d := d) (cond.lookup V)
+      · exact ihe he ren V W hren b hbq
+      · exact iht ht ren V W hren a haq
+    · subst hr
+      exact ihk hk _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ r) k' hkq
+  | whileLoop inits body k ihb ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hb, hk⟩ := hp
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [nfProgTree, treeAt]
+    rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    refine ruttSA_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
+      (ruttSA_owhileIter (fun a a' ha => ?_) fuel fuel le_rfl _ _ rfl) fun acc acc' hacc => ?_
+    · subst ha
+      refine RuttSA.mono (fun o o' ho x hx => ?_) (ruttSA_castRetHead hT.bit_eq b fuel _
         (ihb hb _ _ _ (pullV_appHom P transTy mapVal hExt ren V W hren _ a) b hbq))
       obtain ⟨y, hy, hxy⟩ := ho x hx
       refine ⟨y, hy, ?_⟩

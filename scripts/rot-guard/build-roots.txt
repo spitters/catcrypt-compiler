@@ -187,10 +187,10 @@ CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
-CatCrypt.Crypto.Primitives.KeccakArray
 CatCrypt.Crypto.Primitives.Poly1305
 CatCrypt.Crypto.Primitives.RandomOracle
 CatCrypt.Crypto.Primitives.SHA256Rounds
+CatCrypt.Crypto.Primitives.SpecKat
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmSim
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
@@ -351,6 +351,7 @@ CatCrypt.Crypto.SecureCompilation.CrateGen
 CatCrypt.Crypto.SecureCompilation.CtSelectLeak
 CatCrypt.Crypto.SecureCompilation.CtTableEmitGoldenPath
 CatCrypt.Crypto.SecureCompilation.CubExtGeneric
+CatCrypt.Crypto.SecureCompilation.CurveTemplate.MontLadder
 CatCrypt.Crypto.SecureCompilation.Dialects
 CatCrypt.Crypto.SecureCompilation.Dialects.ArithExportFaithful
 CatCrypt.Crypto.SecureCompilation.Dialects.ByteMemrefFrontPrototype
@@ -447,14 +448,17 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
-CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeModuleAns
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeStatements
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NFTreeFuelMono
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.R3UWord
+CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
+CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerWitness
 CatCrypt.Crypto.SecureCompilation.Haxc.RCPerStateFuel
-CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinked
+CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedDet
+CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedStateful
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCalleeNames
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionCoIfFrame
 CatCrypt.Crypto.SecureCompilation.Haxc.RegionLprogComplete
@@ -487,7 +491,6 @@ CatCrypt.Crypto.SecureCompilation.MlkemNttConcreteRoots
 CatCrypt.Crypto.SecureCompilation.MlkemNttFieldAuthored
 CatCrypt.Crypto.SecureCompilation.MlkemNttWidenProbe
 CatCrypt.Crypto.SecureCompilation.MontMulFieldTie
-CatCrypt.Crypto.SecureCompilation.MontgomeryLadderGeneric
 CatCrypt.Crypto.SecureCompilation.MultiWidthGoldenPath
 CatCrypt.Crypto.SecureCompilation.NegacyclicEmitRealization
 CatCrypt.Crypto.SecureCompilation.NttPassBridgeComplete

@@ -27,25 +27,32 @@ operation denotes a value, a removed mask is read through a relation of the valu
 analysis `okP` keeps exact at every call and every result, and an inserted carry pair binds a
 value nothing reads.
 
+Each relation holds by `RuttSA` at every skip predicate (the `*A` forms), since no stage of
+`narrowPrep` skips an event; the forms at a handler are their instances (`ruttSA_iff_ruttS`).
+
 ## Main definitions
 
-* `CallsRelated`: two tree call environments whose trees of a call admitted by a predicate and
-  of its transport along a partial block lowering are related.
+* `CallsRelated`, `CallsRelatedA`: two tree call environments whose trees of a call admitted by
+  a predicate and of its transport along a partial block lowering are related.
 
 ## Main results
 
-* `treeAt_var_pure_env`, `ruttS_castRetHead_env`: a let-binding and a carried result type at
-  every tree call environment.
-* `map?_ruttS_env`: the stage lemma of `map?` at related tree call environments.
-* `mfEnv_callsRelated_widen`, `ruttS_widenJ_mf`: the widening between trees `mfTree`.
+* `treeAt_var_pure_env`, `ruttS_castRetHead_env`, `ruttSA_castRetHead_env`: a let-binding and a
+  carried result type at every tree call environment.
+* `map?_ruttS_env`, `map?_ruttSA_env`: the stage lemma of `map?` at related tree call
+  environments.
+* `mfEnv_callsRelated_widen`, `mfEnv_callsRelatedA_widen`, `ruttS_widenJ_mf`,
+  `ruttSA_widenJ_mf`: the widening between trees `mfTree`.
 * `treeAt_maskElimGo`, `treeAt_maskElim`: mask elimination keeps the tree.
 * `treeAt_dce_jasmin`: dead-binding elimination keeps the tree of a program of
   `jasminDialect`.
 * `treeAt_carryInsert`, `treeAt_carryPairGo`, `treeAt_carryPair`: the carry pairs keep the
   tree.
-* `ruttS_narrowPrep_mf`: the stage lemma of `narrowPrep` between trees `mfTree`.
-* `ruttS_extChainCore_narrowPrep`: the steps of `extChainCore` followed by `narrowPrep`, from the
-  call tree of the source program to the tree `mfTree` of the narrowed program.
+* `ruttS_narrowPrep_mf`, `ruttSA_narrowPrep_mf`: the stage lemma of `narrowPrep` between trees
+  `mfTree`.
+* `ruttS_extChainCore_narrowPrep`, `ruttSA_extChainCore_narrowPrep`: the steps of
+  `extChainCore` followed by `narrowPrep`, from the call tree of the source program to the tree
+  `mfTree` of the narrowed program.
 -/
 
 @[expose] public section
@@ -74,6 +81,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeMont
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeSel
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract (RuttS)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montEnv)
 open CatCrypt.Crypto.SecureCompilation.Haxc (fieldEnv)
@@ -102,6 +110,26 @@ theorem treeAt_var_pure_env {E : EventSig} (tE : TreeCallEnv E d) (fuel : Nat) {
   simp only [treeAt, pureReader, Expr.denoteM_option_eq_some]
   rfl
 
+/-- A program carried along an equality of its first result type keeps a relation of trees with
+    skips at an answer predicate at every tree call environment, the first result read back
+    along the equality. -/
+theorem ruttSA_castRetHead_env {E₁ E₂ : EventSig} {R₁ : Type}
+    {Sk : (e : E₁.Event) → E₁.Resp e → Prop} {RE : E₁.Event → E₂.Event → Prop}
+    {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
+    (tE : TreeCallEnv E₂ d) {Δ : Ctxt d} {a b : d.Ty} {ts : List d.Ty} (h : a = b)
+    (p : NFProg d Δ (a :: ts)) (fuel : Nat) (W : Valuation Δ)
+    {R : R₁ → Valuation (a :: ts) → Prop} {t : CallTree E₁ (Option R₁)}
+    (hp : RuttSA Sk RE RA (OutRel R) (fun o => o = none) t (treeAt pureReader tE fuel p W)) :
+    RuttSA Sk RE RA (OutRel fun x (y : Valuation (b :: ts)) =>
+        R x (.cons (tyCast h.symm y.head) y.tail)) (fun o => o = none) t
+      (treeAt pureReader tE fuel (castRetHead h p) W) := by
+  subst h
+  refine RuttSA.mono (fun o o' ho x hx => ?_) hp
+  obtain ⟨y, hy, hR⟩ := ho x hx
+  refine ⟨y, hy, ?_⟩
+  rcases y with _ | ⟨y, ys⟩
+  exact hR
+
 /-- A program carried along an equality of its first result type keeps a relation of trees at
     every tree call environment, the first result read back along the equality. -/
 theorem ruttS_castRetHead_env {E₁ E₂ : EventSig} {R₁ : Type}
@@ -113,13 +141,8 @@ theorem ruttS_castRetHead_env {E₁ E₂ : EventSig} {R₁ : Type}
     (hp : RuttS h₁ RE RA (OutRel R) (fun o => o = none) t (treeAt pureReader tE fuel p W)) :
     RuttS h₁ RE RA (OutRel fun x (y : Valuation (b :: ts)) =>
         R x (.cons (tyCast h.symm y.head) y.tail)) (fun o => o = none) t
-      (treeAt pureReader tE fuel (castRetHead h p) W) := by
-  subst h
-  refine RuttS.mono (fun o o' ho x hx => ?_) hp
-  obtain ⟨y, hy, hR⟩ := ho x hx
-  refine ⟨y, hy, ?_⟩
-  rcases y with _ | ⟨y, ys⟩
-  exact hR
+      (treeAt pureReader tE fuel (castRetHead h p) W) :=
+  ruttSA_iff_ruttS.mp (ruttSA_castRetHead_env tE h p fuel W (ruttSA_iff_ruttS.mpr hp))
 
 variable {d' : Dialect.{0, 0}} [DialectSignature d'] [TyDenote d'.Ty] [HasWord64 d']
   [HasBoolBit d'] [DialectDenote d']
@@ -137,6 +160,128 @@ def CallsRelated (h₁ : ∀ e : (nfCallSig d).Event, (nfCallSig d).Resp e)
       (OutRel fun y y' => y' = transArgs P.mapTy transTy y) (fun o => o = none)
       (tE₁.call f as rs x)
       (tE₂.call f (as.map P.mapTy) (rs.map P.mapTy) (transArgs P.mapTy transTy x))
+
+/-- **Related tree call environments along a lowering at a skip predicate**: `CallsRelated` with
+    the trees of a call related by `RuttSA Sk`. -/
+def CallsRelatedA (Sk : (e : (nfCallSig d).Event) → (nfCallSig d).Resp e → Prop)
+    (tE₁ : TreeCallEnv (nfCallSig d) d) (tE₂ : TreeCallEnv (nfCallSig d') d')
+    (C : String → List d.Ty → List d.Ty → Prop) : Prop :=
+  ∀ (f : String) (as rs : List d.Ty) (x : Valuation as), C f as rs →
+    RuttSA Sk (MapRE P transTy) (MapRA P transTy)
+      (OutRel fun y y' => y' = transArgs P.mapTy transTy y) (fun o => o = none)
+      (tE₁.call f as rs x)
+      (tE₂.call f (as.map P.mapTy) (rs.map P.mapTy) (transArgs P.mapTy transTy x))
+
+/-- **The stage lemma of `map?` at related tree call environments and a skip predicate.** Under
+    the leaves of `map?_ruttS` and tree call environments related at every call of the program
+    at `Sk` (`CallsRelatedA`), the tree of a `Good`-covered program at the source environment is
+    related by `RuttSA Sk` to the tree of the program `map?` returns at the target environment,
+    at a renaming relating `W` to the transported `V`. -/
+theorem map?_ruttSA_env (hT : P.RegionTypes)
+    (Good : ∀ {Γ : Ctxt d} {t : d.Ty}, Expr d Γ t → Prop)
+    (hVar : P.VarTransports transTy mapVal)
+    (hBlk : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t), Good e →
+      ∀ blk, P.lowerExprBlock? e = some blk →
+      ∀ V : Valuation Γ, blk.denote (mapVal V) = transTy (e.denote V))
+    (hExt : P.MapValExtends transTy mapVal) (hR : P.RegionTransports hT transTy)
+    (Sk : (e : (nfCallSig d).Event) → (nfCallSig d).Resp e → Prop)
+    (tE₁ : TreeCallEnv (nfCallSig d) d) (tE₂ : TreeCallEnv (nfCallSig d') d')
+    {C : String → List d.Ty → List d.Ty → Prop} (hC : CallsRelatedA P transTy Sk tE₁ tE₂ C)
+    (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) (hp : p.Covered Good)
+    (hcalls : ∀ f as rs, p.Calls f as rs → C f as rs) :
+    ∀ {Δ : Ctxt d'} (ren : Ctxt.Hom (P.mapCtx Γ) Δ) (V : Valuation Γ) (W : Valuation Δ),
+      pullV ren W = mapVal V → ∀ q, map? P hT p ren = some q →
+      RuttSA Sk (MapRE P transTy) (MapRA P transTy)
+        (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
+        (treeAt pureReader tE₁ fuel p V) (treeAt pureReader tE₂ fuel q W) := by
+  induction p with
+  | ret vs =>
+    intro Δ ren V W hren q hq
+    cases hq
+    refine .ret fun x hx => ⟨_, rfl, ?_⟩
+    cases hx
+    exact lookupArgs_mapArgs P transTy mapVal hVar ren V W hren vs
+  | var e k ih =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hg, hk⟩ := hp
+    obtain ⟨blk, hblk, hq⟩ := Option.bind_eq_some_iff.mp hq
+    rw [treeAt_var_pure_env]
+    refine spliceNF?_elimQ (fun q W => RuttSA Sk (MapRE P transTy) (MapRA P transTy)
+        (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
+        (treeAt pureReader tE₁ fuel k (V.extend (e.denote V))) (treeAt pureReader tE₂ fuel q W))
+      (fun e k W hk => by rwa [treeAt_var_pure_env]) _ _ W
+      (fun ren' res W' h1 h2 q' hq' => ?_) q hq
+    refine ih hk hcalls _ (V.extend (e.denote V)) W' ?_ q' hq'
+    refine pullV_bodyHom P transTy mapVal hExt ren ren' res V _ W W' hren h1 ?_
+    rw [h2, FieldDialectBlockDescent.Com.denote_rename, hren, hBlk e hg blk hblk V]
+  | forLoop count inits body k ihb ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hb, hk⟩ := hp
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [treeAt]
+    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toNat_trans,
+      lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    refine ruttSA_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
+      (ruttSA_ofoldl (fun acc acc' i hacc => ?_) _ _ _ rfl) fun acc acc' hacc => ?_
+    · subst hacc
+      rw [← hR.ofNat_trans i]
+      exact ihb hb (fun f as rs h => hcalls f as rs (.inl h)) _ _ _
+        (pullV_appHom P transTy mapVal hExt _ _ _
+          (pullV_liftTo P transTy mapVal hExt _ ren V W _ _ hren rfl) _ acc) b hbq
+    · subst hacc
+      exact ihk hk (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
+        (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
+  | ifThenElse cond thn els k iht ihe ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨ht, he, hk⟩ := hp
+    obtain ⟨a, haq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [treeAt]
+    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toBool_trans]
+    refine ruttSA_obind (R := fun r r' => r' = transArgs P.mapTy transTy r) ?_
+      fun r r' hr => ?_
+    · cases HasBoolBit.toBool (d := d) (cond.lookup V)
+      · exact ihe he (fun f as rs h => hcalls f as rs (.inr (.inl h))) ren V W hren b hbq
+      · exact iht ht (fun f as rs h => hcalls f as rs (.inl h)) ren V W hren a haq
+    · subst hr
+      exact ihk hk (fun f as rs h => hcalls f as rs (.inr (.inr h))) _ _ _
+        (pullV_appHom P transTy mapVal hExt ren V W hren _ r) k' hkq
+  | whileLoop inits body k ihb ihk =>
+    intro Δ ren V W hren q hq
+    obtain ⟨hb, hk⟩ := hp
+    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [treeAt]
+    rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    refine ruttSA_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
+      (ruttSA_owhileIter (fun a a' ha => ?_) fuel fuel le_rfl _ _ rfl) fun acc acc' hacc => ?_
+    · subst ha
+      refine RuttSA.mono (fun o o' ho x hx => ?_) (ruttSA_castRetHead_env tE₂ hT.bit_eq b fuel _
+        (ihb hb (fun f as rs h => hcalls f as rs (.inl h)) _ _ _
+          (pullV_appHom P transTy mapVal hExt ren V W hren _ a) b hbq))
+      obtain ⟨y, hy, hxy⟩ := ho x hx
+      refine ⟨y, hy, ?_⟩
+      rcases x with _ | ⟨x, xs⟩
+      rcases y with _ | ⟨y, ys⟩
+      obtain ⟨h1, h2⟩ := HVector.cons.inj hxy
+      refine ⟨h2, ?_⟩
+      rw [tyCast_eq_of_symm hT.bit_eq h1, hR.toBool_trans]
+      rfl
+    · subst hacc
+      exact ihk hk (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
+        (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
+  | call f args k ih =>
+    intro Δ ren V W hren q hq
+    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
+    simp only [treeAt]
+    rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
+    refine ruttSA_obind (R := fun y y' => y' = transArgs P.mapTy transTy y)
+      (hC f _ _ _ (hcalls f _ _ (.inl ⟨rfl, rfl, rfl⟩))) fun y y' hy => ?_
+    subst hy
+    exact ih hp (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
+      (pullV_appHom P transTy mapVal hExt ren V W hren _ y) k' hkq
 
 /-- **The stage lemma of `map?` at related tree call environments.** Under the leaves of
     `map?_ruttS` and tree call environments related at every call of the program
@@ -159,95 +304,11 @@ theorem map?_ruttS_env (hT : P.RegionTypes)
       pullV ren W = mapVal V → ∀ q, map? P hT p ren = some q →
       RuttS h₁ (MapRE P transTy) (MapRA P transTy)
         (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
-        (treeAt pureReader tE₁ fuel p V) (treeAt pureReader tE₂ fuel q W) := by
-  induction p with
-  | ret vs =>
-    intro Δ ren V W hren q hq
-    cases hq
-    refine .ret fun x hx => ⟨_, rfl, ?_⟩
-    cases hx
-    exact lookupArgs_mapArgs P transTy mapVal hVar ren V W hren vs
-  | var e k ih =>
-    intro Δ ren V W hren q hq
-    obtain ⟨hg, hk⟩ := hp
-    obtain ⟨blk, hblk, hq⟩ := Option.bind_eq_some_iff.mp hq
-    rw [treeAt_var_pure_env]
-    refine spliceNF?_elimQ (fun q W => RuttS h₁ (MapRE P transTy) (MapRA P transTy)
-        (OutRel fun x y => y = transArgs P.mapTy transTy x) (fun o => o = none)
-        (treeAt pureReader tE₁ fuel k (V.extend (e.denote V))) (treeAt pureReader tE₂ fuel q W))
-      (fun e k W hk => by rwa [treeAt_var_pure_env]) _ _ W
-      (fun ren' res W' h1 h2 q' hq' => ?_) q hq
-    refine ih hk hcalls _ (V.extend (e.denote V)) W' ?_ q' hq'
-    refine pullV_bodyHom P transTy mapVal hExt ren ren' res V _ W W' hren h1 ?_
-    rw [h2, FieldDialectBlockDescent.Com.denote_rename, hren, hBlk e hg blk hblk V]
-  | forLoop count inits body k ihb ihk =>
-    intro Δ ren V W hren q hq
-    obtain ⟨hb, hk⟩ := hp
-    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
-    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
-    simp only [treeAt]
-    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toNat_trans,
-      lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
-    refine ruttS_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
-      (ruttS_ofoldl (fun acc acc' i hacc => ?_) _ _ _ rfl) fun acc acc' hacc => ?_
-    · subst hacc
-      rw [← hR.ofNat_trans i]
-      exact ihb hb (fun f as rs h => hcalls f as rs (.inl h)) _ _ _
-        (pullV_appHom P transTy mapVal hExt _ _ _
-          (pullV_liftTo P transTy mapVal hExt _ ren V W _ _ hren rfl) _ acc) b hbq
-    · subst hacc
-      exact ihk hk (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
-        (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
-  | ifThenElse cond thn els k iht ihe ihk =>
-    intro Δ ren V W hren q hq
-    obtain ⟨ht, he, hk⟩ := hp
-    obtain ⟨a, haq, hq⟩ := Option.bind_eq_some_iff.mp hq
-    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
-    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
-    simp only [treeAt]
-    rw [lookup_varTyCast, ← lookup_pullV, hren, hVar, hR.toBool_trans]
-    refine ruttS_obind (R := fun r r' => r' = transArgs P.mapTy transTy r) ?_
-      fun r r' hr => ?_
-    · cases HasBoolBit.toBool (d := d) (cond.lookup V)
-      · exact ihe he (fun f as rs h => hcalls f as rs (.inr (.inl h))) ren V W hren b hbq
-      · exact iht ht (fun f as rs h => hcalls f as rs (.inl h)) ren V W hren a haq
-    · subst hr
-      exact ihk hk (fun f as rs h => hcalls f as rs (.inr (.inr h))) _ _ _
-        (pullV_appHom P transTy mapVal hExt ren V W hren _ r) k' hkq
-  | whileLoop inits body k ihb ihk =>
-    intro Δ ren V W hren q hq
-    obtain ⟨hb, hk⟩ := hp
-    obtain ⟨b, hbq, hq⟩ := Option.bind_eq_some_iff.mp hq
-    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
-    simp only [treeAt]
-    rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
-    refine ruttS_obind (R := fun acc acc' => acc' = transArgs P.mapTy transTy acc)
-      (ruttS_owhileIter (fun a a' ha => ?_) fuel fuel le_rfl _ _ rfl) fun acc acc' hacc => ?_
-    · subst ha
-      refine RuttS.mono (fun o o' ho x hx => ?_) (ruttS_castRetHead_env tE₂ hT.bit_eq b fuel _
-        (ihb hb (fun f as rs h => hcalls f as rs (.inl h)) _ _ _
-          (pullV_appHom P transTy mapVal hExt ren V W hren _ a) b hbq))
-      obtain ⟨y, hy, hxy⟩ := ho x hx
-      refine ⟨y, hy, ?_⟩
-      rcases x with _ | ⟨x, xs⟩
-      rcases y with _ | ⟨y, ys⟩
-      obtain ⟨h1, h2⟩ := HVector.cons.inj hxy
-      refine ⟨h2, ?_⟩
-      rw [tyCast_eq_of_symm hT.bit_eq h1, hR.toBool_trans]
-      rfl
-    · subst hacc
-      exact ihk hk (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
-        (pullV_appHom P transTy mapVal hExt ren V W hren _ acc) k' hkq
-  | call f args k ih =>
-    intro Δ ren V W hren q hq
-    obtain ⟨k', hkq, rfl⟩ := Option.map_eq_some_iff.mp hq
-    simp only [treeAt]
-    rw [lookupArgs_mapArgs P transTy mapVal hVar ren V W hren]
-    refine ruttS_obind (R := fun y y' => y' = transArgs P.mapTy transTy y)
-      (hC f _ _ _ (hcalls f _ _ (.inl ⟨rfl, rfl, rfl⟩))) fun y y' hy => ?_
-    subst hy
-    exact ih hp (fun f as rs h => hcalls f as rs (.inr h)) _ _ _
-      (pullV_appHom P transTy mapVal hExt ren V W hren _ y) k' hkq
+        (treeAt pureReader tE₁ fuel p V) (treeAt pureReader tE₂ fuel q W) :=
+  fun ren V W hren q hq => ruttSA_iff_ruttS.mp
+    (map?_ruttSA_env P transTy mapVal hT Good hVar hBlk hExt hR (fun e a => a = h₁ e) tE₁ tE₂
+      (fun f as rs x hc => ruttSA_iff_ruttS.mpr (hC f as rs x hc)) fuel p hp hcalls ren V W
+      hren q hq)
 
 end MapEnv
 
@@ -258,15 +319,16 @@ section Widen
 open NarrowWords (widenJ widenP widenP_regionTypes widenP_varTransports widenP_mapValExtends
   widenP_regionTransports exprBlock?_denote wideTy transports_of_wide)
 
-/-- **`mfEnv` is related to itself along the widening** at every call whose signature the
-    widening fixes: an inner head answers by `montEnv (fieldEnv CallEnv.empty)` on both sides,
-    which agree along the widening at such a call (`transports_of_wide`), and every other call
-    is one event on both sides, the target event the widened source event. -/
-theorem mfEnv_callsRelated_widen
-    (h₁ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+/-- **`mfEnv` is related to itself along the widening at every skip predicate**, at every call
+    whose signature the widening fixes: an inner head answers by
+    `montEnv (fieldEnv CallEnv.empty)` on both sides, which agree along the widening at such a
+    call (`transports_of_wide`), and every other call is one event on both sides, the target
+    event the widened source event. -/
+theorem mfEnv_callsRelatedA_widen
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
     {C : String → List JasminTy → List JasminTy → Prop}
     (hC : ∀ f as rs, C f as rs → as.map wideTy = as ∧ rs.map wideTy = rs) :
-    CallsRelated widenP (fun x => NarrowWords.transTy x) h₁ mfEnv mfEnv C := by
+    CallsRelatedA widenP (fun x => NarrowWords.transTy x) Sk mfEnv mfEnv C := by
   intro f as rs x hc
   by_cases hf : innerHead f = true
   · simp only [mfEnv, hf, ite_true]
@@ -280,6 +342,37 @@ theorem mfEnv_callsRelated_widen
     refine .vis rfl fun a₁ a₂ ha => .ret fun y hy => ⟨_, ?_, rfl⟩
     cases hy
     exact eq_of_heq (ha y rfl)
+
+/-- **The stage lemma of the widening between trees `mfTree` at a skip predicate**: the
+    relation of `ruttS_widenJ_mf` by `RuttSA Sk`, for every `Sk`. -/
+theorem ruttSA_widenJ_mf
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)} (hq : widenJ p = some q)
+    (hw : ∀ f as rs, p.Calls f as rs → as.map wideTy = as ∧ rs.map wideTy = rs)
+    (V : Valuation Γ) :
+    RuttSA Sk (MapRE widenP fun x => NarrowWords.transTy x)
+      (MapRA widenP fun x => NarrowWords.transTy x)
+      (OutRel fun x y => y = transArgs widenP.mapTy (fun x => NarrowWords.transTy x) x)
+      (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) :=
+  map?_ruttSA_env widenP (fun x => NarrowWords.transTy x) (fun V => NarrowWords.mapVal V)
+    widenP_regionTypes (fun _ => True) widenP_varTransports
+    (fun e _ blk hblk V => exprBlock?_denote e blk hblk V) widenP_mapValExtends
+    widenP_regionTransports Sk mfEnv mfEnv (mfEnv_callsRelatedA_widen Sk hw) fuel p
+    (NFProg.covered_of_forall _ (fun _ => trivial) p) (fun _ _ _ h => h) (fun v => v) V
+    (NarrowWords.mapVal V) (FieldDialectBlockDescent.pullV_id _) q hq
+
+/-- **`mfEnv` is related to itself along the widening** at every call whose signature the
+    widening fixes: an inner head answers by `montEnv (fieldEnv CallEnv.empty)` on both sides,
+    which agree along the widening at such a call (`transports_of_wide`), and every other call
+    is one event on both sides, the target event the widened source event. -/
+theorem mfEnv_callsRelated_widen
+    (h₁ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
+    {C : String → List JasminTy → List JasminTy → Prop}
+    (hC : ∀ f as rs, C f as rs → as.map wideTy = as ∧ rs.map wideTy = rs) :
+    CallsRelated widenP (fun x => NarrowWords.transTy x) h₁ mfEnv mfEnv C :=
+  fun f as rs x hc =>
+    ruttSA_iff_ruttS.mp (mfEnv_callsRelatedA_widen (fun e a => a = h₁ e) hC f as rs x hc)
 
 /-- **The stage lemma of the widening between trees `mfTree`**: for a program whose calls are at
     signatures the widening fixes, at every source handler and fuel, the tree `mfTree` of `p` is
@@ -296,12 +389,7 @@ theorem ruttS_widenJ_mf
       (MapRA widenP fun x => NarrowWords.transTy x)
       (OutRel fun x y => y = transArgs widenP.mapTy (fun x => NarrowWords.transTy x) x)
       (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) :=
-  map?_ruttS_env widenP (fun x => NarrowWords.transTy x) (fun V => NarrowWords.mapVal V)
-    widenP_regionTypes (fun _ => True) widenP_varTransports
-    (fun e _ blk hblk V => exprBlock?_denote e blk hblk V) widenP_mapValExtends
-    widenP_regionTransports h₁ mfEnv mfEnv (mfEnv_callsRelated_widen h₁ hw) fuel p
-    (NFProg.covered_of_forall _ (fun _ => trivial) p) (fun _ _ _ h => h) (fun v => v) V
-    (NarrowWords.mapVal V) (FieldDialectBlockDescent.pullV_id _) q hq
+  ruttSA_iff_ruttS.mp (ruttSA_widenJ_mf _ fuel hq hw V)
 
 end Widen
 
@@ -507,6 +595,100 @@ section Narrow
 open NarrowWords (narrowPrep narrowPrep_eq_some wideTy wordSig_of_calls wordSig_wide)
 open JasminLprogExport.ExportRegions (regionExportableB)
 
+/-- **The stage lemma of `narrowPrep` between trees `mfTree` at a skip predicate**: the relation
+    of `ruttS_narrowPrep_mf` by `RuttSA Sk`, for every `Sk`: mask elimination, dead-binding
+    elimination and the carry pairs keep the tree, and the widening has no skip. -/
+theorem ruttSA_narrowPrep_mf
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)} (hq : narrowPrep p = some q)
+    (hw : ∀ f as rs, p.Calls f as rs → as.map wideTy = as ∧ rs.map wideTy = rs)
+    (V : Valuation Γ) :
+    RuttSA Sk (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
+      (MapRA NarrowWords.widenP fun x => NarrowWords.transTy x)
+      (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
+        (fun x => NarrowWords.transTy x) x)
+      (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) := by
+  obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
+  have he : mfTree fuel (NarrowWords.carryPair (NFProg.dce (NarrowWords.maskElim q₀)))
+      (NarrowWords.mapVal V) = mfTree fuel q₀ (NarrowWords.mapVal V) := by
+    rw [mfTree, mfTree, treeAt_carryPair, treeAt_dce_jasmin, treeAt_maskElim]
+  exact he ▸ ruttSA_widenJ_mf Sk fuel h₀ hw V
+
+/-- **The narrow-word stages at a skip predicate on a program that passes
+    `regionExportableB`**: its calls are at word signatures, which the widening fixes. -/
+theorem ruttSA_narrowPrep_mf_of_exportable
+    (Sk : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop)
+    (fuel : Nat) {Γ : Ctxt jasminDialect} {ts : List JasminTy} {p : NFProg jasminDialect Γ ts}
+    (hB : regionExportableB p = true)
+    {q : NFProg jasminDialect (Γ.map wideTy) (ts.map wideTy)} (hq : narrowPrep p = some q)
+    (V : Valuation Γ) :
+    RuttSA Sk (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
+      (MapRA NarrowWords.widenP fun x => NarrowWords.transTy x)
+      (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
+        (fun x => NarrowWords.transTy x) x)
+      (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) :=
+  ruttSA_narrowPrep_mf Sk fuel hq
+    (fun f as rs hc => wordSig_wide (wordSig_of_calls hB f as rs hc)) V
+
+/-- **The steps of `extChainCore` followed by `narrowPrep` at skip predicates.** Under the
+    hypotheses of `ruttSA_extChainCore` at the skip predicates `Sk` of the leaf events and `Sk₃`
+    of the calls of `jasminDialect`, for a program `p` that the chain `extChainCore D Γ t` turns
+    into `q`, which passes `regionExportableB` and which `narrowPrep` turns into `q'`, and a
+    valuation `V` in range: the tree of `p` at `linkReader` and the source fuel `tf` is related
+    by `RuttSA Sk` to the tree `mfTree` of `q'` at the transported and widened valuation, at
+    every fuel at least `tf`, at the relations of `ruttS_extChainCore_narrowPrep`. -/
+theorem ruttSA_extChainCore_narrowPrep {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    (D : List ExtDecl) (tE : TreeCallEnv leafSig nfDialect)
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    {Sk₃ : (e : (nfCallSig jasminDialect).Event) → (nfCallSig jasminDialect).Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (tableOf bi) e)
+    (hh : ∀ e₀ e, CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e →
+      ExtEv e₀ → ∀ a₀, Sk e₀ a₀ → ∃ a, Sk₃ e a ∧
+        CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+          (MapRA catToJasmin fun x => ctTransTy x) e₀ e a₀ a)
+    (hSk₃ : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as) a,
+      innerHead f = true → Sk₃ ⟨f, as, rs, x⟩ a →
+        a = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
+    {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
+    {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
+    (h : (extChainCore D Γ t).run p = some q) (hB : regionExportableB q = true)
+    {q' : NFProg jasminDialect ((mapCtx (Γ.map catTy)).map wideTy)
+      ([mapTy (catTy t)].map wideTy)} (hq' : narrowPrep q = some q')
+    (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
+    (tf fuel : Nat) (hle : tf ≤ fuel) :
+    RuttSA Sk
+      (CompRE (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
+        (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x))
+      (CompRA (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
+        (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
+        (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
+          (MapRA catToJasmin fun x => ctTransTy x))
+        (MapRA NarrowWords.widenP fun x => NarrowWords.transTy x))
+      (Relation.Comp
+        (Relation.Comp (OutRel (VRelL [t]))
+          (OutRel fun x y => y = transArgs catToJasmin.mapTy (fun x => ctTransTy x) x))
+        (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
+          (fun x => NarrowWords.transTy x) x))
+      (fun o => o = none)
+      (treeAt linkReader tE tf p V)
+      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) := by
+  refine RuttSA.trans (fun e₀ e h => hh e₀ e h.1 h.2) ?_
+    (ruttSA_extChainCore hbi D tE hSk hh hSk₃ hD h V hin tf fuel hle)
+    (ruttSA_narrowPrep_mf_of_exportable Sk₃ fuel hB hq' _)
+  rintro r₀ r₁ ⟨r, h₁, h₂⟩ rfl
+  have : r = none := by
+    cases r with
+    | none => rfl
+    | some a => obtain ⟨b, hb, -⟩ := h₂ a rfl; cases hb
+  subst this
+  cases r₀ with
+  | none => rfl
+  | some a => obtain ⟨b, hb, -⟩ := h₁ a rfl; cases hb
+
 /-- **The stage lemma of `narrowPrep` between trees `mfTree`**: for a program whose calls are
     at signatures the widening fixes, the tree `mfTree` of `p` is related to the tree `mfTree`
     of the narrowed program at the widened valuation, at the relations of `ruttS_widenJ_mf`:
@@ -521,12 +703,8 @@ theorem ruttS_narrowPrep_mf
       (MapRA NarrowWords.widenP fun x => NarrowWords.transTy x)
       (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
         (fun x => NarrowWords.transTy x) x)
-      (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) := by
-  obtain ⟨q₀, h₀, rfl⟩ := narrowPrep_eq_some.mp hq
-  have he : mfTree fuel (NarrowWords.carryPair (NFProg.dce (NarrowWords.maskElim q₀)))
-      (NarrowWords.mapVal V) = mfTree fuel q₀ (NarrowWords.mapVal V) := by
-    rw [mfTree, mfTree, treeAt_carryPair, treeAt_dce_jasmin, treeAt_maskElim]
-  exact he ▸ ruttS_widenJ_mf h₁ fuel h₀ hw V
+      (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) :=
+  ruttSA_iff_ruttS.mp (ruttSA_narrowPrep_mf _ fuel hq hw V)
 
 /-- **The narrow-word stages on a program that passes `regionExportableB`**: its calls are at
     word signatures, which the widening fixes. -/
@@ -541,8 +719,7 @@ theorem ruttS_narrowPrep_mf_of_exportable
       (OutRel fun x y => y = transArgs NarrowWords.widenP.mapTy
         (fun x => NarrowWords.transTy x) x)
       (fun o => o = none) (mfTree fuel p V) (mfTree fuel q (NarrowWords.mapVal V)) :=
-  ruttS_narrowPrep_mf h₁ fuel hq (fun f as rs hc => wordSig_wide (wordSig_of_calls hB f as rs hc))
-    V
+  ruttSA_iff_ruttS.mp (ruttSA_narrowPrep_mf_of_exportable _ fuel hB hq V)
 
 /-- **The steps of `extChainCore` followed by `narrowPrep` at the tree level.** Under the
     hypotheses of `ruttS_extChainCore`, for a program `p` that the chain `extChainCore D Γ t`
@@ -550,18 +727,20 @@ theorem ruttS_narrowPrep_mf_of_exportable
     a valuation `V` in range: the tree of `p` at `linkReader`, the source fuel `tf` and the
     handler of the leaf table of `bi` is related to the tree `mfTree` of `q'` at the transported
     and widened valuation, at every fuel at least `tf`: events related by `ExtRE`, `MapRE` of
-    `catToJasmin` and `MapRE` of the widening, answers by the corresponding answer relations,
+    `catToJasmin` and `MapRE` of the widening at a source event of `ExtEv`, answers by the corresponding answer relations,
     leaves by `VRelL`, the transport and the widening, and the failed source leaf `none`. -/
 theorem ruttS_extChainCore_narrowPrep {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     (D : List ExtDecl) (tE : TreeCallEnv leafSig nfDialect)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ → MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy) (x : Valuation (d := jasminDialect) as),
       innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {Γ : Ctxt nfDialect} {t : NfTy} {p : NFProg nfDialect Γ [t]}
     {q : NFProg jasminDialect (mapCtx (Γ.map catTy)) [mapTy (catTy t)]}
     (h : (extChainCore D Γ t).run p = some q) (hB : regionExportableB q = true)
@@ -570,9 +749,11 @@ theorem ruttS_extChainCore_narrowPrep {bi : _root_.Hax.Builtins} (hbi : SubTable
     (V : Valuation Γ) (hin : ∀ (s : NfTy) (v : Var Γ s), InRange s (v.lookup V))
     (tf fuel : Nat) (hle : tf ≤ fuel) :
     RuttS (leafHandler (tableOf bi))
-      (CompRE (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRE (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x))
-      (CompRA (CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x))
+      (CompRA (fun e₀ e => CompRE ExtRE (MapRE catToJasmin fun x => ctTransTy x) e₀ e ∧
+          ExtEv e₀)
         (MapRE NarrowWords.widenP fun x => NarrowWords.transTy x)
         (CompRA ExtRE (MapRE catToJasmin fun x => ctTransTy x) ExtRA
           (MapRA catToJasmin fun x => ctTransTy x))
@@ -584,21 +765,13 @@ theorem ruttS_extChainCore_narrowPrep {bi : _root_.Hax.Builtins} (hbi : SubTable
           (fun x => NarrowWords.transTy x) x))
       (fun o => o = none)
       (treeAt linkReader tE tf p V)
-      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) := by
-  refine RuttS.trans (h₁ := h₃) ?_ ?_
-    (ruttS_extChainCore hbi D tE h₂ h₃ hh₂ hh₃ hinner h V hin tf fuel hle)
-    (ruttS_narrowPrep_mf_of_exportable h₃ fuel hB hq' _)
-  · rintro e₀ e ⟨e₁, he₁, he₂⟩ e₁' he₁' he₂'
-    exact ⟨h₂ e₁', hh₂ _ _ he₁', hh₃ _ _ he₂'⟩
-  · rintro r₀ r₁ ⟨r, h₁, h₂⟩ rfl
-    have : r = none := by
-      cases r with
-      | none => rfl
-      | some a => obtain ⟨b, hb, -⟩ := h₂ a rfl; cases hb
-    subst this
-    cases r₀ with
-    | none => rfl
-    | some a => obtain ⟨b, hb, -⟩ := h₁ a rfl; cases hb
+      (mfTree fuel q' (NarrowWords.mapVal (ctMapValD (mapVal V)))) :=
+  ruttSA_iff_ruttS.mp (ruttSA_extChainCore_narrowPrep hbi D tE
+    (Sk := fun e a => a = leafHandler (tableOf bi) e) (Sk₃ := fun e a => a = h₃ e)
+    (fun _ _ _ h => h)
+    (fun _ e _ hX a₀ ha₀ => ⟨h₃ e, rfl, fun e₁ he₁ he₂ =>
+      ⟨h₂ e₁, by subst ha₀; exact hh₂ _ _ he₁ hX, hh₃ _ _ _ he₁ hX he₂⟩⟩)
+    (fun f as rs x a hf ha => ha.trans (hinner f as rs x hf)) hD h hB hq' V hin tf fuel hle)
 
 end Narrow
 

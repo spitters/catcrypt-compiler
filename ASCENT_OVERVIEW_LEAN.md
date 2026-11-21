@@ -149,12 +149,12 @@ fragment (`toJ`, `toJBlock`), relates the states by `BJCorr`, and proves
 
 ## 2. Provenance
 
-The port is [sgraf812/ascent](https://github.com/sgraf812/ascent);
+The port is [sgraf812/distillery](https://github.com/sgraf812/distillery), formerly `sgraf812/ascent`;
 [PROVENANCE.md](PROVENANCE.md) records the details. The names taken are `Ascent`,
 `ascend` and `Corres`. No declaration is taken: of the port's 293 declaration names, two
-(`Heap`, `incr`) recur in the `Ascent` modules, with different definitions. The port's
-judgement is `RTriple`, over the relational weakest precondition `rwp` of
-`Std.Internal.Do`. The connection of this package's judgements to `Std.Do` triples is
+(`Heap`, `incr`) recur in the `Ascent` modules, with different definitions. At revision `1fdcb17` the port's judgement was `RTriple`, over the relational weakest
+precondition `rwp` of `Std.Internal.Do`; at revision `a5cc0e2` it is the refinement
+`⦃P⦄ c ⪯[γ] a ⦃Q; E⦄` over the weakest refinement precondition `wrp` of `Std.WP`. The connection of this package's judgements to `Std.Do` triples is
 `corresJ_iff_triple`, `corresM_iff_triple` (over `RustM`'s `WP` instance) and
 `fnCorres_iff_triple` (section 4). The judgements over `semScalar`, `runBlock`,
 `runBlockA`, `runRBlock64` and `denote'` are defined in this package.

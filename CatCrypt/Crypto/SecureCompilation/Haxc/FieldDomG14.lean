@@ -10,8 +10,8 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomCoalesceShape
 /-!
 # The index invariant check on the field domain from the shape of the reference
 
-The stage `idxInvCheckB` (`G14`) of the region gate checks the reference `d.ref` of the parts
-`regionCoParts` with the bounds-invariant check `idxInvCheckB` from the entry facts
+The index invariant check `idxInvCheckB` of the region gate checks the reference `d.ref` of
+the parts `regionCoParts` with the bounds-invariant check `idxInvCheckB` from the entry facts
 `boundFacts σ exportReg` and the annotation `idxAnnot`. On a non-empty straight-line reference
 whose symbolic run is inside the fragment and whose index obligations are immediates of width
 `64` below the lengths of their arrays, the check accepts (`idxInvCheckB_straight`).
@@ -20,7 +20,7 @@ whose symbolic run is inside the fragment and whose index obligations are immedi
 
 * `regionCoStage_ne_idxInvCheckB`: the gate does not refuse at `idxInvCheckB` when the check
   accepts the reference.
-* `fieldDom_idxInvCheckB_of_ref`: stage `G14` on the field domain from the shape of the
+* `fieldDom_idxInvCheckB_of_ref`: the check `idxInvCheckB` on the field domain from the shape of the
   reference.
 * `ne_nil_of_ownedCheckMC`, `symRun_ne_unk_of_ownedCheckMC`: a body that `ownedCheckMC`
   accepts is non-empty, and a straight-line one runs symbolically inside the fragment.
@@ -31,9 +31,10 @@ whose symbolic run is inside the fragment and whose index obligations are immedi
   operations and the cell fold of its code is straight-line.
 * `fieldDom_ref_straightR`, `fieldDom_ref_ne_nil`, `fieldDom_symRun_ref_ne_unk`: the facts
   `hs`, `hne` and `hunk` of `fieldDom_idxInvCheckB_of_ref` on the field domain, the last two
-  from stage `G13`, and `hs` and `hunk` under the hypothesis that the cell fold is
-  straight-line.
-* `fieldDom_idxInvCheckB_of_ownedCheckMC`: stage `G14` from stage `G13`, that hypothesis and
+  from the translation validation `ownedCheckMC`, and `hs` and `hunk` under the hypothesis
+  that the cell fold is straight-line.
+* `fieldDom_idxInvCheckB_of_ownedCheckMC`: the check `idxInvCheckB` from `ownedCheckMC`, that
+  hypothesis and
   the index obligations.
 -/
 
@@ -71,10 +72,10 @@ theorem regionCoStage_ne_idxInvCheckB {nm : String → String} {code : List Lins
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G14` on the field domain from the shape of the reference**: the gate does not
-    refuse at `idxInvCheckB` when the reference of the parts is a non-empty straight-line body
-    whose symbolic run is inside the fragment and whose index obligations are immediates of
-    width `64` below the lengths of their arrays. -/
+/-- **The check `idxInvCheckB` on the field domain from the shape of the reference**: the gate
+    does not refuse at `idxInvCheckB` when the reference of the parts is a non-empty
+    straight-line body whose symbolic run is inside the fragment and whose index obligations
+    are immediates of width `64` below the lengths of their arrays. -/
 theorem fieldDom_idxInvCheckB_of_ref
     (hne : (regionCoParts σ exportReg b t r.code r.res cert).ref ≠ [])
     (hs : ∀ p ∈ (regionCoParts σ exportReg b t r.code r.res cert).ref, straightR p.1 = true)
@@ -263,7 +264,7 @@ theorem straightR_regionCoParts_ref {nm : String → String} {code : List Linstr
           rw [hc] at hp
           exact hcf L hc p hp
 
-/-! ## The facts of stage `G14` on the field domain -/
+/-! ## The facts of the check `idxInvCheckB` on the field domain -/
 
 /-- **On the field domain the coalesced body is built of operations**: the narrowed output of
     the chain is built of bindings only (`fieldLetsOnly`), its export and the webs with the
@@ -279,7 +280,7 @@ theorem fieldDom_isLopn_regionCoBody (h : fieldDomB'' e σ = true)
     (exportR_isLopn_of_letsOnlyB (legalizeRegion q') (hF t0 q q' hq hq') _ _ _ hr0) σ exportReg
       _ _ _ j hj)
 
-/-- **Fact `hs` of stage `G14` on the field domain**: the reference of the parts is
+/-- **Fact `hs` of `idxInvCheckB` on the field domain**: the reference of the parts is
     straight-line, when every cell fold of the code of `fused` behind the prefix is
     straight-line (`hcf`). -/
 theorem fieldDom_ref_straightR (h : fieldDomB'' e σ = true)
@@ -292,15 +293,15 @@ theorem fieldDom_ref_straightR (h : fieldDomB'' e σ = true)
   straightR_regionCoParts_ref (isLopn_regionCoParts_fused (fieldDom_isLopn_regionCoBody h hB))
     hcf
 
-/-- **Fact `hne` of stage `G14`**: the reference of the parts is non-empty once the
-    translation validation `ownedCheckMC` (stage `G13`) accepts it. -/
+/-- **Fact `hne` of `idxInvCheckB`**: the reference of the parts is non-empty once the
+    translation validation `ownedCheckMC` accepts it. -/
 theorem fieldDom_ref_ne_nil {outs : List String} {B' : List LinstrRM}
     (hO : ownedCheckMC outs (regionCoParts σ exportReg b t r.code r.res cert).ref B' = true) :
     (regionCoParts σ exportReg b t r.code r.res cert).ref ≠ [] :=
   ne_nil_of_ownedCheckMC hO
 
-/-- **Fact `hunk` of stage `G14` on the field domain**: the symbolic run of the reference of
-    the parts is inside the fragment once `ownedCheckMC` (stage `G13`) accepts it, when every
+/-- **Fact `hunk` of `idxInvCheckB` on the field domain**: the symbolic run of the reference of
+    the parts is inside the fragment once `ownedCheckMC` accepts it, when every
     cell fold of the code of `fused` behind the prefix is straight-line (`hcf`). -/
 theorem fieldDom_symRun_ref_ne_unk (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert)
@@ -313,10 +314,10 @@ theorem fieldDom_symRun_ref_ne_unk (h : fieldDomB'' e σ = true)
     symRun (regionCoParts σ exportReg b t r.code r.res cert).ref SSt.start ≠ .unk :=
   symRun_ne_unk_of_ownedCheckMC hO (fieldDom_ref_straightR h hB hcf)
 
-/-- **Stage `G14` on the field domain from stage `G13`**: the gate does not refuse at
-    `idxInvCheckB` when `ownedCheckMC` accepts the reference, every cell fold of the code of
-    `fused` behind the prefix is straight-line and the index obligations of the reference are
-    immediates of width `64` below the lengths of their arrays. -/
+/-- **The check `idxInvCheckB` on the field domain from `ownedCheckMC`**: the gate does not
+    refuse at `idxInvCheckB` when `ownedCheckMC` accepts the reference, every cell fold of the
+    code of `fused` behind the prefix is straight-line and the index obligations of the
+    reference are immediates of width `64` below the lengths of their arrays. -/
 theorem fieldDom_idxInvCheckB_of_ownedCheckMC (h : fieldDomB'' e σ = true)
     (hB : FieldBody e σ fname b t r cert)
     (hcf : ∀ L, cellFoldLR (regionCoParts σ exportReg b t r.code r.res cert).cells []

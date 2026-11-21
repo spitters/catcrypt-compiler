@@ -1,0 +1,6 @@
+# One row id per line; scripts/run-exe-rows.sh passes each as `--only <row>`.
+shake128
+shake256
+sha3_256
+blake2s
+x25519

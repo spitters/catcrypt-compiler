@@ -19,7 +19,7 @@ writes. The renaming by webs keeps the store-chain shape (`chainShape_webRen`), 
 name, is never written. When the copy is taken the root of the returned array is not the result
 buffer, which then is not consumed by the code; so the code with the copy has the store-chain
 shape (`chainShape_regionCoCode`). Every member of the field domain therefore has the shape
-`FieldChainShape`, and the stages `G2` and `G3` hold without hypothesis.
+`FieldChainShape`, and the checks `coCfgB` and `coEntryFix` hold without hypothesis.
 
 ## Main results
 
@@ -32,7 +32,8 @@ shape (`chainShape_regionCoCode`). Every member of the field domain therefore ha
   one chain of stores and for its renaming by webs.
 * `fieldDom_fieldChainShape`: every member of the field domain has the shape
   `FieldChainShape`.
-* `fieldDom_coCfgB'`, `fieldDom_coEntryFix'`: the stages `G2` and `G3` on the field domain.
+* `fieldDom_coCfgB'`, `fieldDom_coEntryFix'`: the checks `coCfgB` and `coEntryFix` on the field
+  domain.
 -/
 
 set_option autoImplicit false
@@ -443,12 +444,12 @@ theorem fieldDom_fieldChainShape (h : fieldDomB e σ = true)
     exact chainShape_regionCoCode_webs tab hL le_rfl hr0 hsh hacc
       (fun y hy => by unfold regionWebsObs; exact List.mem_append_left _ hy) (hret _)
 
-/-- **Stage `G2` on the field domain**: the gate does not refuse at `coCfgB`. -/
+/-- **The check `coCfgB` on the field domain**: the gate does not refuse at `coCfgB`. -/
 theorem fieldDom_coCfgB' (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coCfgB" :=
   fieldDom_coCfgB_of_chainShape (fun h' hB' => fieldDom_fieldChainShape h' hB') h hB
 
-/-- **Stage `G3` on the field domain**: the gate does not refuse at `coEntryFix`. -/
+/-- **The check `coEntryFix` on the field domain**: the gate does not refuse at `coEntryFix`. -/
 theorem fieldDom_coEntryFix' (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coEntryFix" :=
   fieldDom_coEntryFix_of_chainShape (fun h' hB' => fieldDom_fieldChainShape h' hB') h hB

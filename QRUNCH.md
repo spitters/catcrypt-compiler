@@ -73,6 +73,18 @@ other rotations are conjugated.
   ([`cnotCount_zyzEmit`](CatCrypt/Quantum/Synthesis/ZYZPass.lean)) and satisfies the same bound
   behind the checker
   ([`listMatrix_zyzEmit_checkedZFit`](CatCrypt/Quantum/Synthesis/ApproxEmit.lean)).
+- Every one-qubit unitary is within `ε` of a global phase times a word over `H`, `T`, `T†` of
+  length polylogarithmic in `1/ε`, by the Solovay–Kitaev theorem for `SU(2)`
+  ([`exists_htWord_approx`](CatCrypt/Quantum/Synthesis/SolovayKitaev.lean)). The pass that
+  replaces one-qubit gates by such words takes the words from an untrusted generator
+  ([`SKFloat`](CatCrypt/Quantum/Synthesis/SKFloat.lean) proposes them in floating point) and
+  keeps a proposal only when the ball checker certifies it; its correctness theorem has no
+  hypothesis on the generator
+  ([`listMatrix_skReplaceChecked`](CatCrypt/Quantum/Synthesis/SKReplaceChecked.lean)), and the
+  errors of the replaced gates add
+  ([`norm_listMatrix_flatMap_sub_le_sum`](CatCrypt/Quantum/Synthesis/SynthesisError.lean)).
+  `lake exe catq-sk-measure` measures the generator and the checker on one row
+  ([`SKMeasure`](CatCrypt/Quantum/Benchmark/SKMeasure.lean)).
 - The number the checker returns bounds the operator norm of the difference between a block and
   its replacement ([`norm_sub_le_checkPair`](CatCrypt/Quantum/Synthesis/GateBall.lean)).
 - The translation into the Qrunch basis has the matrix of its input times an exact phase
@@ -172,6 +184,29 @@ register operations are one instance. On measurement-free programs:
 
 Qrisp programs themselves reach `catq-compile` through the adapter of the bridge
 ([`bridge/catq/qrisp_adapter.py`](bridge/catq/qrisp_adapter.py)).
+
+## Programs and foundations
+
+The programs of [`CatCrypt/Quantum/Programs/`](CatCrypt/Quantum/Programs/) have their
+statements proved on matrices: Grover's search among `N` items succeeds with probability
+`sin²((2k+1)θ)` after `k` iterations
+([`grover_success_prob`](CatCrypt/Quantum/Programs/GroverN.lean),
+[`grover_success_prob_optimal`](CatCrypt/Quantum/Programs/GroverN.lean)); Deutsch–Jozsa and
+Simon on `n` qubits have the outcome probabilities of the final state
+([`DeutschJozsaSimonN`](CatCrypt/Quantum/Programs/DeutschJozsaSimonN.lean)); and the tilted
+CHSH inequality gives `⟨A₀⟩² + (S/2)² ≤ 2` for every quantum CHSH strategy
+([`tilted_chsh_le`](CatCrypt/Quantum/Programs/TiltedCHSH.lean),
+[`CHSHStrategy.sq_add_sq_le_two`](CatCrypt/Quantum/Programs/TiltedCHSH.lean)). The foundations
+modules prove the no-communication theorem for trace-preserving maps on one side of a
+bipartite state
+([`partialTrace₁_aliceLocal`](CatCrypt/Quantum/NoCommunication.lean)), the unitary freedom of
+purifications
+([`purification_unitary_freedom`](CatCrypt/Quantum/PurificationFreedom.lean)), the
+Kochen–Specker theorem in dimension four
+([`kochenSpecker_complex`](CatCrypt/Quantum/KochenSpecker.lean)), the Gottesman–Knill tableau
+update for `H`, `S` and `CNOT` ([`conj_gate`](CatCrypt/Quantum/GottesmanKnill.lean)) and that
+every unitary is a product of two-level unitaries
+([`unitary_eq_prod_twoLevel`](CatCrypt/Quantum/TwoLevelUniversality.lean)).
 
 ## Where the code is
 

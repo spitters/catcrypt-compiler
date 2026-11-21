@@ -32,7 +32,7 @@ allocated body.
 * `exposed_cert`: under a certificate of definite assignment, a name read before it is written
   satisfies the entry predicate.
 * `fieldDom_tau_nil`: the merge pairs of a member of the field domain are empty.
-* `fieldDom_regMerge`: the stage `G8` on the field domain.
+* `fieldDom_regMerge`: the merge check `regMerge` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -452,7 +452,7 @@ theorem fieldDom_tau_nil (h : fieldDomB e σ = true) (hB : FieldBody e σ fname 
       exact RegionAllocMapLive.isArgNameB_argName hjj'
   · exact hpreCase hE
 
-/-- **Stage `G8` on the field domain**: the gate does not refuse at the merge check
+/-- **The merge check `regMerge` on the field domain**: the gate does not refuse at the merge check
     `regionMergeB`. -/
 theorem fieldDom_regMerge (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regMerge" :=

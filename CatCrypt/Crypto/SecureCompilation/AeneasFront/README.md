@@ -110,10 +110,21 @@ shows that a value of this reading is a value of the compiler's denotation `PDen
 from some fuel on, for every NF program, loops included (`loop_whileIter`, by fixpoint
 induction).
 
+**Agreement with the hax front.** `xcheck σ m s` reads a hax module `m` without linked
+functions and an Aeneas source `s` into NF programs, brings both to a canonical form (aborting
+branches and tuple structure removed, dead code eliminated, source names stripped) and compares
+their erasures to untyped trees, which decides alpha-equivalence. `xcheck_sound` states that
+when the check accepts, a hax run and an Aeneas run from one entry state return the same value
+([`XCheck`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/XCheck.lean)).
+[`Demo/XCheckTest`](https://github.com/spitters/catcrypt-compiler/blob/master/CatCrypt/Crypto/SecureCompilation/AeneasFront/Demo/XCheckTest.lean)
+pairs the hax extractions of six test functions (`xor_u32`, `shift_u32`,
+`u32_use_wrapping_add`, `u32_use_wrapping_sub`, `add_and`, `u32_use_rotate_left`) with their
+Aeneas translations.
+
 **The interaction-tree monad of upstream Aeneas.** Upstream types generated code against
 `Result α := ITree RustEffect α`; the certificate of this front, `fn a = .ok y`, is in the flat
 `RustM`. The map `RustM.toITree` of hax-lean
-([`HaxLean/Rust/ITreeResult.lean`](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean))
+([the module `ITreeResult`](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean))
 is a monad morphism (`toITree_bind`) and injective, with `toITree x = ok y ↔ x = .ok y`
 (`toITree_eq_ok_iff`) and, for an `ok` run of the flat `loop`, an `ok` run of the upstream `loop`
 on the image of the body (`loop_toITree_of_ok`). A value of the Aeneas front is thus a leaf

@@ -270,38 +270,13 @@ theorem plonky3_lde_rustcmd_chain_correct :
         && JasminPrint.strContains s "babybear_ntt_forward_1024")) = some true :=
   ⟨front_fires_64x4, front_fires_256x4, front_fires_1024x4, by native_decide⟩
 
-/-! ## 6. Bridge to hax extraction (named hypothesis)
+/-! ## 6. Relation to the hax extraction
 
-`Phase2LdeBridgeToHaxExtraction` (defined in `Plonky3LdeReflect.lean` §8) is
-the bridge between the pure-Lean `ldeCosetFftLean256x4` and the hax-extracted
-Rust `compute_column_lde`. At present **there is no hax extraction for the
-LDE function exposed in CatCrypt** — the plonky3-hax tree compiles, but its
-charon dump has not been wired through hax → `Hax.ReprBridge` into a
-SurfaceDeps Lean view.
-
-**Why the bridge is structurally easy/mechanical once the extraction lands:**
-`compute_column_lde` in `plonky3-hax/src/specs/baby_bear.rs` (or its analogue
-in `plonky3-hax/src/fri.rs`) is a straight-line sequence of four steps:
-1. `bb_intt(evals)` — subgroup-H inverse NTT
-2. zero-extend the coefficient vector
-3. `coset_twist` by `shift^i`
-4. `bb_ntt` — forward NTT on the coset domain
-
-This matches `ldeCosetFftLean256x4`'s let-chain position-for-position. The
-bridge proof is therefore one-statement-per-line refl-up-to-leaf-renaming,
-modulo:
-* leaf naming: `babybear_ntt_inverse` ↔ hax's `bb_intt`, etc.
-* argument-shape match: each step's width must agree
-  (`64 → 256`, `256 → 1024`, `1024 → 4096`).
-
-Until plonky3-hax LDE extraction lands, the bridge is a named hypothesis,
-not a theorem. -/
-
-/-- Trivial witness that the named hypothesis holds (it is `True`). The
-    semantic content is in the docstring of `Phase2LdeBridgeToHaxExtraction`;
-    this lemma just records that the chain-correctness proof is unaffected
-    by the absence of an extraction. -/
-theorem lde_bridge_hypothesis_holds : Phase2LdeBridgeToHaxExtraction := trivial
+The workspace has no hax extraction of the Rust `compute_column_lde`
+(`plonky3-hax/src/specs/`). `compute_column_lde` is a straight-line sequence of
+four steps (`bb_intt`, zero extension, `coset_twist` by `shift^i`, `bb_ntt`), the
+same as the let-chain of `ldeCosetFftLean256x4`; `Plonky3LdeReflect.lean` §8
+states the equation between the two that an extraction would prove. -/
 
 /-! ## 7. Emit driver `main` -/
 

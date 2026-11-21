@@ -133,3 +133,98 @@ theorem refinesT_treeAt_abortElim_link (h₁ : ∀ e : leafSig.Event, leafSig.Re
   refinesT_treeAt_abortElim NfOp.isAbort h₁ (fun e V h => linkReader_isAbort e V h) tE fuel p V
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeAbort
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeAbortRuttSA
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (leafSig linkReader)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeAbort (linkReader_isAbort)
+open Ctxt (Var Valuation)
+open MultiBlockLowering (hvAppend)
+
+section Abort
+
+variable {E : EventSig} {d : Dialect.{0, 0}} [DialectSignature d] [TyDenote d.Ty] [HasWord64 d]
+  [HasBoolBit d] (ab : d.Op → Bool) (Sk : (e : E.Event) → E.Resp e → Prop)
+
+/-- **The branch step of the elimination at the tree level, at every skip predicate.** The
+    statement of `refinesT_treeAt_iteElim` with `RefinesTA Sk` for every predicate `Sk`. -/
+theorem refinesTA_treeAt_iteElim {ex : ExprReader E d}
+    (hab : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) (V : Valuation Γ),
+      ab e.op = true → ex e V = .ret none)
+    (tE : TreeCallEnv E d) (fuel : Nat) {Γ : Ctxt d} {ts rs : List d.Ty}
+    (c : Var Γ (HasBitType.bit (d := d))) (thn els : NFProg d Γ rs) (k : NFProg d (rs ++ Γ) ts)
+    (V : Valuation Γ) :
+    RefinesTA Sk (treeAt ex tE fuel (NFProg.ifThenElse c thn els k) V)
+      (treeAt ex tE fuel (NFProg.iteElim ab c thn els k) V) := by
+  cases rs with
+  | cons _ _ => exact RefinesTA.refl _
+  | nil =>
+    rw [NFProg.iteElim]
+    split
+    · rename_i hc
+      simp only [Bool.and_eq_true] at hc
+      change RefinesTA Sk (obind (if HasBoolBit.toBool (d := d) (c.lookup V) then
+          treeAt ex tE fuel thn V else treeAt ex tE fuel els V)
+        fun r => treeAt ex tE fuel k (hvAppend r V)) _
+      split
+      · cases thn with
+        | var e k' =>
+          simp only [treeAt, hab e V hc.1]
+          exact .fail rfl
+        | _ => simp [NFProg.abortsFirst] at hc
+      · cases els with
+        | ret vs =>
+          cases vs
+          exact RefinesTA.refl _
+        | _ => simp [NFProg.isRetNil] at hc
+    · exact RefinesTA.refl _
+
+/-- **The stage lemma of the elimination of aborting branches at the tree level, at every skip
+    predicate.** The statement of `refinesT_treeAt_abortElim` with `RefinesTA Sk` for every
+    predicate `Sk`. -/
+theorem refinesTA_treeAt_abortElim {ex : ExprReader E d}
+    (hab : ∀ {Γ : Ctxt d} {t : d.Ty} (e : Expr d Γ t) (V : Valuation Γ),
+      ab e.op = true → ex e V = .ret none)
+    (tE : TreeCallEnv E d) (fuel : Nat) {Γ : Ctxt d} {ts : List d.Ty} (p : NFProg d Γ ts) :
+    ∀ V : Valuation Γ,
+      RefinesTA Sk (treeAt ex tE fuel p V) (treeAt ex tE fuel (NFProg.abortElim ab p) V) := by
+  induction p with
+  | ret vs => intro V; exact RefinesTA.refl _
+  | var e k ih =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.refl _) fun x => ih _
+  | forLoop count inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.ofoldl (fun _ _ => ihb _) _ _) fun _ => ihk _
+  | ifThenElse cond thn els k iht ihe ihk =>
+    intro V
+    refine RefinesTA.trans ?_ (refinesTA_treeAt_iteElim ab Sk hab tE fuel cond _ _ _ V)
+    refine RefinesTA.obind ?_ fun _ => ihk _
+    split
+    · exact iht V
+    · exact ihe V
+  | whileLoop inits body k ihb ihk =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.owhileIter (fun _ => ihb _) _ _) fun _ => ihk _
+  | call fn args k ih =>
+    intro V
+    exact RefinesTA.obind (RefinesTA.refl _) fun _ => ih _
+
+end Abort
+
+/-- **The stage lemma of the elimination of aborting branches at `linkReader`, at every skip
+    predicate.** -/
+theorem refinesTA_treeAt_abortElim_link
+    (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop)
+    (tE : TreeCallEnv leafSig nfDialect) (fuel : Nat) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) (V : Valuation Γ) :
+    RefinesTA Sk (treeAt linkReader tE fuel p V)
+      (treeAt linkReader tE fuel (NFProg.abortElim NfOp.isAbort p) V) :=
+  refinesTA_treeAt_abortElim NfOp.isAbort Sk (fun e V h => linkReader_isAbort e V h) tE fuel p V
+
+end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeAbortRuttSA

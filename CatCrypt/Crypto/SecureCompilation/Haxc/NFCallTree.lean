@@ -6,6 +6,7 @@ Authors: CatCrypt Contributors
 module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChain
+public import Cslib.Foundations.Data.PFunctor.Free
 
 /-!
 # The call tree of the source semantics of `compileA`
@@ -21,7 +22,7 @@ the argument values as the event and an optional value as the response (`none` w
 fails on the arguments, as a `Builtins` table answers); the calls of the functions of the
 module are internal and run their own trees.
 
-The tree is an ordinary inductive free monad without silent steps: the semantics is fuel
+The tree is the free monad of a polynomial functor, without silent steps: the semantics is fuel
 bounded, so every run is finite, and two trees are equivalent when they are equal. The proof of
 adequacy for `denoteT` follows the functional induction principle `denote'.mutual_induct`.
 
@@ -72,11 +73,85 @@ structure EventSig where
   /-- The responses to an event. -/
   Resp : Event → Type
 
-/-- The finite interaction tree over the event signature `E`: `ret r` ends with the result `r`;
-    `vis e c` performs the event `e` and continues with `c` at its response. -/
-inductive CallTree (E : EventSig) (R : Type) where
-  | ret : R → CallTree E R
-  | vis : (e : E.Event) → (E.Resp e → CallTree E R) → CallTree E R
+/-- The polynomial functor of an event signature: positions are events, directions answers. -/
+def sigPF (E : EventSig) : PFunctor.{0, 0} where
+  A := E.Event
+  B := E.Resp
+
+/-- The finite interaction tree over the event signature `E`: the free monad of the polynomial
+    functor `sigPF E`. Its leaves and events are `CallTree.ret` and `CallTree.vis`. -/
+def CallTree (E : EventSig) (R : Type) : Type := PFunctor.FreeM (sigPF E) R
+
+namespace CallTree
+
+variable {E : EventSig} {R : Type}
+
+/-- The tree that ends with the result `r`. -/
+@[match_pattern] def ret (r : R) : CallTree E R := PFunctor.FreeM.pure r
+
+/-- The tree that performs the event `e` and continues with `k` at its response. -/
+@[match_pattern] def vis (e : E.Event) (k : E.Resp e → CallTree E R) : CallTree E R :=
+  PFunctor.FreeM.liftBind e k
+
+/-- Induction on a call tree, with the cases `ret` and `vis`. -/
+@[induction_eliminator, elab_as_elim]
+protected theorem inductionOn {motive : CallTree E R → Prop}
+    (ret : ∀ r, motive (ret r))
+    (vis : ∀ e k, (∀ a, motive (k a)) → motive (vis e k)) : ∀ t, motive t
+  | .pure a => ret a
+  | .liftBind e k => vis e k fun u => CallTree.inductionOn ret vis (k u)
+
+/-- Case analysis on a call tree, with the cases `ret` and `vis`. -/
+@[cases_eliminator, elab_as_elim]
+protected theorem casesOn' {motive : CallTree E R → Prop}
+    (ret : ∀ r, motive (ret r))
+    (vis : ∀ e k, motive (vis e k)) : ∀ t, motive t
+  | .pure a => ret a
+  | .liftBind e k => vis e k
+
+/-- Injectivity of `ret`. -/
+@[simp] theorem ret.injEq (a b : R) : ((ret a : CallTree E R) = ret b) = (a = b) := by
+  apply propext
+  constructor
+  · intro h
+    injection h
+  · rintro rfl
+    rfl
+
+/-- Injectivity of `vis`: equal events and heterogeneously equal continuations. -/
+@[simp] theorem vis.injEq (e e' : E.Event) (k : E.Resp e → CallTree E R)
+    (k' : E.Resp e' → CallTree E R) :
+    ((vis e k : CallTree E R) = vis e' k') = (e = e' ∧ HEq k k') := by
+  apply propext
+  constructor
+  · intro h
+    injection h with h1 h2
+    exact ⟨h1, h2⟩
+  · rintro ⟨rfl, h⟩
+    cases h
+    rfl
+
+/-- A leaf is not an event. -/
+@[simp] theorem ret_eq_vis (a : R) (e : E.Event) (k : E.Resp e → CallTree E R) :
+    ((ret a : CallTree E R) = vis e k) = False := by
+  apply propext
+  constructor
+  · intro h
+    cases h
+  · intro h
+    exact h.elim
+
+/-- An event is not a leaf. -/
+@[simp] theorem vis_eq_ret (a : R) (e : E.Event) (k : E.Resp e → CallTree E R) :
+    ((vis e k : CallTree E R) = ret a) = False := by
+  apply propext
+  constructor
+  · intro h
+    cases h
+  · intro h
+    exact h.elim
+
+end CallTree
 
 /-- Sequencing of trees: the continuation runs at the result of each leaf. -/
 def CallTree.bind {E : EventSig} {α β : Type} :

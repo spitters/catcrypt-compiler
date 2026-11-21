@@ -22,7 +22,7 @@ decision has found the root of the returned array to be the buffer.
   result buffer, at `%rdi`.
 * `getD_foldl_of_noWrite`: the alias steps keep the image of a name no instruction writes.
 * `fieldDom_exportFacts`: the exported code writes no argument name and returns one operand.
-* `fieldDom_regionResultB`: the stage `G7` on the field domain.
+* `fieldDom_regionResultB`: the result check `regionResultB` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -202,7 +202,7 @@ theorem fieldDom_exportFacts (h : fieldDomB e σ = true) (hB : FieldBody e σ fn
     obtain rfl := webLook_eq_plain tab hhash (hash_not_mem_argName j) hdj
     exact hA i0 (List.mem_of_getElem? hi0) _ hw0 j rfl
 
-/-! ## The stage `G7` -/
+/-! ## The result check `regionResultB` -/
 
 /-- The gate does not refuse at `regionResultB` when the result check accepts. -/
 theorem regionCoStage_ne_regionResultB {nm : String → String} {code : List LinstrRM}
@@ -220,8 +220,8 @@ theorem regionCoStage_ne_regionResultB {nm : String → String} {code : List Lin
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G7` on the field domain**: the gate does not refuse at the result check
-    `regionResultB`. -/
+/-- **The result check `regionResultB` on the field domain**: the gate does not refuse at the
+    result check `regionResultB`. -/
 theorem fieldDom_regionResultB (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionResultB" := by
   refine regionCoStage_ne_regionResultB ?_

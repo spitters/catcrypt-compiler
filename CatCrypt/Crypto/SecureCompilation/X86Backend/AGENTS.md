@@ -82,6 +82,24 @@ declares into `X86Backend.Jasmin`; `Model.lean`, `Lowering.lean` and
   `LcmdLea.lean`, `LprogLICM.lean`, `LprogOptPipeline.lean`, `StackZeroize.lean`
   (`zeroizeLprog`).
 
+## Vector instructions and linked functions
+
+- `VInstr.lean`: the vector instructions of the machine model over a lane view of the register
+  file (VEX.128 and VEX.256 register forms, `VMOVDQU`/`VMOVDQA` loads, `VZEROUPPER`, the
+  legacy-encoded SHA-NI forms), each register as four 64-bit lanes; `VInstrTest.lean` checks
+  the denotations. `VShaSpec.lean`: the SHA-NI operations against the SHA-256 reference round
+  and message schedule (`round_toState`, `schedule_window`, `pshufb_blockWords`).
+- `LinkedFnFrame.lean`: the frame contract of a linked function, which states the resources
+  and frame facts of a call and nothing about its result. `LinkedFnComputes.lean`: the bytes of
+  a linked function compute a source function (`Meets.computes`) or an Aeneas function
+  (`Meets.computes_aeneas`).
+- `CalleeLeafKeep.lean`: the keep check of a System V leaf kernel that stores to the red zone
+  below its entry `%rsp` and never moves the stack register (`keepCheckLeafAtB_sound`;
+  `keepCheckAnyAtB_sound` for the disjunction with the framed check).
+- `CalleeSegCheckAns.lean`: the simulation of the segments of a calling body at an arbitrary
+  word answer of the callee. `ImageAddrCallAns.lean`: the call step at the answer read from the
+  return state of the callee.
+
 ## Register allocation
 
 - `ToLprogFaithfulAssembled.lean`: `ToLprogFaithfulAssembled.toLprogPhysAbi_faithful_uniform`,

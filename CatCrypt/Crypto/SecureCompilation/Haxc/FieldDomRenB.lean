@@ -39,8 +39,8 @@ root (`AliasAgree`, from the store-chain shape of the export and of its webs).
 * `codeFacts_export`, `codeFacts_webs`: these facts on the export of one chain of stores and on
   its webs.
 * `regionAllocBody_pin`: the liveness instruction at the head of the allocation input.
-* `fieldDom_renB`: the stage `G4` on the field domain.
-* `fieldDom_coResultCopy`: the stage `G6` on the field domain.
+* `fieldDom_renB`: the renaming check `renB` on the field domain.
+* `fieldDom_coResultCopy`: the result copy check `coResultCopy` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -870,7 +870,7 @@ theorem regionAllocBody_pin {a : AbiNames} {nArgs : Nat} {t : JasminTy} {r : Exp
 
 end AllocHead
 
-/-! ## 9. The stage `G4` on the field domain -/
+/-! ## 9. The renaming check `renB` on the field domain -/
 
 section Field
 
@@ -942,7 +942,7 @@ theorem physName_allocName {B : Lcmd} {tbl : Array Nat} (hc : bodyHasCall B = fa
   rw [hc, ite_eq_right Bool.false_ne_true]
   exact physRegName_cases _
 
-/-- **Stage `G4` on the field domain**: the gate does not refuse at the renaming check
+/-- **The renaming check `renB` on the field domain**: the gate does not refuse at
     `renB`. -/
 theorem fieldDom_renB (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "renB" := by
@@ -1162,15 +1162,15 @@ example (S : FieldDomStages) : type_of% @S.renB :=
 
 end Field
 
-/-! ## 10. The stage `G6` on the field domain -/
+/-! ## 10. The result copy check `coResultCopy` on the field domain -/
 
 section ResultCopy
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
   {r : Exported} {cert : List (String × String)}
 
-/-- **Stage `G6` on the field domain**: the gate does not refuse at the result copy names
-    `coResultCopy`, since the layout has no register result and so no result copy. -/
+/-- **The result copy check on the field domain**: the gate does not refuse at the result
+    copy names `coResultCopy`, since the layout has no register result and so no result copy. -/
 theorem fieldDom_coResultCopy (h : fieldDomB e σ = true) (_hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "coResultCopy" := by
   have hret : regionRet σ exportReg t r.res = none := by

@@ -51,7 +51,7 @@ foreign assembly and the trusted base.
 
 The calculus follows AutoCorres (Greenaway, Andronick, Klein, ITP 2012; Greenaway, Lim,
 Andronick, Klein, PLDI 2014), and its design and vocabulary follow Sebastian Graf's
-Lean port [sgraf812/ascent](https://github.com/sgraf812/ascent); see
+Lean port [sgraf812/distillery](https://github.com/sgraf812/distillery); see
 [PROVENANCE.md](PROVENANCE.md).
 
 ## Contents
@@ -315,7 +315,7 @@ traces the longer path from a Rust-subset source through `legWeld`.
   join of the source readings with the compiled bytes, and the precise hypotheses of
   each result.
 - [PROVENANCE.md](PROVENANCE.md): what the package takes from
-  [sgraf812/ascent](https://github.com/sgraf812/ascent).
+  [sgraf812/distillery](https://github.com/sgraf812/distillery).
 - [ASCENT_OVERVIEW_HIGHLEVEL.md](ASCENT_OVERVIEW_HIGHLEVEL.md): the problem, provenance,
   the double-category presentation, the relation to verification-condition generation,
   and a comparison with other approaches, as mathematics.

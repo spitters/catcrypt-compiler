@@ -404,7 +404,7 @@ stated or proved in Lean.
 
 The Rust source of the coset-FFT LDE is `compute_column_lde` in
 `plonky3-hax/src/specs/`; no hax extraction of it is present in the workspace.
-The open statement (Phase2LdeBridgeToHaxExtraction) is the equation
+The open statement is the equation
 `ldeCosetFftLean256x4 = hax_compute_column_lde_256_to_1024`, with each
 `babybear_*` leaf identified with its extracted counterpart (`bb_intt`,
 `bb_ntt`, …). `compute_column_lde` is the four-step chain

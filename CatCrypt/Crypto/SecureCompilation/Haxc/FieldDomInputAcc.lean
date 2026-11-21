@@ -37,9 +37,9 @@ from the same names, and the renaming sends every base to a parameter.
   form and the untagged mnemonics of the webs of the export followed by its result copy.
 * `allocInputAcc_of_fieldDomB'`: the access form `AllocInputAcc` of the allocator input of a
   member of `fieldDomB'`.
-* `fieldDom_cellNamesRB'`: the stage `G20` on `fieldDomB'` without hypothesis.
+* `fieldDom_cellNamesRB'`: the cell names check `cellNamesRB` on `fieldDomB'` without hypothesis.
 * `stackReadFreeB_fieldDom`: the printed body of a member reads no stack-argument name, the
-  stack half of the prologue facts of `G19`.
+  stack half of the prologue facts of the entry check `entryB`.
 -/
 
 set_option autoImplicit false
@@ -908,7 +908,7 @@ theorem allocInputAcc_of_fieldDomB' (h : fieldDomB' e σ = true) : AllocInputAcc
   exact accP_regionAllocBody _ _ _ _ hts' hC hI
     (fun i hi => rootIn_mono (fun x hx => inBase_of_argSlotName fname hx) (hroot i hi)) hU i hi
 
-/-- **Stage `G20` on `fieldDomB'`**, without hypothesis. -/
+/-- **The cell names check `cellNamesRB` on `fieldDomB'`**, without hypothesis. -/
 theorem fieldDom_cellNamesRB' {b : Lcmd} {t : JasminTy} {r : Exported}
     {cert : List (String × String)} (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) :

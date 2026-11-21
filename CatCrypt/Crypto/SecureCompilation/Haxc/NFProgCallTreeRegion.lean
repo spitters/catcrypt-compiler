@@ -146,7 +146,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree (TreeCallEnv)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (leafSig leafHandler linkReader
   OutRel ExtRE ExtRA)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOpt (MapRE MapRA)
-open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeChain (CompRE CompRA ExtEv)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFMontify (montEnv)
 
 /-- The event relation of the chain `extChain` followed by `narrowPrep`. -/
@@ -181,7 +181,8 @@ abbrev ChainRR (t : NfTy) : Option (Ctxt.Valuation (d := nfDialect) [t]) →
     tree of `p0` at `linkReader`, at a tree call environment in which every call of a procedure
     fails, is related by `RuttF` to the target trees of `pc` from `sa`, at the compositions of the
     relations of the chain and of the back half, under the conditions of both: the handlers of
-    the intermediate trees, no inner head among the callees, and the conditions of
+    the intermediate trees at source events of `ExtEv`, the results of the declarations of `D`
+    in `linkResOk`, no inner head among the callees, and the conditions of
     `ruttF_regionBack_word` at the call tree of the program `regionBack` compiles. -/
 theorem ruttF_extChain_compileRegion {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
     (D : List ExtDecl)
@@ -190,13 +191,17 @@ theorem ruttF_extChain_compileRegion {bi : _root_.Hax.Builtins} (hbi : SubTable 
       tE.call f as rs a = .ret none)
     (h₂ : ∀ e : (nfCallSig catCryptDialect).Event, (nfCallSig catCryptDialect).Resp e)
     (h₃ : ∀ e : (nfCallSig jasminDialect).Event, (nfCallSig jasminDialect).Resp e)
-    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
-    (hh₃ : ∀ e₁ e₂, MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
+    (hh₂ : ∀ e₁ e₂, ExtRE e₁ e₂ → ExtEv e₁ →
+      ExtRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₂ e₂))
+    (hh₃ : ∀ e₀ e₁ e₂, ExtRE e₀ e₁ → ExtEv e₀ →
+      MapRE catToJasmin (fun x => ctTransTy x) e₁ e₂ →
       MapRA catToJasmin (fun x => ctTransTy x) e₁ e₂ (h₂ e₁) (h₃ e₂))
     (hinner : ∀ (f : String) (as rs : List JasminTy)
       (x : Ctxt.Valuation (d := jasminDialect) as), innerHead f = true →
         h₃ ⟨f, as, rs, x⟩ = (montEnv (fieldEnv CallEnv.empty)).call f as rs x)
-    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ChainRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₃ e₂))
+    (hhC : ∀ e₁ e₂, ChainRE e₁ e₂ → ExtEv e₁ →
+      ChainRA e₁ e₂ (leafHandler (tableOf bi) e₁) (h₃ e₂))
+    (hD : ∀ d ∈ D, linkResOk d.ret = true)
     {σ : AbiLayout} {t : NfTy} {p0 : NFProg nfDialect (entryCtx (abiEntry σ)) [t]}
     {p : NFProg jasminDialect (nfCtx σ) [mapTy (catTy t)]}
     (hp : (extChain D _ t).run p0 = some p) {a : AbiNames} {linked : List CalleeData}
@@ -242,11 +247,18 @@ theorem ruttF_extChain_compileRegion {bi : _root_.Hax.Builtins} (hbi : SubTable 
         (ctMapValD (mapVal V)) := by
     rw [← mfTree_castProg fuel (nfCtx_wide σ) q _ _ hW.symm]
     exact NFProgCallTreeRefRutt.mfTree_eq_treeAt hin fuel _ hcalls _
-  have hchain := NFProgCallTreeCompose.ruttS_extChain_narrowPrep hbi D tE htE h₂ h₃ hh₂ hh₃
-    hinner hp hB hq V (NFToRoute.inRange_entry henv V hV) tf fuel hle
+  have hchain := NFProgCallTreeRuttSA.ruttSA_iff_ruttS.mp
+    (NFProgCallTreeChain.RuttSA.comp_and (NFProgCallTreeRuttSA.ruttSA_iff_ruttS.mpr
+      (NFProgCallTreeCompose.ruttS_extChain_narrowPrep hbi D tE htE h₂ h₃ hh₂ hh₃
+        hinner hD hp hB hq V (NFToRoute.inRange_entry henv V hV) tf fuel hle)))
   have hback := hR kind X hK hTc hword sa hreg (ctMapValD (mapVal V))
     (NFToRoute.abiValOf_mapVal henv V hV) fuel hGT (hmf ▸ hG) h₃ sym rd hsum hsym
-  refine NFProgCallTreeCalls.RuttS.trans_ruttF hhC (fun r₀ r₁ hr hf => ?_) (hmf ▸ hchain) hback
+  refine NFProgCallTreeCompose.RuttF.imp (RE := CompRE (fun e₀ e => ChainRE e₀ e ∧ ExtEv e₀)
+      (BackRE T)) (RA := CompRA (fun e₀ e => ChainRE e₀ e ∧ ExtEv e₀) (BackRE T) ChainRA
+      (BackRA PT X)) (fun _ _ ⟨e₁, h, h'⟩ => ⟨e₁, h.1, h'⟩)
+    (fun _ _ _ _ _ h e₁ he₁ he₂ => h e₁ he₁.1 he₂) (fun _ _ h => h) (fun _ h => h) ?_
+  refine NFProgCallTreeCalls.RuttS.trans_ruttF (fun e₁ e₂ h => hhC e₁ e₂ h.1 h.2)
+    (fun r₀ r₁ hr hf => ?_) (hmf ▸ hchain) hback
   obtain ⟨m₁, ⟨m₀, h1, h2⟩, h3⟩ := hr
   subst hf
   exact eq_none_of_outRel h1 (eq_none_of_outRel h2 (eq_none_of_outRel h3 rfl))

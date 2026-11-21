@@ -33,7 +33,7 @@ each parameter register.
   frame name of the trimmed body.
 * `entryPrologue_of_argReaders`: the prologue facts of the printed body of a member of
   `fieldDomB'` from `ArgReaders`.
-* `fieldDom_entryB_of_argReaders`: the stage `G19` on `fieldDomB'` from `ArgReaders`.
+* `fieldDom_entryB_of_argReaders`: the entry check `entryB` on `fieldDomB'` from `ArgReaders`.
 -/
 
 set_option autoImplicit false
@@ -184,7 +184,7 @@ theorem entryPrologue_of_argReaders (h : fieldDomB' e σ = true)
   exact slot_mem_frameNames (exportReg_fieldAbi (fieldDomE_k hk) ha)
     (hA t0 q q' P0 cert f hq hq' hx hf a ha)
 
-/-- **Stage `G19` on `fieldDomB'`** from `ArgReaders`. -/
+/-- **The entry check `entryB` on `fieldDomB'`** from `ArgReaders`. -/
 theorem fieldDom_entryB_of_argReaders (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hA : ArgReaders e σ fname) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "entryB" :=

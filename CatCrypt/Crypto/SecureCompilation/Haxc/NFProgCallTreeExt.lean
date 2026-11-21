@@ -37,9 +37,18 @@ the leaf table of the builtin table (`nfToCatExt_ruttS`).
   to it.
 * `ruttS_obind`, `ruttS_ofoldl`, `ruttS_owhileIter`, `RuttS.mono`: congruences of `RuttS` at
   a failed leaf `none`.
+* `NFProgCallTreeRuttSA.ruttSA_obind`: the congruence of `RuttSA` for `obind`.
 * `emitRes_elim`, `pinAll_elimQ`: the bindings of the translation preserve a property closed
   under let-bindings.
 * `nfToCatExt_ruttS`: the stage lemma of `extCallStep` at the tree level.
+* `NFProgCallTreeRuttSA.ruttSA_ofoldl`, `NFProgCallTreeRuttSA.ruttSA_owhileIter`: the
+  congruences of `RuttSA` for folds and exit-flag iterations.
+* `catName_of_catCallRd`, `retsA_opTree_catOp`: a call that `catCallRd` translates has a name
+  of `CatName`, so a skip predicate that admits only the table's answer there leaves the tree
+  of a translated operation at its denotation.
+* `nfToCatExt_ruttSA`: the stage lemma of `extCallStep` at a skip predicate (`NFExtTreeA`).
+* `nfToCatExt_ruttSAD`: the same at the event relation that adds the declaration of each
+  call (`NFExtTreeAD`).
 -/
 
 @[expose] public section
@@ -492,5 +501,372 @@ theorem nfToCatExt_ruttS {bi : _root_.Hax.Builtins} (hbi : SubTable bi) (D : Lis
   | call f args k _ =>
     intro Δ σ p' h
     cases h
+
+end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt
+
+/-! ## Sequencing of `RuttSA` at the failed leaf `none` -/
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree (obind ofoldl owhileIter)
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt (OutRel)
+open Ctxt (Valuation)
+
+section RuttSA
+
+variable {E₁ E₂ : EventSig} {Sk : (e : E₁.Event) → E₁.Resp e → Prop}
+  {RE : E₁.Event → E₂.Event → Prop}
+  {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
+
+/-- **Sequencing at the failed leaf `none`**: related prefixes and continuations related at
+    related values give related `obind`. -/
+theorem ruttSA_obind {α₁ α₂ β₁ β₂ : Type} {R : α₁ → α₂ → Prop} {R' : β₁ → β₂ → Prop}
+    {t₁ : CallTree E₁ (Option α₁)} {t₂ : CallTree E₂ (Option α₂)}
+    {k₁ : α₁ → CallTree E₁ (Option β₁)} {k₂ : α₂ → CallTree E₂ (Option β₂)}
+    (h : RuttSA Sk RE RA (OutRel R) (fun o => o = none) t₁ t₂)
+    (hk : ∀ a b, R a b → RuttSA Sk RE RA (OutRel R') (fun o => o = none) (k₁ a) (k₂ b)) :
+    RuttSA Sk RE RA (OutRel R') (fun o => o = none) (obind t₁ k₁) (obind t₂ k₂) := by
+  refine RuttSA.bind h ?_ ?_
+  · intro s₁ s₂ hs
+    cases s₁ with
+    | none => exact .fail rfl
+    | some a =>
+      obtain ⟨b, rfl, hab⟩ := hs a rfl
+      exact hk a b hab
+  · rintro s₁ rfl t
+    exact .fail rfl
+
+/-- Related steps give related folds. -/
+theorem ruttSA_ofoldl {α β₁ β₂ : Type} {R : β₁ → β₂ → Prop}
+    {f₁ : β₁ → α → CallTree E₁ (Option β₁)} {f₂ : β₂ → α → CallTree E₂ (Option β₂)}
+    (hf : ∀ b b' i, R b b' →
+      RuttSA Sk RE RA (OutRel R) (fun o => o = none) (f₁ b i) (f₂ b' i)) :
+    ∀ (l : List α) (b : β₁) (b' : β₂), R b b' →
+      RuttSA Sk RE RA (OutRel R) (fun o => o = none) (ofoldl f₁ l b) (ofoldl f₂ l b') := by
+  intro l
+  induction l with
+  | nil =>
+    intro b b' hb
+    exact .ret fun a ha => by cases ha; exact ⟨b', rfl, hb⟩
+  | cons i l ih =>
+    intro b b' hb
+    exact ruttSA_obind (hf b b' i hb) fun a a' ha => ih a a' ha
+
+/-- Related steps that agree on the exit bit give related exit-flag iterations, at every
+    target fuel at least the source fuel. -/
+theorem ruttSA_owhileIter {d₁ d₂ : Dialect.{0, 0}} [TyDenote d₁.Ty] [HasBoolBit d₁]
+    [TyDenote d₂.Ty] [HasBoolBit d₂] {cs₁ : List d₁.Ty} {cs₂ : List d₂.Ty}
+    {R : Valuation cs₁ → Valuation cs₂ → Prop}
+    {s₁ : Valuation cs₁ → CallTree E₁ (Option (Valuation (HasBitType.bit (d := d₁) :: cs₁)))}
+    {s₂ : Valuation cs₂ → CallTree E₂ (Option (Valuation (HasBitType.bit (d := d₂) :: cs₂)))}
+    (hs : ∀ a a', R a a' → RuttSA Sk RE RA
+      (OutRel fun r r' => R r.tail r'.tail ∧
+        HasBoolBit.toBool (d := d₁) r.head = HasBoolBit.toBool (d := d₂) r'.head)
+      (fun o => o = none) (s₁ a) (s₂ a')) :
+    ∀ (n m : Nat), n ≤ m → ∀ a a', R a a' →
+      RuttSA Sk RE RA (OutRel R) (fun o => o = none) (owhileIter s₁ n a)
+        (owhileIter s₂ m a') := by
+  intro n
+  induction n with
+  | zero => intro m _ a a' _; exact .fail rfl
+  | succ n ih =>
+    intro m hm a a' ha
+    obtain ⟨m, rfl⟩ : ∃ m', m = m' + 1 := ⟨m - 1, by omega⟩
+    refine ruttSA_obind (hs a a' ha) fun r r' hr => ?_
+    rw [← hr.2]
+    split
+    · exact ih m (by omega) _ _ hr.1
+    · exact .ret fun x hx => by cases hx; exact ⟨_, rfl, hr.1⟩
+
+end RuttSA
+
+end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+
+/-! ## The stage lemma of the translation at a skip predicate -/
+
+namespace CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt
+
+open CatCrypt.Crypto.SecureCompilation.VIR
+open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
+open CatCrypt.Crypto.SecureCompilation.VIR.CatCryptDialect
+open CatCrypt.Crypto.SecureCompilation.CryptoSSA (CryptoTy)
+open CatCrypt.Crypto.Hax
+open CatCrypt.Crypto.Hax.NFToCat
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTree
+open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeRuttSA
+open Ctxt (Var Valuation)
+
+/-- A call that `catCallRd` translates has a name of a translated call (`CatName`). -/
+theorem catName_of_catCallRd {Δ : Ctxt catCryptDialect} {f : String} {as : List NfTy}
+    {r : NfTy} {rs : HVector (fun t => Rd Δ t) as} {res : OpRes Δ r}
+    (h : catCallRd f as r rs = some res) : CatName f := by
+  rcases catCallRd_name h with rfl | rfl | hq
+  · exact Or.inr (Or.inl rfl)
+  · exact Or.inr (Or.inr (Or.inl rfl))
+  · rcases quietCall_iff.mp hq with hm | rfl | rfl | rfl
+    · exact Or.inl hm
+    · grind [CatName]
+    · grind [CatName]
+    · grind [CatName]
+
+/-- **The answers of an operation `catOp` translates, at a skip predicate**: when `Sk` admits
+    at a call named by `CatName` only the answer of the handler of `T`, every leaf of the tree
+    of an operation that `catOp` translates, reached through answers `Sk` admits, is the
+    denotation of the operation at `T`. -/
+theorem retsA_opTree_catOp {T : NfLeafTable} {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler T e) {Γ : Ctxt nfDialect}
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) :
+    ∀ (op : NfOp) (args : HVector (fun t => Var Γ t) op.sig) (res : OpRes Δ op.ret),
+      catOp σ op args = some res → ∀ (xs : HVector NfTy.denote op.sig) (s : Option op.ret.denote),
+      RetsA Sk (opTree op xs) s → s = nfDenoteOp T op xs := by
+  intro op
+  induction op with
+  | named n op ih => exact ih
+  | call f as r =>
+    intro args res h xs s hs
+    have hf : CatName f := catName_of_catCallRd h
+    cases hs with
+    | vis ha hr =>
+      cases hr
+      exact hSk _ _ hf ha
+  | _ =>
+    intro args res h xs s hs
+    cases hs
+    rfl
+
+/-- The tree of a declared leaf call: the tree of an operation that `extArgs` reads as a call
+    of `f` on the readings `rs` is related to `t₂` by `RuttSA` when the event of the call is,
+    at every argument vector the readings relate. -/
+theorem ruttSA_opTree_extArgs {D : List ExtDecl} {Γ : Ctxt nfDialect}
+    {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) {V : Valuation Γ} {W : Valuation Δ}
+    (hag : σ.Agree V W) {R₁ R₂ : Type} {RR : R₁ → R₂ → Prop} {Fail : R₁ → Prop}
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop} {E₂ : EventSig}
+    {RE : leafSig.Event → E₂.Event → Prop}
+    {RA : (e₁ : leafSig.Event) → (e₂ : E₂.Event) → leafSig.Resp e₁ → E₂.Resp e₂ → Prop}
+    (op : NfOp) :
+    ∀ (args : HVector (fun t => Var Γ t) op.sig) (f : String) (as : List NfTy)
+      (rs : HVector (fun t => Rd Δ t) as), extArgs D σ op args = some (f, ⟨as, rs⟩) →
+      ∀ (K : Option op.ret.denote → CallTree leafSig R₁) (t₂ : CallTree E₂ R₂),
+      (∀ xs : HVector NfTy.denote as, RdRelL W as xs rs →
+        RuttSA Sk RE RA RR Fail
+          (.vis (⟨f, as, op.ret, xs⟩ : LeafCall) fun y => (CallTree.ret y).bind K) t₂) →
+      RuttSA Sk RE RA RR Fail ((opTree op (Expr.lookupArgs args V)).bind K) t₂ := by
+  induction op with
+  | named n op ih => exact ih
+  | call g bs r =>
+    intro args f as rs h K t₂ H
+    unfold extArgs at h
+    split at h
+    · cases h
+      exact H _ (TRd.rdRelL_rds hag args)
+    · cases h
+  | _ =>
+    intro args f as rs h
+    cases h
+
+/-- **The stage statement of the translation with declarations at a skip predicate**, for the
+    program `p`: the statement `NFExtTree` with `RuttSA Sk` in place of `RuttS` at the source
+    handler. -/
+def NFExtTreeA (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) (D : List ExtDecl)
+    (tE : TreeCallEnv leafSig nfDialect) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Prop :=
+  ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (p' : NFProg catCryptDialect Δ (ts.map catTy)),
+    nfToCatExt D p σ = some p' → ∀ (V : Valuation Γ) (W : Valuation Δ), σ.Agree V W →
+    ∀ tf fuel, tf ≤ fuel →
+      RuttSA Sk ExtRE ExtRA (OutRel (VRelL ts)) (fun o => o = none)
+        (treeAt linkReader tE tf p V) (nfProgTree fuel p' W)
+
+/-- The relation by `RuttSA Sk` of a source tree `t₁` to the tree with call events of a
+    program of `catCryptDialect` at a valuation. -/
+def TQA (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) {ts : List NfTy}
+    (t₁ : CallTree leafSig (Option (Valuation (d := nfDialect) ts))) (fuel : Nat)
+    {Δ : Ctxt catCryptDialect} (p' : NFProg catCryptDialect Δ (ts.map catTy))
+    (W : Valuation Δ) : Prop :=
+  RuttSA Sk ExtRE ExtRA (OutRel (VRelL ts)) (fun o => o = none) t₁ (nfProgTree fuel p' W)
+
+/-- `TQA` is closed under let-bindings of the target. -/
+theorem TQA_var (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) {ts : List NfTy}
+    (t₁ : CallTree leafSig (Option (Valuation (d := nfDialect) ts))) (fuel : Nat)
+    {Δ : Ctxt catCryptDialect} {c : CryptoTy} (e : Expr catCryptDialect Δ c)
+    (k : NFProg catCryptDialect (c :: Δ) (ts.map catTy)) (W : Valuation Δ)
+    (h : TQA Sk t₁ fuel k (W.extend (e.denote W))) : TQA Sk t₁ fuel (.var e k) W := by
+  unfold TQA at h ⊢
+  rwa [nfProgTree_var]
+
+/-- **The stage statement of the translation with declarations at a skip predicate, with the
+    declaration of each call**: the statement `NFExtTreeA` at the event relation that adds to
+    `ExtRE` that `D` declares the source call at its signature. -/
+def NFExtTreeAD (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) (D : List ExtDecl)
+    (tE : TreeCallEnv leafSig nfDialect) {Γ : Ctxt nfDialect} {ts : List NfTy}
+    (p : NFProg nfDialect Γ ts) : Prop :=
+  ∀ {Δ : Ctxt catCryptDialect} (σ : TRd Γ Δ) (p' : NFProg catCryptDialect Δ (ts.map catTy)),
+    nfToCatExt D p σ = some p' → ∀ (V : Valuation Γ) (W : Valuation Δ), σ.Agree V W →
+    ∀ tf fuel, tf ≤ fuel →
+      RuttSA Sk (fun e₁ e₂ => ExtRE e₁ e₂ ∧ declared D e₁.name e₁.argTys e₁.ret = true) ExtRA
+        (OutRel (VRelL ts)) (fun o => o = none)
+        (treeAt linkReader tE tf p V) (nfProgTree fuel p' W)
+
+/-- The relation `TQA` at the event relation of `NFExtTreeAD`. -/
+def TQAD (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) (D : List ExtDecl)
+    {ts : List NfTy} (t₁ : CallTree leafSig (Option (Valuation (d := nfDialect) ts)))
+    (fuel : Nat) {Δ : Ctxt catCryptDialect} (p' : NFProg catCryptDialect Δ (ts.map catTy))
+    (W : Valuation Δ) : Prop :=
+  RuttSA Sk (fun e₁ e₂ => ExtRE e₁ e₂ ∧ declared D e₁.name e₁.argTys e₁.ret = true) ExtRA
+    (OutRel (VRelL ts)) (fun o => o = none) t₁ (nfProgTree fuel p' W)
+
+/-- `TQAD` is closed under let-bindings of the target. -/
+theorem TQAD_var (Sk : (e : leafSig.Event) → leafSig.Resp e → Prop) (D : List ExtDecl)
+    {ts : List NfTy} (t₁ : CallTree leafSig (Option (Valuation (d := nfDialect) ts)))
+    (fuel : Nat) {Δ : Ctxt catCryptDialect} {c : CryptoTy} (e : Expr catCryptDialect Δ c)
+    (k : NFProg catCryptDialect (c :: Δ) (ts.map catTy)) (W : Valuation Δ)
+    (h : TQAD Sk D t₁ fuel k (W.extend (e.denote W))) : TQAD Sk D t₁ fuel (.var e k) W := by
+  unfold TQAD at h ⊢
+  rwa [nfProgTree_var]
+
+/-- **The stage lemma of `extCallStep` at a skip predicate, with the declaration of each
+    call.** Under `SubTable bi`, at a skip predicate `Sk` that admits at a call named by
+    `CatName` only the answer of the leaf table of `bi`, the translation with declarations
+    satisfies `NFExtTreeAD Sk`: a declared leaf call is an event related by `ExtRE` and
+    `ExtRA` to the call node of the target and declared by `D` at its signature, a leaf call
+    that `catOp` translates is a source event skipped at `Sk`, and every other operation is no
+    event. -/
+theorem nfToCatExt_ruttSAD {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (ImpToNF.tableOf bi) e)
+    (D : List ExtDecl) (tE : TreeCallEnv leafSig nfDialect) {Γ : Ctxt nfDialect}
+    {ts : List NfTy} (p : NFProg nfDialect Γ ts) : NFExtTreeAD Sk D tE p := by
+  induction p with
+  | ret vs =>
+    intro Δ σ p' h V W hag tf fuel _
+    refine pinAll_elimQ (Q := fun p' W => TQAD Sk D
+        (treeAt linkReader tE tf (.ret vs) V) fuel p' W)
+      (fun e k W hk => TQAD_var _ _ _ _ e k W hk) _ V (Expr.lookupArgs vs V) ?_ σ _ p' W h hag
+      (TRd.rdRelL_rds hag vs)
+    intro Δ' σ' ws p'' W' hk _ hrel
+    cases hk
+    exact .ret fun a ha => by cases ha; exact ⟨_, rfl, hrel⟩
+  | var e k ih =>
+    intro Δ σ p' h V W hag tf fuel hle
+    obtain ⟨op, rfl, args⟩ := e
+    change emitOp D (fun σ' => nfToCatExt D k σ') σ op rfl args = some p' at h
+    unfold emitOp at h
+    change RuttSA _ _ _ _ _ (obind (opTree op (Expr.lookupArgs args V))
+      fun x => treeAt linkReader tE tf k (V.extend x)) _
+    unfold obind
+    split at h
+    · rename_i res hres
+      refine RuttSA.skip_bind _ fun s hs => ?_
+      obtain rfl := retsA_opTree_catOp hSk σ op args res hres _ s hs
+      cases hy : nfDenoteOp (ImpToNF.tableOf bi) op (Expr.lookupArgs args V) with
+      | none => exact .fail rfl
+      | some y =>
+        exact emitRes_elim (fun p' W => TQAD Sk D
+            (treeAt linkReader tE tf k (V.extend y)) fuel p' W)
+          (fun e k W hk => TQAD_var _ _ _ _ e k W hk) _ V y
+          (fun σ' p'' W' hk hag' => ih σ' p'' hk _ W' hag' tf fuel hle) res σ W p' h hag
+          (catOp_sound hbi σ hag op args res y hres hy)
+    · obtain ⟨c, hc, h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨f, as, rs⟩ := c
+      have hdecl : declared D f as op.ret = true := by
+        obtain ⟨d, hd, hn, ha, hr, hw⟩ := extArgs_declared σ op args f as rs hc
+        exact declared_iff.mpr ⟨d, hd, hn.symm, ha.symm, hr.symm, hw⟩
+      refine ruttSA_opTree_extArgs σ hag op args f as rs hc _ _ fun xs hxs => ?_
+      refine pinAll_elimQ (Q := fun p' W => TQAD Sk D _ fuel p' W)
+        (fun e k W hk => TQAD_var _ _ _ _ e k W hk) _ V xs ?_ σ rs p' W h hag hxs
+      intro Δ' σ' ws p'' W' hk hag' hws
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+      refine .vis ⟨⟨rfl, rfl, rfl, hws⟩, hdecl⟩ fun a₁ a₂ ha => ?_
+      cases a₁ with
+      | none => exact .fail rfl
+      | some y =>
+        obtain ⟨y', hy', hrel⟩ := ha y rfl
+        cases eq_of_heq hy'
+        exact ih σ'.lift k' hk' (V.extend y) (W'.extend y') (TRd.agree_lift hag' hrel) tf
+          fuel hle
+  | @forLoop Γ₀ cs ts₀ count inits body k ihb ihk =>
+    intro Δ σ p' h V W hag tf fuel hle
+    refine pinAll_elimQ (ts := .word 64 :: cs) (Q := fun p' W => TQAD Sk D
+        (treeAt linkReader tE tf (.forLoop count inits body k) V) fuel p' W)
+      (fun e k W hk => TQAD_var _ _ _ _ e k W hk) _ V
+      (Expr.lookupArgs (HVector.cons count inits) V) ?_ σ _ p' W h hag
+      (TRd.rdRelL_rds hag (HVector.cons count inits))
+    intro Δ' σ' ws p'' W' hk hag' hrel
+    rcases ws with _ | ⟨c, is⟩
+    obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+    have hc2 : HasWord64.toNat (d := catCryptDialect) ((HVector.cons c is).head.lookup W') =
+        HasWord64.toNat (d := nfDialect) (count.lookup V) := by
+      rw [hrel.1]
+      rfl
+    simp only [TQAD, nfProgTree, treeAt]
+    rw [hc2]
+    refine ruttSA_obind (ruttSA_ofoldl (fun acc acc' i hacc => ?_) _ _ _ hrel.2)
+      fun a b hab => ihk (TRd.liftApp cs σ') k' hk' _ _ (TRd.agree_liftApp hag' cs a b hab)
+        tf fuel hle
+    exact ihb (TRd.liftApp cs (TRd.lift σ')) body' hb' _ _
+      (TRd.agree_liftApp (TRd.agree_lift (s := NfTy.word 64) hag'
+        (x := BitVec.ofNat 64 i) (y := BitVec.ofNat 64 i) rfl) cs acc acc' hacc) tf fuel hle
+  | @ifThenElse Γ₀ rs ts₀ cond thn els k iht ihe ihk =>
+    intro Δ σ p' h V W hag tf fuel hle
+    have hcond := hag _ cond
+    simp only [nfToCatExt] at h
+    split at h
+    · rename_i c hc
+      rw [hc] at hcond
+      obtain ⟨thn', ht', h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨els', he', h⟩ := Option.bind_eq_some_iff.mp h
+      obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp h
+      have hcb : HasBoolBit.toBool (d := catCryptDialect) (c.lookup W) =
+          HasBoolBit.toBool (d := nfDialect) (cond.lookup V) := hcond.symm
+      simp only [nfProgTree, treeAt]
+      rw [hcb]
+      refine ruttSA_obind ?_ fun r r' hr =>
+        ihk (TRd.liftApp rs σ) k' hk' _ _ (TRd.agree_liftApp hag rs r r' hr) tf fuel hle
+      cases HasBoolBit.toBool (d := nfDialect) (cond.lookup V)
+      · exact ihe σ els' he' V W hag tf fuel hle
+      · exact iht σ thn' ht' V W hag tf fuel hle
+    · cases h
+  | @whileLoop Γ₀ cs ts₀ inits body k ihb ihk =>
+    intro Δ σ p' h V W hag tf fuel hle
+    refine pinAll_elimQ (ts := cs) (Q := fun p' W => TQAD Sk D
+        (treeAt linkReader tE tf (.whileLoop inits body k) V) fuel p' W)
+      (fun e k W hk => TQAD_var _ _ _ _ e k W hk) _ V (Expr.lookupArgs inits V) ?_ σ _ p' W h hag
+      (TRd.rdRelL_rds hag inits)
+    intro Δ' σ' ws p'' W' hk hag' hrel
+    obtain ⟨body', hb', hk⟩ := Option.bind_eq_some_iff.mp hk
+    obtain ⟨k', hk', rfl⟩ := Option.map_eq_some_iff.mp hk
+    simp only [TQAD, nfProgTree, treeAt]
+    refine ruttSA_obind (ruttSA_owhileIter (R := VRelL cs) (fun a a' ha => ?_) tf fuel hle _ _
+      hrel) fun a b hab => ihk (TRd.liftApp cs σ') k' hk' _ _
+        (TRd.agree_liftApp hag' cs a b hab) tf fuel hle
+    refine RuttSA.mono ?_ (ihb (TRd.liftApp cs σ') body' hb' _ _
+      (TRd.agree_liftApp hag' cs a a' ha) tf fuel hle)
+    intro o o' ho r hr
+    obtain ⟨r', hr', hR⟩ := ho r hr
+    refine ⟨r', hr', ?_⟩
+    rcases r with _ | ⟨b, r⟩
+    rcases r' with _ | ⟨b', r'⟩
+    exact ⟨hR.2, hR.1⟩
+  | call f args k _ =>
+    intro Δ σ p' h
+    cases h
+
+/-- **The stage lemma of `extCallStep` at a skip predicate.** Under `SubTable bi`, at a skip
+    predicate `Sk` that admits at a call named by `CatName` only the answer of the leaf table
+    of `bi`, the translation with declarations satisfies `NFExtTreeA Sk`: a declared leaf call
+    is an event related by `ExtRE` and `ExtRA` to the call node of the target, a leaf call
+    that `catOp` translates is a source event skipped at `Sk`, and every other operation is no
+    event. -/
+theorem nfToCatExt_ruttSA {bi : _root_.Hax.Builtins} (hbi : SubTable bi)
+    {Sk : (e : leafSig.Event) → leafSig.Resp e → Prop}
+    (hSk : ∀ e a, CatName e.name → Sk e a → a = leafHandler (ImpToNF.tableOf bi) e)
+    (D : List ExtDecl) (tE : TreeCallEnv leafSig nfDialect) {Γ : Ctxt nfDialect}
+    {ts : List NfTy} (p : NFProg nfDialect Γ ts) : NFExtTreeA Sk D tE p :=
+  fun σ p' h V W hag tf fuel hle =>
+    RuttSA.imp (fun _ _ h => h) (fun _ _ h => h.1) (fun _ _ _ _ _ h => h) (fun _ _ h => h)
+      (fun _ h => h) (nfToCatExt_ruttSAD hbi hSk D tE p σ p' h V W hag tf fuel hle)
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeExt

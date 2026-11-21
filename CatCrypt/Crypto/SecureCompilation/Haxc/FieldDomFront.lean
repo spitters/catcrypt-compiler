@@ -16,21 +16,21 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.RegionPhysImgGate
 The fields of `FieldDomComplete.FieldDomStages` for the front stages that hold on every
 module the translation accepts, and on every program that passes `regionExportableB`, proved
 as theorems from the completeness lemmas of the stages: the chain `extChain` after
-`refusal?` (`F2`), the export test on its output (`F3`), the legalisation (`F5`), the export
-(`F6`), the allocation (`F8`) and the first printed body (`F9`). Each theorem has the type of
-its field.
+`refusal?` (field `chainNF`), the export test on its output (`exportable`), the legalisation
+(`legalize`), the export (`exportRSome`), the allocation (`regionLprogCSome`) and the first
+printed body (`firstBodySome`). Each theorem has the type of its field.
 
 ## Main results
 
-* `fieldDom_chainNF` — stage `F2`: on a module `refusal?` accepts, `chainNF` returns a program.
-* `fieldDom_exportable` — stage `F3`: that program passes `regionExportableB`.
-* `fieldDom_legalize` — stage `F5`: `legalizeRegion` keeps `regionExportableB`.
-* `fieldDom_exportRSome` — stage `F6`: `exportR` returns code on a program that passes
+* `fieldDom_chainNF` — the chain check: on a module `refusal?` accepts, `chainNF` returns a program.
+* `fieldDom_exportable` — the export test: that program passes `regionExportableB`.
+* `fieldDom_legalize` — the legalisation: `legalizeRegion` keeps `regionExportableB`.
+* `fieldDom_exportRSome` — the export: `exportR` returns code on a program that passes
   `regionExportableB`.
-* `fieldDom_regionLprogCSome` — stage `F8`: the allocation returns a program when the export
+* `fieldDom_regionLprogCSome` — the allocation: it returns a program when the export
   does.
-* `fieldDom_firstBodySome` — stage `F9`: the printed program of an allocation has a first
-  body.
+* `fieldDom_firstBodySome` — the first printed body: the printed program of an allocation has a
+  first body.
 -/
 
 set_option autoImplicit false
@@ -44,7 +44,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport.ExportRegions
 open CatCrypt.Crypto.Hax (HaxModule)
 
-/-- **Stage `F2`**: on a module `refusal?` accepts, the translation and the chain `extChain`
+/-- **The chain check**: on a module `refusal?` accepts, the translation and the chain `extChain`
     return a program (`HaxModule.refusal?_eq_none_imp_extChain_isSome` at the table of the
     entry). -/
 theorem fieldDom_chainNF {m : HaxModule} {σ : AbiLayout} (hr : m.refusal? σ = none) :
@@ -56,7 +56,7 @@ theorem fieldDom_chainNF {m : HaxModule} {σ : AbiLayout} (hr : m.refusal? σ = 
     _ q.1).run q.2).map fun p => (⟨_, p⟩ : Σ t : JasminTy, NFProg jasminDialect (nfCtx σ) [t])) = _
   rw [hp, Option.bind_some, hq, Option.map_some]
 
-/-- **Stage `F3`**: the output of the chain on a module `refusal?` accepts passes
+/-- **The export test**: the output of the chain on a module `refusal?` accepts passes
     `regionExportableB` (`HaxModule.refusal?_eq_none_imp_export_isSome`). -/
 theorem fieldDom_exportable {m : HaxModule} {σ : AbiLayout} {t : JasminTy}
     {q : NFProg jasminDialect (nfCtx σ) [t]} (hr : m.refusal? σ = none)
@@ -68,21 +68,21 @@ theorem fieldDom_exportable {m : HaxModule} {σ : AbiLayout} {t : JasminTy}
   cases hq
   exact hE
 
-/-- **Stage `F5`**: the legalised program passes `regionExportableB`
+/-- **The legalisation**: the legalised program passes `regionExportableB`
     (`regionExportableB_legalizeRegion`, `regionExportableRorB_eq`). -/
 theorem fieldDom_legalize {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} (hq : regionExportableB q = true) :
     regionExportableB (legalizeRegion q) = true :=
   regionExportableB_legalizeRegion ((regionExportableRorB_eq q).trans hq)
 
-/-- **Stage `F6`**: the export returns code on a program that passes `regionExportableB`
+/-- **The export**: the export returns code on a program that passes `regionExportableB`
     (`exportR_isSome_of_regionExportableB`). -/
 theorem fieldDom_exportRSome {Γ : Ctxt jasminDialect} {ts : List JasminTy}
     {q : NFProg jasminDialect Γ ts} (hq : regionExportableB q = true) (nArgs : Nat)
     (fn : String) (d n : Nat) : ∃ r0, exportR nArgs fn q d n = some r0 :=
   Option.isSome_iff_exists.mp (ExportComplete.exportR_isSome_of_regionExportableB hq nArgs fn d n _)
 
-/-- **Stage `F8`**: the allocation `regionLprogC` returns a program when the export does; the
+/-- **The allocation**: the allocation `regionLprogC` returns a program when the export does; the
     allocation stage refuses nothing after the export (as in `regionLprog_isSome_iff_exportR`). -/
 theorem fieldDom_regionLprogCSome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {r0 : Exported} (ex : List String)
@@ -91,8 +91,8 @@ theorem fieldDom_regionLprogCSome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : 
   simp only [regionLprogC, regionAllocC, exportRLfundef, hr0, Option.bind_some, Option.map_some]
   exact ⟨_, _, rfl⟩
 
-/-- **Stage `F9`**: the printed program of an allocation has a first body: the allocation
-    returns a one-function program, and the post-pass and the printer keep its function
+/-- **The first printed body**: the printed program of an allocation has a first body: the
+    allocation returns a one-function program, and the post-pass and the printer keep its function
     (`firstBody_regionPrinted`, `firstBody_printedLprog_regionPostFuse`). -/
 theorem fieldDom_firstBodySome {a : AbiNames} {Γ : Ctxt jasminDialect} {t : JasminTy}
     {q : NFProg jasminDialect Γ [t]} {ex : List String} {P : Lprog}

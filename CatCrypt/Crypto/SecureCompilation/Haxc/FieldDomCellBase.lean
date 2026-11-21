@@ -28,7 +28,8 @@ cell of a renamed parameter.
 * `renOf_certArgs_argName_ne_R14` — no renamed parameter is `R14`.
 * `cellNameFree_of_cellBase` — a body whose cells have the base `R14` names no cell of a
   renamed parameter.
-* `fieldDom_cellNamesRB_of_cellBase` — the stage `G20` on `fieldDomB'` under `CellBaseScratch`.
+* `fieldDom_cellNamesRB_of_cellBase` — the cell names check `cellNamesRB` on `fieldDomB'` under
+  `CellBaseScratch`.
 -/
 
 set_option autoImplicit false
@@ -111,10 +112,10 @@ theorem cellNameFree_of_cellBase {B : Lcmd} {tbl : Array Nat} (hc : bodyHasCall 
     (hb : CellBaseScratch b) : CellNameFree σ (certArgs σ (allocCertOf B tbl)) b :=
   fun j _ o hm => renOf_certArgs_argName_ne_R14 hc j (hb _ o hm)
 
-/-! ## 3. The stage `G20` -/
+/-! ## 3. The cell names check `cellNamesRB` -/
 
-/-- **Stage `G20` on `fieldDomB'`**: the gate does not refuse at the cell names, when every
-    cell name of the printed body has the base `R14`. -/
+/-- **The cell names check `cellNamesRB` on `fieldDomB'`**: the gate does not refuse at the
+    cell names, when every cell name of the printed body has the base `R14`. -/
 theorem fieldDom_cellNamesRB_of_cellBase (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hb : CellBaseScratch b) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB" := by

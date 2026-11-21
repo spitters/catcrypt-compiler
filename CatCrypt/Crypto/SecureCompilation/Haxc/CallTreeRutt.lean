@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkContract
 public import PolyFun.ITree.Bisim.CrossSignature
+public import PolyFun.ITree.Free
 
 /-!
 # Finite call trees embedded in the interaction trees of PolyFun
@@ -23,7 +24,6 @@ that `Rutt` carries. Bisimilar images give `RuttS` at every source handler and f
 
 ## Main definitions
 
-* `sigPF`: the polynomial functor of an event signature.
 * `toITree`: the embedding of finite call trees in interaction trees.
 * `sigRel`: the relation of event signatures given by an event and an answer relation.
 
@@ -49,24 +49,28 @@ open _root_.ITree (CrossSignatureWeakBisim EventSignatureRel TauSteps shape'_pur
 
 /-! ## The embedding -/
 
-/-- The polynomial functor of an event signature: positions are events, directions answers. -/
-def sigPF (E : EventSig) : PFunctor.{0, 0} where
-  A := E.Event
-  B := E.Resp
+/-- The interaction tree of a finite call tree: PolyFun's tau-free embedding
+    `PFunctor.FreeM.toITree` of the free-monad program. -/
+def toITree {E : EventSig} {R : Type} (t : CallTree E R) : _root_.ITree (sigPF E) R :=
+  PFunctor.FreeM.toITree t
 
-/-- The interaction tree of a finite call tree: a leaf is a `pure` node and an event a `query`
-    node. The image has no silent steps. -/
-def toITree {E : EventSig} {R : Type} : CallTree E R → _root_.ITree (sigPF E) R
-  | .ret r => _root_.ITree.pure r
-  | .vis e c => _root_.ITree.query e (fun a => toITree (c a))
+/-- A leaf is a `pure` node. -/
+@[simp] theorem toITree_ret {E : EventSig} {R : Type} (r : R) :
+    toITree (.ret r : CallTree E R) = _root_.ITree.pure r :=
+  PFunctor.FreeM.toITree_pure r
+
+/-- An event is a `query` node. -/
+@[simp] theorem toITree_vis {E : EventSig} {R : Type} (e : E.Event) (c : E.Resp e → CallTree E R) :
+    toITree (.vis e c) = _root_.ITree.query (F := sigPF E) e (fun a => toITree (c a)) :=
+  PFunctor.FreeM.toITree_liftBind (E := sigPF E) e c
 
 /-- The embedding commutes with sequencing. -/
 theorem toITree_bind {E : EventSig} {α β : Type} (t : CallTree E α) (k : α → CallTree E β) :
     toITree (t.bind k) = _root_.ITree.bind (toITree t) (fun a => toITree (k a)) := by
   induction t with
-  | ret a => simp only [CallTree.bind, toITree, _root_.ITree.bind_pure_left]
+  | ret a => simp only [CallTree.bind, toITree_ret, _root_.ITree.bind_pure_left]
   | vis e c ih =>
-    simp only [CallTree.bind, toITree]
+    simp only [CallTree.bind, toITree_vis]
     exact (congrArg (_root_.ITree.query (F := sigPF E) e) (funext ih)).trans
       (_root_.ITree.bind_query (F := sigPF E) e (fun a => toITree (c a)) _).symm
 
@@ -155,11 +159,11 @@ theorem crossSignatureWeakBisim_of_rutt {t₁ : CallTree E₁ R₁} {t₂ : Call
     CrossSignatureWeakBisim (sigRel RE RA) RR (toITree t₁) (toITree t₂) := by
   induction h with
   | ret h =>
-    simp only [toITree]
+    simp only [toITree_ret]
     exact .pure h
   | fail h => exact h.elim
   | vis he _ ih =>
-    simp only [toITree]
+    simp only [toITree_vis]
     exact .query _ _ he _ _ ih
 
 /-- `CrossSignatureWeakBisim` of the images gives `Rutt` at the empty failure predicate. -/
@@ -170,18 +174,18 @@ theorem rutt_of_crossSignatureWeakBisim {t₁ : CallTree E₁ R₁} {t₂ : Call
   | ret r₁ =>
     cases t₂ with
     | ret r₂ =>
-      simp only [toITree] at h
+      simp only [toITree_ret] at h
       exact .ret (cswb_pure_pure_inv h)
     | vis e c =>
-      simp only [toITree] at h
+      simp only [toITree_ret, toITree_vis] at h
       exact (cswb_pure_query_false h).elim
   | vis e₁ k₁ ih =>
     cases t₂ with
     | ret r₂ =>
-      simp only [toITree] at h
+      simp only [toITree_ret, toITree_vis] at h
       exact (cswb_query_pure_false h).elim
     | vis e₂ k₂ =>
-      simp only [toITree] at h
+      simp only [toITree_vis] at h
       obtain ⟨he, hk⟩ := cswb_query_query_inv h
       exact .vis he fun a₁ a₂ ha => ih a₁ (hk a₁ a₂ ha)
 

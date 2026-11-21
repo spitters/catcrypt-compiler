@@ -22,7 +22,7 @@ empty name.
 
 * `regionNopB_of_parts`: the check from the shape of the code, written names that are not
   empty and a merge that sends no other name to the empty name.
-* `fieldDom_regionNopB`: the stage `G9` on the field domain.
+* `fieldDom_regionNopB`: the liveness check `regionNopB` on the field domain.
 -/
 
 set_option autoImplicit false
@@ -106,8 +106,8 @@ theorem regionCoStage_ne_regionNopB {nm : String → String} {code : List Linstr
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G9` on the field domain**: the gate does not refuse at the liveness check of the
-    merged code `regionNopB`. -/
+/-- **The liveness check on the field domain**: the gate does not refuse at the liveness check
+    of the merged code `regionNopB`. -/
 theorem fieldDom_regionNopB (h : fieldDomB e σ = true) (hB : FieldBody e σ fname b t r cert) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "regionNopB" := by
   refine regionCoStage_ne_regionNopB ?_

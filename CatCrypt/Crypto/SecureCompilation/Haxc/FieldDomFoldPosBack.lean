@@ -9,8 +9,8 @@ import CatCrypt.Crypto.SecureCompilation.Haxc.FieldDomAssemble
 /-!
 # Known indices through the back half of the region gate
 
-The fold positions `FoldPos` of the stage `G12` ask, at every array access of the code behind
-the prefix of the parts, that the index register holds a known constant (`KnownAt`). The
+The fold positions `FoldPos` of the cell fold check `regionFoldB` ask, at every array access of the
+code behind the prefix of the parts, that the index register holds a known constant (`KnownAt`). The
 export of a program of the shape `LoadsChainK` has this property (`IdxKnown`,
 `loadsChainK_export_knownAt`). The back half of the gate reaches the code of `FoldPos` from
 the export through position-preserving maps (the webs and the coalescing rename array

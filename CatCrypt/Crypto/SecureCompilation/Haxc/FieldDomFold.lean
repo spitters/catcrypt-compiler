@@ -24,8 +24,8 @@ field domain, and the stage reduces to the cell fold of the code.
 * `certArgs_not_cell` — no source or target of the pairs of an allocation certificate of a
   body without a call is a cell name.
 * `regionCoStage_ne_regionFoldB` — the stage from the condition on the parts alone.
-* `fieldDom_regionFoldB_of_cellFold` — the stage `G12` on the field domain, when the parts have
-  no cell array or the code behind the prefix has a cell fold.
+* `fieldDom_regionFoldB_of_cellFold` — the cell fold check `regionFoldB` on the field domain, when
+  the parts have no cell array or the code behind the prefix has a cell fold.
 -/
 
 set_option autoImplicit false
@@ -99,7 +99,7 @@ theorem certArgs_not_cell {B : Lcmd} {tbl : Array Nat} (hc : bodyHasCall B = fal
   rw [h1, h2']
   rfl
 
-/-! ## 2. The stage `G12` -/
+/-! ## 2. The cell fold check `regionFoldB` -/
 
 /-- The gate does not refuse at `regionFoldB` when the cell fold check accepts. -/
 theorem regionCoStage_ne_regionFoldB {nm : String → String} {code : List LinstrRM}
@@ -113,9 +113,9 @@ theorem regionCoStage_ne_regionFoldB {nm : String → String} {code : List Linst
   repeat refine RegionCoComplete.ite_ne_some (by simp) ?_
   exact (Option.some_ne_none _).symm
 
-/-- **Stage `G12` on the field domain**: the gate does not refuse at the cell fold, when the
-    parts have no cell array or the code behind the prefix has a cell fold at the cell
-    arrays. -/
+/-- **The cell fold check `regionFoldB` on the field domain**: the gate does not refuse at the
+    cell fold, when the parts have no cell array or the code behind the prefix has a cell
+    fold at the cell arrays. -/
 theorem fieldDom_regionFoldB_of_cellFold (h : fieldDomB e σ = true)
     (hB : FieldBody e σ fname b t r cert)
     (hf : (regionCoParts σ exportReg b t r.code r.res cert).cells.isEmpty = true

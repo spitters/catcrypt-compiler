@@ -31,8 +31,8 @@ its self move (`KnownAt`).
 * `kval_knownAt`: the constants of the fold at a position give the known constant.
 * `foldOne_of_keepB`: an operation that names no cell array and no cell is kept.
 * `cellFoldLR_isSome_of_foldPos`: the fold succeeds on a code of `FoldPos` positions.
-* `fieldDom_regionFoldB_of_foldPos`: the stage `G12` on the field domain when the code behind
-  the prefix is of `FoldPos` positions at the cell arrays.
+* `fieldDom_regionFoldB_of_foldPos`: the cell fold check `regionFoldB` on the field domain
+  when the code behind the prefix is of `FoldPos` positions at the cell arrays.
 -/
 
 set_option autoImplicit false
@@ -245,13 +245,13 @@ theorem cellFoldLR_isSome_of_foldPos {R : Slots} {C : List LinstrRM}
       rw [ha, hl]
       rfl
 
-/-! ## 3. The stage `G12` -/
+/-! ## 3. The cell fold check `regionFoldB` -/
 
 variable {e : _root_.Hax.TExpr} {σ : AbiLayout} {fname : String} {b : Lcmd} {t : JasminTy}
   {r : Exported} {cert : List (String × String)}
 
-/-- **Stage `G12` on the field domain** when the code behind the prefix of the parts is of
-    `FoldPos` positions at their cell arrays. -/
+/-- **The cell fold check `regionFoldB` on the field domain** when the code behind the prefix of the
+    parts is of `FoldPos` positions at their cell arrays. -/
 theorem fieldDom_regionFoldB_of_foldPos (h : fieldDomB e σ = true)
     (hB : FieldBody e σ fname b t r cert)
     (hf : ∀ k i, ((regionCoParts σ exportReg b t r.code r.res cert).fused.drop

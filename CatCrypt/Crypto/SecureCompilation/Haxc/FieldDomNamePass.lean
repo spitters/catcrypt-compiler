@@ -1097,7 +1097,8 @@ theorem stackReadFreeB_of_allocFoldOK (hB : FieldBody e σ fname b t r cert)
     (hA : AllocFoldOK e σ fname) : stackReadFreeB b = true :=
   stackReadFreeB_of_namesOK (namesOK_fieldBody hB hA)
 
-/-- **Stage `G20` on `fieldDomB'`** when the allocated function is of `FoldOK` instructions. -/
+/-- **The cell names check `cellNamesRB` on `fieldDomB'`** when the allocated function is of
+    `FoldOK` instructions. -/
 theorem fieldDom_cellNamesRB_of_allocFoldOK (h : fieldDomB' e σ = true)
     (hB : FieldBody e σ fname b t r cert) (hA : AllocFoldOK e σ fname) :
     regionCoStage σ exportReg b t r.code r.res cert none fname ≠ some "cellNamesRB" :=

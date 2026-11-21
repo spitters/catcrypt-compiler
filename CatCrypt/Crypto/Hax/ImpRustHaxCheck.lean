@@ -13,8 +13,9 @@ public import CatCrypt.Crypto.Hax.ImpEval
 
 `ppImpRust ty e` (`CatCrypt.Crypto.Hax.ImpRustPrint`) prints a hax expression
 `e` as Rust text.  The hax frontend (`cargo hax json`, then
-`Hax.HaxAdapter.parseHaxExpr` followed by `reconstructForLoops` and
-`normalizeAssignOps`, the passes `parseHaxItem` applies to a function body)
+`Hax.HaxAdapter.parseHaxTExpr` followed by `reconstructForLoopsTExpr`,
+`normalizeAssignOpsTExpr` and `TExpr.erase`, the passes `parseHaxItemTExpr` applies to a
+function body)
 reads that text back as an expression `x` of a slightly different shape.
 `normHaxRead` maps `x` to the printer's input shape, and the per-program check
 `haxReadAgrees e x` compares the result with `e`.
