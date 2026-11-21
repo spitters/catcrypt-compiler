@@ -1,0 +1,8 @@
+# Source: RFC 7693, Appendix B (BLAKE2s-256 of the three ASCII bytes "abc", unkeyed).
+# URL: https://www.rfc-editor.org/rfc/rfc7693.txt
+# File sha256: c943754888364fe29bbd0bb3c71c6658ef392371497eaa4a9d9dde015b0721e5
+# Retrieved: 2026-11-20. Hash bytes copied from the line `BLAKE2s-256("abc") = ...`.
+# The BLAKE2 reference file blake2s-kat.txt holds keyed vectors only (key 00..1f), so it
+# gives no vector for the unkeyed specification.
+msg = 616263
+hash = 508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982

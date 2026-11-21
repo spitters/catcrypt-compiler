@@ -187,10 +187,10 @@ CatCrypt.Crypto.Pairing.MsmReduceDenote
 CatCrypt.Crypto.PrimeIR.Proof.Fp256MontBytesPow
 CatCrypt.Crypto.Primitives.HMAC_BLAKE2s
 CatCrypt.Crypto.Primitives.HMAC_SHA512
-CatCrypt.Crypto.Primitives.KeccakArray
 CatCrypt.Crypto.Primitives.Poly1305
 CatCrypt.Crypto.Primitives.RandomOracle
 CatCrypt.Crypto.Primitives.SHA256Rounds
+CatCrypt.Crypto.Primitives.SpecKat
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAllocValid
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmAsmSim
 CatCrypt.Crypto.SecureCompilation.ARMBackend.ArmBignumKernel
