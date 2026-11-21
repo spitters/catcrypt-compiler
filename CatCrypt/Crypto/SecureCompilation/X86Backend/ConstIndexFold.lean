@@ -830,7 +830,7 @@ theorem foldCore_gather (p : Nat × Nat × Nat) (ex : List String) :
         | none => simp [hi] at h
         | some js =>
             cases hrest : gatherList p is with
-            | none => simp [gatherList, hi] at h hrest; simp [hrest] at h
+            | none => simp only [gatherList] at hrest; simp [hi, hrest] at h
             | some rest =>
                 simp only [gatherList] at hrest
                 simp only [hi, hrest, Option.bind_eq_bind, Option.bind_some,
@@ -1205,7 +1205,7 @@ theorem gatherList_cons (p : Nat × Nat × Nat) (i : Linstr) (is : Lcmd) :
   · have hr0 : isLret i = false := by simpa using hr
     cases hi : lowerPrinted p.1 p.2.1 p.2.2 i.li_i <;>
       cases hrest : gatherList p is <;>
-      simp_all [gatherList, List.mapM_cons]
+      first | (simp_all [gatherList, List.mapM_cons]; done) | (simp only [gatherList, List.filter_cons, hr0, Bool.not_false, ite_true, List.mapM_cons, hi, hrest, Option.bind_some]; simp)
 
 /-- Along a body in which `r` is dead, two states that agree off `r` run to the same
     state. -/
