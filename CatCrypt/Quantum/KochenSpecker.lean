@@ -20,8 +20,8 @@ Cabello, Estebaranz and García-Alcaine gave eighteen vectors of `ℝ⁴` with e
 `{-1, 0, 1}` that form nine orthogonal bases, each vector lying in exactly two of the
 bases. A non-contextual `{0, 1}` valuation would give the value `1` to exactly one vector
 of each basis; summing over the bases counts `9` ones, while counting by vectors gives an
-even number. Hence no such valuation exists, and no function on the rays of `ℂ⁴` (or `ℝ⁴`)
-assigns `1` to exactly one vector of every orthogonal basis.
+even number. Hence no such valuation exists. The theorem of this module states it in `ℂ⁴`: no
+function on vectors of `ℂ⁴` assigns `1` to exactly one vector of every orthogonal basis.
 
 ## Main definitions
 

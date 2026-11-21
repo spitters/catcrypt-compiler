@@ -21,6 +21,10 @@ ladder state `(u, x2, z2, x3, z3, t)`, six field elements of `n` limbs each; the
 operations are the blocks of the record, inlined, and the conditional swap by a secret bit is
 word code (`m = 0 - b`, `d = m & (x ^ y)`, `x ^= d`, `y ^= d`).
 
+The kernels take the u-coordinate as `n` field limbs and the scalar as four words, and the
+ladder reads scalar bits 254 down to 0. The RFC 7748 scalar clamping and the decoding of the
+u-coordinate (masking bit 255) are not part of the kernels; the caller does them.
+
 | kernel | context | value |
 |---|---|---|
 | `initBody` | `u` (`n` words), out (`6n`) | `initF u = (u, 1, 0, u, 1, 1)` |

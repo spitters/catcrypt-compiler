@@ -74,7 +74,7 @@ ascent.
 | `CatCrypt/Crypto/PrimeIR/` | 5 | 5.9 k | the primeir-hax extraction and field models | - | [FIAT_TEMPLATES.md](FIAT_TEMPLATES.md) |
 | `CatCrypt/Crypto/Util/` | 41 | 4.5 k | prime certificates, reference kernels over `ZMod` | - | - |
 | `CatCrypt/Crypto/Vale/` | 35 | 9.7 k | statements for external leaves (fiat-crypto, HACL*, libsecp256k1, Vale) | - | - |
-| `CatCrypt/Crypto/Hash/`, `Primitives/`, `MLKEM/`, `MLDSA/` | 42 | 6.8 k | hash, primitive and scheme specifications | - | - |
+| `CatCrypt/Crypto/Hash/`, `Primitives/`, `MLKEM/`, `MLDSA/` | 46 | 7.8 k | hash, primitive and scheme specifications; the Keccak sponge on the array state with `@[csimp]` equalities (`Primitives/KeccakArray`); the known-answer executable `spec-kat` (`Primitives/SpecKat`) | `KeccakSponge.sponge`, `toK_keccakFV`, `BLAKE2s.blake2s` | [bench/spec_kat/README.md](bench/spec_kat/README.md) |
 | `CatCrypt/Crypto/Symbolic/` | 43 | 7.6 k | Dolev-Yao protocol models (EDHOC, MLS, Signal, TLS) | - | - |
 | `CatCrypt/Crypto/Bridges/` | 18 | 2.8 k | CoqEAL ports, representation transfer and the compiler's ParamTransfer registry (`Transfer/`) | - | [CORRECTNESS.md](CORRECTNESS.md#transfer-parametricity-across-representations) |
 | `CatCrypt/Tactic/`, `CatCrypt/Tactics/` | 14, 37 | 1.1 k, 3.9 k | `kernel_rfl`, preservation combinators, pRHL tactics, re-exports | - | [CatCrypt/Tactic/AGENTS.md](CatCrypt/Tactic/AGENTS.md), [CatCrypt/Tactics/AGENTS.md](CatCrypt/Tactics/AGENTS.md) |
