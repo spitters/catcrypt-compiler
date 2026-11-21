@@ -2222,7 +2222,7 @@ def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
 
 /-- Resolve a body register name `r<k>` against a prebuilt `movImmTable`. -/
 def movImmLookup (tbl : Array (Option Nat)) (n : String) : Option Nat :=
-  if n.startsWith "r" then
+  if n.toList.head? == some 'r' then
     match strDropToNat? n 1 with
     | some k => if k < tbl.size then tbl[k]! else none
     | none => none
