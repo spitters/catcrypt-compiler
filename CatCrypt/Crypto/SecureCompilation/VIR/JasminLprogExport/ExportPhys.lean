@@ -2204,7 +2204,7 @@ def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
         for o in outs do
           match o with
           | .reg d =>
-              if d.startsWith "r" then
+              if d.toList.head? == some 'r' then
                 match strDropToNat? d 1 with
                 | some k => if k < w.size then w := w.set! k (w[k]! + 1)
                 | none => pure ()
@@ -2212,7 +2212,7 @@ def movImmTable (body : Lcmd) : Array (Option Nat) := Id.run do
         match outs, ins with
         | [.reg d], [.imm v] =>
             if (stripWidthTag opn) == "MOV" then
-              if d.startsWith "r" then
+              if d.toList.head? == some 'r' then
                 match strDropToNat? d 1 with
                 | some k => if k < a.size then a := a.set! k (some v)
                 | none => pure ()
