@@ -76,11 +76,11 @@ def stateAssert (p : AState → Prop) : SAssert AState Loc where
 /-- The locations a callee of the interface `c` may change from the entry state `s`: the
     registers of the clobber set other than `%rsp`, the flags, and the memory bytes of the
     footprint. -/
-def calleeWrites (c : CalleeSig) (s : AState) : Set Loc := fun l =>
+def calleeWrites (c : CalleeSig) (s : AState) : Set Loc := {l |
   match l with
   | .reg r => c.clob r = true ∧ r ≠ "%rsp"
   | .flag _ => True
-  | .mem x => c.foot s x
+  | .mem x => c.foot s x}
 
 /-- The contract of the callee interface `c`, with the entry state as logical variable. -/
 def calleeContract (c : CalleeSig) : ContractSpec AState Loc AState where
