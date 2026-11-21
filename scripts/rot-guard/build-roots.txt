@@ -282,6 +282,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RightUnitOffName
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockLoopTriple
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
+CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockWP
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
