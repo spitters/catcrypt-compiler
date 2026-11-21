@@ -78,3 +78,4 @@ third_party/mlkem-libjade/README.md
 bench/hash_linked_compare/README.md
 CatCrypt/Crypto/SecureCompilation/HashTemplate/AGENTS.md
 crates/catcrypt-mpn/README.md
+bench/spec_kat/README.md
