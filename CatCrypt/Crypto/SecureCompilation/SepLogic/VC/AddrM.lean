@@ -514,16 +514,29 @@ theorem blockAM_storeMoveBody_triple {p v : BitVec 64} (st₀ : (LstateA × Bool
   have hS : cellParts? "S" = none := by decide
   simp only [storeMoveInstrs, blockAM]
   vcgen
-  rename_i st h
-  obtain ⟨rfl, hpc, hB, hV⟩ := h
-  refine ⟨⟨hpc, by simp [movOk, hn, hB, hV]⟩, ?_⟩
-  simp only [binderNameHint]
-  vcgen
-  refine ⟨⟨by simp [movNext, hn, hpc], by simp [movOk, hD, hS]⟩, ?_⟩
-  simp only [binderNameHint]
-  vcgen
-  rw [movNext_store hn hB hV, movNext_move hD hS]
-  exact ⟨by simp [hpc], agreeOn_storeMove _ _ _ _, by simp⟩
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    exact hpc
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    simp [movOk, hn, hB, hV]
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    simp [movNext, hn, hpc]
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    simp [movOk, hD, hS]
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    rw [movNext_store hn hB hV, movNext_move hD hS]
+    simp [hpc]
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    rw [movNext_store hn hB hV, movNext_move hD hS]
+    exact agreeOn_storeMove _ _ _ _
+  · rename_i s h
+    obtain ⟨rfl, hpc, hB, hV⟩ := h
+    simp
 
 /-- The triple of the run of two steps of `storeMoveBody`. -/
 theorem runAM_storeMoveBody_triple {p v : BitVec 64} (st₀ : (LstateA × Bool) × List Nat) :

@@ -138,7 +138,8 @@ theorem triple_runBlockA_frame (blk : List (JInstr 64)) (W D : Set (BitVec 64))
 theorem runBlockA_frame (blk : List (JInstr 64)) (R : SAssert AState Loc) {s : AState}
     (hd : Disjoint R.fp (ctlLocs ∪ Loc.mem '' writeBytes blk s)) (h : R.holds s) :
     R.holds (runBlockA s blk) :=
-  R.supp _ _ (agreeOn_anti (fun _ hl hw => Set.disjoint_left.1 hd hl hw)
+  R.supp _ _ (agreeOn_anti (show R.fp ⊆ (ctlLocs ∪ Loc.mem '' writeBytes blk s)ᶜ from
+      fun _ hl hw => Set.disjoint_left.1 hd hl hw)
     (writesIn_runBlockA blk s)) h
 
 /-- The bytes of supported ranges disjoint from every written range avoid the registers,

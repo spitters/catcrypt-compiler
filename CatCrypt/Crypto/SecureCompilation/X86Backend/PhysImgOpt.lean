@@ -101,7 +101,7 @@ theorem untagCaret_memOp_parts {o b : String} (hu : LprogAsmPrinter.untagCaret o
       · rfl
     · have hpre : b.toList <+: o.toList := hT ▸ List.takeWhile_prefix _
       have hcol : ∀ c ∈ b.toList, (c != ':') = true := by
-        rcases hb with rfl | rfl | rfl | rfl <;> decide
+        rcases hb with rfl | rfl | rfl | rfl <;> simp
       unfold LprogAsmPrinter.stripAbiTag
       split
       · rw [String.toList_ofList]
