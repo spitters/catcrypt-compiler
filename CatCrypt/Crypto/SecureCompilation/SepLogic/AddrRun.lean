@@ -266,7 +266,8 @@ theorem runA_frame (frame : String → Option (BitVec 64)) (c : Lcmd) {n : Nat} 
     {zf : Bool} {p : LstateA × Bool} (h : runA frame c n s zf = some p)
     (R : SAssert (LstateA × Bool) Loc) (hd : Disjoint R.fp (runWrites frame c n s zf))
     (hR : R.holds (s, zf)) : R.holds p :=
-  R.supp _ _ (agreeOn_anti (fun _ hl hw => Set.disjoint_left.1 hd hl hw)
+  R.supp _ _ (agreeOn_anti (show R.fp ⊆ (runWrites frame c n s zf)ᶜ from
+      fun _ hl hw => Set.disjoint_left.1 hd hl hw)
     (runA_writesIn frame c h)) hR
 
 /-! ## A cell store followed by a register move -/
@@ -313,11 +314,11 @@ theorem stepA_storeMoveBody_one {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 1) 
     name and `D`, the program counter, the flags, and the eight bytes at the address in `B`. -/
 theorem runWrites_storeMoveBody {s : LstateA} (zf : Bool) (hpc : s.reg.lpc = 0)
     {p v : BitVec 64} (hB : s.reg.getW "B" 64 = some p) (hV : s.reg.getW "V" 64 = some v) :
-    runWrites (fun _ => none) storeMoveBody 2 s zf = (fun l => match l with
+    runWrites (fun _ => none) storeMoveBody 2 s zf = {l | match l with
       | .reg r => r = "mem.B.0" ∨ r = "D"
       | .pc => True
       | .flag _ => True
-      | .mem x => x ∈ (⟨p + BitVec.ofNat 64 0, 8⟩ : Rng 64) : Set Loc) := by
+      | .mem x => x ∈ (⟨p + BitVec.ofNat 64 0, 8⟩ : Rng 64)} := by
   have hn : cellParts? "mem.B.0" = some ("B", 0) := by decide
   have hD : cellParts? "D" = none := by decide
   have hS : cellParts? "S" = none := by decide

@@ -302,9 +302,11 @@ def inputsAt (σ : AbiLayout) (rv : String → BitVec 64) (vals : List Value) :
       congr 1
       refine List.map_congr_left fun j hj => ?_
       rw [read64_congr (agreeOn_anti (fun x hx => ?_) h)]
-      exact Set.mem_biUnion (x := (a.reg, n)) (mem_regions_of_words ha hk)
-        (Set.mem_biUnion (x := rv a.reg + BitVec.ofNat 64 (8 * j))
-          ⟨j, List.mem_range.1 hj, rfl⟩ hx)
+      have h1 : x ∈ wordsLocs (regionWords (rv a.reg) n) :=
+        Set.mem_biUnion (x := rv a.reg + BitVec.ofNat 64 (8 * j))
+          (show rv a.reg + BitVec.ofNat 64 (8 * j) ∈ regionWords (rv a.reg) n from
+            ⟨j, List.mem_range.1 hj, rfl⟩) hx
+      exact Set.mem_iUnion₂.2 ⟨(a.reg, n), mem_regions_of_words ha hk, h1⟩
 
 /-- The return word at the address `sp` holds the return index `ret`. -/
 def retAt (sp : BitVec 64) (ret : Nat) : SAssert AState Loc :=
@@ -382,11 +384,11 @@ def contractPost (l : LinkedFn) (a : CallVar) : SAssert AState Loc :=
 
 /-- **The write set of the contract**: the clobbered registers other than `%rsp`, the flags,
     the `frame` bytes below the stack register, and the memory locations of the result. -/
-def contractWrites (l : LinkedFn) (a : CallVar) : Set Loc := fun x =>
+def contractWrites (l : LinkedFn) (a : CallVar) : Set Loc := {x |
   match x with
   | .reg r => r ∈ l.clob ∧ r ≠ "%rsp"
   | .flag _ => True
-  | .mem y => InFrame a.sp l.frame y ∨ Loc.mem y ∈ resLocs (entryRegs a.rv) l.layout.result
+  | .mem y => InFrame a.sp l.frame y ∨ Loc.mem y ∈ resLocs (entryRegs a.rv) l.layout.result}
 
 /-- **The public relation of the contract**: two entry states agree on the stack register and
     on the register of each public parameter of the layout. -/
@@ -418,7 +420,7 @@ def contractSig (l : LinkedFn) (args : List String) (res : Option String) : Call
   res := res
   clob := fun x => l.clob.contains x
   pre s := ∃ a, (l.contractPre a).holds s
-  foot s x := ∃ a, (l.contractPre a).holds s ∧ l.contractWrites a (.mem x)
+  foot s x := ∃ a, (l.contractPre a).holds s ∧ Loc.mem x ∈ l.contractWrites a
   post s s' := ∃ a, (l.contractPre a).holds s ∧ (l.contractPost a).holds s'
   pub := l.pubRegsAgree
 
