@@ -521,7 +521,7 @@ theorem disjointObligations_distinct (fd : FunDecl) :
       obtain ⟨rfl, rfl⟩ := hopt
       intro heq
       subst heq
-      simp at hcmp
+      grind
     · simp [hcmp] at hopt
   · -- Write-read: `w ∈ pointerParamsWritten` and `r ∈ pointerParamsReadOnly`,
     -- but ReadOnly excludes anything in the write set, contradicting
