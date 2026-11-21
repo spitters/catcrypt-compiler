@@ -422,7 +422,6 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
-CatCrypt.Crypto.SecureCompilation.Haxc.AbiEncode
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
 CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
@@ -448,6 +447,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeGoodCheck
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeStatements
 CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NFTreeFuelMono
@@ -455,7 +455,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.R3UWord
 CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
-CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerWitness
+CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerRealize
 CatCrypt.Crypto.SecureCompilation.Haxc.RCPerStateFuel
 CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedDet
 CatCrypt.Crypto.SecureCompilation.Haxc.RCReactiveLinkedStateful

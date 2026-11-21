@@ -30,6 +30,7 @@ supremum over the fuel (`tvMargin_le_of_iSup`).
 
 * `totC`, `FailOr`, `RelF`: failure as a value, and couplings up to failure.
 * `interpSt`, `interpStOpt`, `interpStω`: interpretation under a stateful handler.
+* `interpStS`, `interpStSω`: the interpretation keeping the final handler state.
 * `StHandlerCoupled`, `StSkips`: stateful handlers coupled up to failure, and a stateful source
   handler answering skipped calls within the skip predicate.
 * `StOracle`, `stSrc`, `stTgt`, `HandlerCoupledSt`, `HandlerRCSt`: stateful source oracles of
@@ -39,7 +40,8 @@ supremum over the fuel (`tvMargin_le_of_iSup`).
 
 ## Main results
 
-* `relF_interpSt_ruttFA`: trees related by `RuttFA` interpret to outcomes coupled up to failure.
+* `relF_interpStS_ruttFA`: trees related by `RuttFA` interpret to outcomes coupled up to failure,
+  with the final handler states related; `relF_interpSt_ruttFA` is its image under `Prod.fst`.
 * `sdist_readBack_ruttFA`: the statistical distance of the read-backs under stateful handlers.
 * `sdist_st_contract`: the statistical distance at a stateful oracle and the separation
   contracts.
@@ -349,6 +351,73 @@ noncomputable def interpStω (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
     (T : Nat → CallTree E (Option R)) (hT : FuelMono T) (σ : S) : SPComp R :=
   ωSup (interpStChain h T hT σ)
 
+/-! ## Stateful interpretation keeping the final handler state -/
+
+section KeepState
+
+/-- **The stateful interpretation of a tree with optional leaves, keeping the final handler
+    state**: the leaf `none` is read as failure, and a leaf `some r` gives `r` with the final
+    handler state. -/
+noncomputable def interpStS (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
+    (t : CallTree E (Option R)) (σ : S) : SPComp (R × S) :=
+  (interpSt h t σ).bind fun p => optSP (p.1.map fun r => (r, p.2))
+
+/-- Unfolding lemma of `interpStS` at a leaf `some`. -/
+@[simp] theorem interpStS_ret_some (h : ∀ e : E.Event, S → SPComp (E.Resp e × S)) (x : R)
+    (σ : S) : interpStS h (.ret (some x)) σ = SPComp.pure (x, σ) :=
+  SPComp.pure_bind _ _
+
+/-- Unfolding lemma of `interpStS` at the leaf `none`. -/
+@[simp] theorem interpStS_ret_none (h : ∀ e : E.Event, S → SPComp (E.Resp e × S)) (σ : S) :
+    interpStS h (.ret (none : Option R)) σ = SPComp.fail :=
+  SPComp.pure_bind _ _
+
+/-- Unfolding lemma of `interpStS` at an event. -/
+theorem interpStS_vis (h : ∀ e : E.Event, S → SPComp (E.Resp e × S)) (e : E.Event)
+    (k : E.Resp e → CallTree E (Option R)) (σ : S) :
+    interpStS h (.vis e k) σ = (h e σ).bind fun p => interpStS h (k p.1) p.2 := by
+  simp only [interpStS, interpSt_vis, SPComp.bind_assoc]
+
+/-- The interpretation discarding the final state is the one keeping it, followed by the first
+    projection. -/
+theorem interpStOpt_eq_bind_interpStS (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
+    (t : CallTree E (Option R)) (σ : S) :
+    interpStOpt h t σ = (interpStS h t σ).bind fun p => SPComp.pure p.1 := by
+  simp only [interpStOpt, interpStS, SPComp.bind_assoc]
+  congr 1
+  funext p
+  cases p.1 with
+  | none => simp [optSP]
+  | some r => simp [optSP, SPComp.pure_bind]
+
+/-- **The stateful interpretation keeping the final state is monotone in the fuel order.** -/
+theorem interpStS_mono (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
+    {t t' : CallTree E (Option R)} (hle : FuelLe t t') (σ : S) :
+    interpStS h t σ ≤ interpStS h t' σ := by
+  induction hle generalizing σ with
+  | none t =>
+    rw [interpStS_ret_none]
+    refine SPComp.le_def.mpr fun s => SDistr.le_def.mpr fun a => ?_
+    simp [SPComp.fail, SDistr.fail_apply_some]
+  | ret r => exact le_rfl
+  | vis e _ ih =>
+    rw [interpStS_vis, interpStS_vis]
+    exact SPComp.bind_mono_right _ fun p => ih p.1 p.2
+
+/-- The chain of the stateful interpretations keeping the final state of an increasing
+    family. -/
+noncomputable def interpStSChain (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
+    (T : Nat → CallTree E (Option R)) (hT : FuelMono T) (σ : S) : Chain (SPComp (R × S)) :=
+  ⟨fun n => interpStS h (T n) σ, monotone_nat_of_le_succ fun n => interpStS_mono h (hT n) σ⟩
+
+/-- **The stateful interpretation of an increasing fuel family, keeping the final state**: the
+    supremum over the fuel of the interpretations of its trees. -/
+noncomputable def interpStSω (h : ∀ e : E.Event, S → SPComp (E.Resp e × S))
+    (T : Nat → CallTree E (Option R)) (hT : FuelMono T) (σ : S) : SPComp (R × S) :=
+  ωSup (interpStSChain h T hT σ)
+
+end KeepState
+
 end Stateful
 
 /-! ## Coupled stateful handlers and related trees -/
@@ -383,6 +452,56 @@ variable {h₁ : ∀ e : E₁.Event, S₁ → SPComp (E₁.Resp e × S₁)}
   {RA : (e₁ : E₁.Event) → (e₂ : E₂.Event) → E₁.Resp e₁ → E₂.Resp e₂ → Prop}
   {RR : R₁ → Option R₂ → Prop} {Fail : R₁ → Prop} {Rσ : S₁ → S₂ → Prop}
 
+/-- **Coupling of a source tree with the trees of a related fuel family, with the final handler
+    states related.** Under the hypotheses of `relF_interpSt_ruttFA`, the outcomes are coupled
+    up to failure at a postcondition under which the source leaf fails, or it is related to the
+    target leaf, the final handler states are related by `Rσ` and the heaps are equal. -/
+theorem relF_interpStS_ruttFA (hc : StHandlerCoupled Rσ RE RA h₁ h₂) (hs : StSkips Rσ Sk h₁)
+    (hRF : ∀ r₁, RR r₁ none → Fail r₁) {t₁ : CallTree E₁ R₁}
+    {T : Nat → CallTree E₂ (Option R₂)} (h : RuttFA Sk RE RA RR Fail t₁ T) :
+    FuelMono T → ∀ (N : Nat) (t₂ : CallTree E₂ (Option R₂)), FuelLe t₂ (T N) →
+      ∀ σ₁ σ₂, Rσ σ₁ σ₂ → RelF eqPre (interpSt h₁ t₁ σ₁) (interpStS h₂ t₂ σ₂)
+        (fun p₁ s₁ x s₂ => Fail p₁.1 ∨ (RR p₁.1 (some x.1) ∧ Rσ p₁.2 x.2 ∧ s₁ = s₂)) := by
+  induction h with
+  | @ret r₁ r₂ T n hT hR =>
+    intro hmono N t₂ ht σ₁ σ₂ hσ
+    have ht' : FuelLe t₂ (T (max N n)) :=
+      fuelLe_trans ht (fuelMono_le hmono (le_max_left N n))
+    cases r₂ with
+    | none => exact RelF.pure_left fun _ _ _ _ _ => .inl (hRF _ hR)
+    | some x =>
+      rw [hmono.ret_some hT _ (le_max_right N n)] at ht'
+      cases ht' with
+      | none => rw [interpStS_ret_none]; exact RelF.fail_right
+      | ret => rw [interpStS_ret_some]; exact RelF.ret fun _ _ hs => .inr ⟨hR, hσ, hs⟩
+  | fail hF => intro _ _ _ _ _ _ _; exact RelF.pure_left fun _ _ _ _ _ => .inl hF
+  | @vis e₁ e₂ k₁ T K n hT he hk ih =>
+    intro hmono N t₂ ht σ₁ σ₂ hσ
+    have ht' : FuelLe t₂ (T (n + N)) :=
+      fuelLe_trans ht (fuelMono_le hmono (Nat.le_add_left N n))
+    rw [hT N] at ht'
+    have hK : ∀ a, FuelMono (K a) := fun a m => by
+      have h := hmono (n + m)
+      rw [hT m, show n + m + 1 = n + (m + 1) by omega, hT (m + 1)] at h
+      exact h.vis_inv a
+    cases ht' with
+    | none => rw [interpStS_ret_none]; exact RelF.fail_right
+    | @vis _ k₂ _ hk₂ =>
+      rw [interpSt_vis, interpStS_vis]
+      refine RelF.bind (hc e₁ e₂ he σ₁ σ₂ hσ) fun p₁ p₂ => ?_
+      refine RelF.of_pre_fact (P := RA e₁ e₂ p₁.1 p₂.1 ∧ Rσ p₁.2 p₂.2)
+        (fun _ _ hp => ⟨⟨hp.1, hp.2.1⟩, hp.2.2⟩) fun hp => ?_
+      exact ih p₁.1 p₂.1 hp.1 (hK p₂.1) N (k₂ p₂.1) (hk₂ p₂.1) p₁.2 p₂.2 hp.2
+  | @skip e₁ k₁ T _ ih =>
+    intro hmono N t₂ ht σ₁ σ₂ hσ
+    have hpb : interpStS h₂ t₂ σ₂ = (SPComp.pure ()).bind fun _ => interpStS h₂ t₂ σ₂ := by
+      rw [SPComp.pure_bind]
+    rw [interpSt_vis, hpb]
+    refine RelF.bind (hs _ σ₁ σ₂ hσ) fun p₁ _ => ?_
+    refine RelF.of_pre_fact (P := Sk e₁ p₁.1 ∧ Rσ p₁.2 σ₂)
+      (fun _ _ hp => ⟨⟨hp.1, hp.2.1⟩, hp.2.2⟩) fun hp => ?_
+    exact ih p₁.1 hp.1 hmono N t₂ ht p₁.2 σ₂ hp.2
+
 /-- **Coupling of a source tree with the trees of a related fuel family.** Let the stateful
     handlers be coupled up to failure and the source handler answer skipped events within the
     skip predicate. A source tree and an increasing family related by `RuttFA` interpret, from
@@ -395,45 +514,13 @@ theorem relF_interpSt_ruttFA (hc : StHandlerCoupled Rσ RE RA h₁ h₂) (hs : S
     FuelMono T → ∀ (N : Nat) (t₂ : CallTree E₂ (Option R₂)), FuelLe t₂ (T N) →
       ∀ σ₁ σ₂, Rσ σ₁ σ₂ → RelF eqPre (interpSt h₁ t₁ σ₁) (interpStOpt h₂ t₂ σ₂)
         (fun p₁ s₁ x s₂ => Fail p₁.1 ∨ (RR p₁.1 (some x) ∧ s₁ = s₂)) := by
-  induction h with
-  | @ret r₁ r₂ T n hT hR =>
-    intro hmono N t₂ ht σ₁ σ₂ _
-    have ht' : FuelLe t₂ (T (max N n)) :=
-      fuelLe_trans ht (fuelMono_le hmono (le_max_left N n))
-    cases r₂ with
-    | none => exact RelF.pure_left fun _ _ _ _ _ => .inl (hRF _ hR)
-    | some x =>
-      rw [hmono.ret_some hT _ (le_max_right N n)] at ht'
-      cases ht' with
-      | none => rw [interpStOpt_ret_none]; exact RelF.fail_right
-      | ret => rw [interpStOpt_ret_some]; exact RelF.ret fun _ _ hs => .inr ⟨hR, hs⟩
-  | fail hF => intro _ _ _ _ _ _ _; exact RelF.pure_left fun _ _ _ _ _ => .inl hF
-  | @vis e₁ e₂ k₁ T K n hT he hk ih =>
-    intro hmono N t₂ ht σ₁ σ₂ hσ
-    have ht' : FuelLe t₂ (T (n + N)) :=
-      fuelLe_trans ht (fuelMono_le hmono (Nat.le_add_left N n))
-    rw [hT N] at ht'
-    have hK : ∀ a, FuelMono (K a) := fun a m => by
-      have h := hmono (n + m)
-      rw [hT m, show n + m + 1 = n + (m + 1) by omega, hT (m + 1)] at h
-      exact h.vis_inv a
-    cases ht' with
-    | none => rw [interpStOpt_ret_none]; exact RelF.fail_right
-    | @vis _ k₂ _ hk₂ =>
-      rw [interpSt_vis, interpStOpt_vis]
-      refine RelF.bind (hc e₁ e₂ he σ₁ σ₂ hσ) fun p₁ p₂ => ?_
-      refine RelF.of_pre_fact (P := RA e₁ e₂ p₁.1 p₂.1 ∧ Rσ p₁.2 p₂.2)
-        (fun _ _ hp => ⟨⟨hp.1, hp.2.1⟩, hp.2.2⟩) fun hp => ?_
-      exact ih p₁.1 p₂.1 hp.1 (hK p₂.1) N (k₂ p₂.1) (hk₂ p₂.1) p₁.2 p₂.2 hp.2
-  | @skip e₁ k₁ T _ ih =>
-    intro hmono N t₂ ht σ₁ σ₂ hσ
-    have hpb : interpStOpt h₂ t₂ σ₂ = (SPComp.pure ()).bind fun _ => interpStOpt h₂ t₂ σ₂ := by
-      rw [SPComp.pure_bind]
-    rw [interpSt_vis, hpb]
-    refine RelF.bind (hs _ σ₁ σ₂ hσ) fun p₁ _ => ?_
-    refine RelF.of_pre_fact (P := Sk e₁ p₁.1 ∧ Rσ p₁.2 σ₂)
-      (fun _ _ hp => ⟨⟨hp.1, hp.2.1⟩, hp.2.2⟩) fun hp => ?_
-    exact ih p₁.1 hp.1 hmono N t₂ ht p₁.2 σ₂ hp.2
+  intro hmono N t₂ ht σ₁ σ₂ hσ
+  rw [interpStOpt_eq_bind_interpStS]
+  have e : interpSt h₁ t₁ σ₁ = (interpSt h₁ t₁ σ₁).bind fun p => SPComp.pure p :=
+    (SPComp.bind_pure _).symm
+  rw [e]
+  refine RelF.bind (relF_interpStS_ruttFA hc hs hRF h hmono N t₂ ht σ₁ σ₂ hσ) fun p₁ x => ?_
+  exact RelF.ret fun _ _ hp => hp.elim .inl fun hp => .inr ⟨hp.1, hp.2.2⟩
 
 end Coupled
 

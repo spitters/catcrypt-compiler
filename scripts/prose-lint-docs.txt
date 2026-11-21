@@ -14,6 +14,7 @@ bench/qrunch/hw-metrics/README.md
 bench/qrunch/mqt/README.md
 bench/qrunch/qiskit-passes/README.md
 bench/qrunch/qrisp/README.md
+bench/spec_kat/README.md
 BUILDING.md
 GETTING_STARTED.md
 EXAMPLES.md

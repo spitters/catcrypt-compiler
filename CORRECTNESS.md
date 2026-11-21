@@ -525,6 +525,14 @@ simulator are at distance `ε` in every context. The statements below instantiat
   (`Haxc/NFCallTreeR3TypedAns.lean`) gives the conclusion of `R3StatementFA TypedAns` at the
   result of `compileA` from the shape of the module, and `r3FA_of_shape_linkedHandlers`
   (`Haxc/NFCallTreeR3Handlers.lean`) gives it at the handlers of the linked functions.
+  `r3FA_of_shape_linked` (`Haxc/NFCallTreeR3Linked.lean`) gives the same with the event and
+  call premises discharged by conditions on the module: the events follow from the word
+  signatures of the linked functions (`allEv_evOK_of_linkedWords`, `Haxc/NFCallTreeR3Ev.lean`),
+  and every inlined call meets its signature when no function of the module takes an integer
+  parameter, every body translates and no translated body applies a builtin to an integer
+  argument (`goodCall_of_bodies`, from `goodCallB` in `Haxc/NFCallTreeGoodBody.lean`). The
+  three conditions are one Bool check `goodBodiesB` (`goodBodiesB_sound`,
+  `r3FA_of_shape_goodBodies` in `Haxc/NFCallTreeGoodCheck.lean`).
 
 ### Reference semantics of prime-ir calls
 
