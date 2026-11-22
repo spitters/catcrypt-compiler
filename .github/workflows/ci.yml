@@ -65,6 +65,22 @@ jobs:
         if: ${{ !cancelled() }}
         run: bash scripts/vacuous-theorem-ratchet.sh
 
+      - name: No new bound over every adversary and no new empty statement shape
+        if: ${{ !cancelled() }}
+        run: bash scripts/unbounded-hardness-ratchet.sh
+
+      - name: Headlines are registered and have a witness or a recorded gap
+        if: ${{ !cancelled() }}
+        run: bash scripts/headline-witness-gate.sh
+
+      - name: Tests of the headline witness gate
+        if: ${{ !cancelled() }}
+        run: bash scripts/test_headline_witness_gate.sh
+
+      - name: The shared gates against empty statements are unedited copies
+        if: ${{ !cancelled() }}
+        run: bash scripts/gate-copies.sh
+
       - name: Ascent results tied to a descent theorem or the encoded bytes
         if: ${{ !cancelled() }}
         run: bash scripts/ascent-anchor-ratchet.sh

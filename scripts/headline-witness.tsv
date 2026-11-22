@@ -1,0 +1,57 @@
+# Registry of the headline theorems and of the theorems that the public documents name.
+# Columns, rules and documents: scripts/headline-witness-gate.sh.
+# A named theorem is a headline when it states correctness, constant time, a security
+# bound, soundness, a realization or composition law, or a time certificate that the
+# document presents as a result; any other named theorem is cited.
+# declaration	role	kind	witness
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_correct_auto	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_ct_proved_all	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_rc_proved_all	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_gate_proved_all	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_correct_auto_ct_proved_all_of_checkB	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_gate_proved_all_of_checkB	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_rc_proved_all_of_checkB	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxc_ct_proved_all_of_check	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.compileRegion_correct	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.compileRegion_correct_wide	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.AndNCorrect.mpn_and_n_rc_proved	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.LtuCorrect.ltu_rc_proved	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT.bytesCTCheck_sound	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.AllocCTPreservation.toLprogPhysAbi_gather_constant_time	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr.carryMul_correct_addr	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.CryptOptAddr.solinasSquare_correct_addr	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScMuladdShippedProof.scMuladdShipped_correct_addr	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519ScReduceShippedProof.scReduceShipped_correct_addr	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddBytes.paShippedBytes_correct	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.ExportCertGate.singleLoop_export_faithful_gate	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportShippedAnd.binAnd_export_machine_shipped	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.loopMem_export_faithful_comL_uncond	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieWhileUncond.whileMem_export_faithful_comL_uncond_trips	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin.guardedFlagLoop_runBounded_general	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.fillLoop_export_faithful_denote	headline	statement	CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemSourceTieUncond.fillLoop_export_uncond
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge.calleeRunDN_export_faithful	headline	statement	CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemChainBridge.depth3_export_witness
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline.inlineNest_closed	headline	statement	CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoopNestInline.ggm_depth3_rederived
+CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin.flagNest_closed	headline	statement	CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagNestJoin.nest_rendered_rederived_8
+CatCrypt.Crypto.SecureCompilation.VIR.RobustCompilationPipeline.robustCompilation_source_to_x86	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectnessExtracted.rustToJasminCom_endToEnd_unconditional	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Dialects.RustExecSemScalarBridge.rustToJasminCom_endToEnd_rustexec_adeq_topLevel	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.RustToJasminComWhile.transU_to_jasminCom_endToEnd	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.CompilerCorrectness.latticeNttMul_compile_correct	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.ScalarLinX86Demo.com_x86_e2e	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.ScalarLinNeutralDemo.com_arm_e2e	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.MultiBackendDemo.com_riscv_e2e	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.DialectToJasminComCorrect.cryptoDialectToJasminCom_denote_eq'	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Algebraic.FieldToJasminWord.fieldToJasminWord_denote	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectScalar.transU_denote	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectVsimd.translateDialectControlV_denote	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.Fe25519ScalarmultCovered.fullScalarmultCovered_denote	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.MachineConstantTime.owned_ct_control_flow	headline	statement	-
+CatCrypt.Crypto.Jasmin.LowCT.cmdCT_sound	headline	statement	-
+CatCrypt.Crypto.SecureCompilation.Ascent.Demos.Ed25519PointAddShippedProof.paSpec_addSpec	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxToNFCTL_of_haxToNFCTBL	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.haxcTgtRes_det	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.Haxc.run_val_of_checkB	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.NarrowWords.narrowPrep_ctRel	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.VIR.NarrowWords.narrowPrep_denote_eq	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT.feAddFramed_bytesCT	cited	statement	-
+CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedCT.mul1Node_bytesCT	cited	statement	-

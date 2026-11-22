@@ -1,0 +1,53 @@
+0
+multiline=0
+ascii=0
+named_def=0
+named_use=0
+exists=0
+sdist_named=0
+nested=0
+nested_use=0
+point_mass=0
+point_mass_use=0
+same_body=0
+free_witness=25
+returned_arg=0
+sites=single
+sites=multiline
+sites=ascii
+sites=named_def
+sites=named_use
+sites=exists
+sites=sdist_named
+sites=nested
+sites=nested_use
+sites=point_mass
+sites=point_mass_use
+sites=same_body
+sites=free_witness
+sites=returned_arg
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/ComposeV1.lean	NFEntry.compileR_correct
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/ComposeV1.lean	NFEntry.compileR_correct_saved
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/CrateStructs.lean	haxc_correct_structImage
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/CrateStructs.lean	haxc_correct_structModule
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/Decompile.lean	decompile_correct
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/ExportSafety.lean	haxc_contract_safe
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/ExportSafety.lean	haxc_safe
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	coRef_bytes
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	coRef_bytes_copy
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	coRef_bytes_copy_of_regionExp
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	coRef_bytes_of_regionExp
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	compileRegion_correct
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	compileRegion_correct_saved
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	compileRegion_correct_wide
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	compileRegion_correct_wide_saved
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	regionBack_correct
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	regionCo_bytes
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	regionCo_bytes_of_regionExp
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	regionCo_bytes_of_regionExp_virt
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionBackend.lean	renImage_bytes
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean	NFEntry.compileR_correct_linked
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean	NFEntry.compileR_correct_linked_saved
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean	haxc_correct_auto
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean	haxc_correct_auto_one
+site	free_witness	CatCrypt/Crypto/SecureCompilation/Haxc/RegionLinkCall.lean	haxc_correct_auto_saved
