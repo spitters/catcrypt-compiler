@@ -45,9 +45,7 @@ Jasmin SSA pipeline:
 - Full RFC 8439 §2.3 specification (column + diagonal rounds)
 - `native_decide` test vector validation against RFC 8439 §2.3.2
 - Jasmin SSA instructions with compositional correctness
-
-**All goals closed**, 0 axioms (the PRF assumption enters as the
-`ChaCha20PrfBound` hypothesis).
+- The block game pair `chacha20_real`, `chacha20_ideal`, with no bound on its advantage
 -/
 
 @[expose] public section
@@ -196,7 +194,7 @@ theorem chachaBlock_isPure (s : ChaChaState) :
     SPComp.IsPure (SPComp.pure (chachaBlock s)) :=
   SPComp.pure_isPure _
 
-/-! ## Section 8: Stream Cipher Security -/
+/-! ## Section 8: The block game pair -/
 
 /-- ChaCha20 real game: encrypt by applying block function with random key. -/
 def chacha20_real (counter : BitVec 32) (nonce : Fin 3 → BitVec 32) :
@@ -208,23 +206,6 @@ def chacha20_real (counter : BitVec 32) (nonce : Fin 3 → BitVec 32) :
 def chacha20_ideal : Unit → SPComp ChaChaState :=
   fun _ => SPComp.sample ChaChaState
 
-/-- **ChaCha20 PRF bound at `epsPrf`**: the ChaCha20 block function with a
-    random key is indistinguishable from a random function, with every
-    distinguisher's advantage at most `epsPrf`.
-
-    This is the standard cryptographic assumption for ChaCha20 — analogous
-    to `AesPrfBound` for AES. The block function is a keyed PRF:
-    `ChaCha20(key, counter, nonce)` with random `key` is computationally
-    indistinguishable from random output. Security theorems take this as a
-    hypothesis. -/
-def ChaCha20PrfBound (epsPrf : ℝ≥0∞) : Prop :=
-  ∀ (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
-    (A : ChaChaState → SPComp Bool),
-    AdvantageA
-      (chacha20_real counter nonce ())
-      (chacha20_ideal ())
-      A ≤ epsPrf
-
 /-- The real game is pure. -/
 theorem chacha20_real_isPure (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
     (u : Unit) : SPComp.IsPure (chacha20_real counter nonce u) :=
@@ -233,15 +214,6 @@ theorem chacha20_real_isPure (counter : BitVec 32) (nonce : Fin 3 → BitVec 32)
 /-- The ideal game is pure. -/
 theorem chacha20_ideal_isPure (u : Unit) : SPComp.IsPure (chacha20_ideal u) :=
   SPComp.sample_isPure _
-
-/-- Statistical distance bound from the PRF assumption. -/
-theorem chacha20_sdist (epsPrf : ℝ≥0∞) (h_prf : ChaCha20PrfBound epsPrf)
-    (counter : BitVec 32) (nonce : Fin 3 → BitVec 32) :
-    sdist (chacha20_real counter nonce) chacha20_ideal ≤ epsPrf := by
-  apply sdist_isPure_le (chacha20_real_isPure counter nonce)
-    (fun u => chacha20_ideal_isPure u)
-  intro D u
-  exact h_prf counter nonce D
 
 /-! ## Section 10: Jasmin SSA Variable Helpers -/
 
