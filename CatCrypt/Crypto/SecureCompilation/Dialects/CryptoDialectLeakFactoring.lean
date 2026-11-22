@@ -696,7 +696,7 @@ theorem dialect_front_leak_prefix_constant {Γ : Ctx} (vm : VarMap Γ) {c : LowC
 The stronger form: the front prefix prepends a *fixed event list* `pre` (not just
 a length) to any tail. This is the dialect analogue of
 `LowCTLeakTrace.leakTrace_translate_factors` (the actual-prefix factoring
-clause (B) of `RHP_pipeline_full_labeled` exposes). The
+that `dialect_front_leakage_factoring` states). The
 length-based `ComCont.LeakFactors` above is the `.length` corollary. -/
 
 /-- `f` prepends a fixed event list `pre` to any tail it accepts. -/
@@ -1158,7 +1158,7 @@ theorem translateDialectFull_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {
 /-- **The full control front's trace-factoring.** On every `IsCoveredCtl` `LowCT`,
     the front prefix prepends a fixed event list to any tail. The actual-prefix
     (not just length) dialect analogue of `LowCTLeakTrace.leakTrace_translate_factors`,
-    the leak-factoring clause (B) of `RHP_pipeline_full_labeled` exposes. -/
+    stated on traces by `dialect_front_leakage_factoring`. -/
 theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) :
@@ -1229,11 +1229,11 @@ theorem translateDialectControl_cont_leakFactorsTrace {Γ : Ctx} (vm : VarMap Γ
             exact ⟨_, ComCont.id_leakFactorsTrace⟩
       · simp at h
 
-/-- **Front-level RHP-pipeline leakage factoring (dialect).** For every
+/-- **Front-level leakage factoring (dialect).** For every
     `IsCoveredCtl` `LowCT` whose front succeeds, there is a fixed leak prefix `pre`
     such that plugging *any* tail `body` yields `Com.leakTrace = pre ++
-    body.leakTrace`. It is clause (B) of `LowCTRHPFull.RHP_pipeline_full_labeled`
-    (`∃ pre, ∀ body, (out.cont body).leakTrace = pre ++ body.leakTrace`). -/
+    body.leakTrace`. `Com.leakTrace` reads no valuation, so this is not constant-time
+    evidence. -/
 theorem dialect_front_leakage_factoring {Γ : Ctx} (vm : VarMap Γ) {c : LowCT}
     (hc : IsCoveredCtl c) {o : DTransOut Γ}
     (h : translateDialectControl vm c = some o) :
