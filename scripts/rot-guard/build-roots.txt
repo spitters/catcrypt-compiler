@@ -424,7 +424,7 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmitMain
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
-CatCrypt.Crypto.SecureCompilation.Haxc.AccessBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.BoolEntry
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
 CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
@@ -971,6 +971,7 @@ CatCrypt.Crypto.Symbolic.TLS.ProtocolVerification
 CatCrypt.Crypto.Symbolic.TLS.ServerAuth
 CatCrypt.Crypto.Symbolic.Tactic
 CatCrypt.Crypto.Symbolic.TracefulEmbed
+CatCrypt.Crypto.UC
 CatCrypt.Crypto.UCMonad
 CatCrypt.Crypto.Util.BLS12377PPrimeCert
 CatCrypt.Crypto.Util.BN254RPrimeCert
