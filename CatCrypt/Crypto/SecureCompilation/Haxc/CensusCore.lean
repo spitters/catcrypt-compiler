@@ -42,11 +42,12 @@ the firings of the optimiser rules along the stages it reaches.
 
 1. the System V layout `deriveAbi` reads off the parameter prelude and the result type of the
    extraction: unsigned scalars of at most `64` bits in registers, arrays of `u64` words by
-   pointer, the result in `%rax` or in an array parameter of its length (a `&mut` parameter
-   first, otherwise a further output parameter), the result `()` of a body ending by reading
+   pointer, the result in `%rax` or in a parameter of its length that the callee may write
+   (`bufArg?`: a `&mut` parameter first, then one passed by value, never a shared reference),
+   otherwise in a further output parameter, the result `()` of a body ending by reading
    its `&mut` array parameter (`tailVar`) in that parameter, the pair `([u64; n], u64)` of a
-   body ending in `let y = a[k]; (a, y)` as the words of `a` and its word at `k`, the
-   literal constants of the
+   body ending in `let y = a[k]; (a, y)`, with `a` no shared reference, as the words of `a`
+   and its word at `k`, the literal constants of the
    crate bound by `bindConsts`; the result type is read off the statement spine where the
    extraction leaves the root type unknown (`DeriveBounds.spineTy`), and a scalar parameter
    that bounds a counted loop whose every trip indexes an array at the counter, or that
@@ -461,29 +462,54 @@ def mkArgs (wide : Bool) : List (String × ImpType) → List String → Except S
       | some k => (mkArgs wide ps rs).map fun l => (⟨x, r, k⟩ : AbiArg) :: l
       | none => .error s!"{x} : {tyStr 8 τ}"
 
+/-- A shared reference. The layout places no result in it; the writes of the body are not
+    restricted by it, as the pointer regions of a layout carry no permission. -/
+def sharedRef : ImpType → Bool
+  | .ref _ false => true
+  | _ => false
+
+/-- The parameter `x` is a shared reference. -/
+def sharedParam (ps : List (String × ImpType)) (x : String) : Bool :=
+  (ps.find? (·.1 == x)).any fun p => sharedRef p.2
+
+/-- An array of length `n` that the callee may write: behind a `&mut`, or passed by value, in
+    which case the array at the pointer is the callee's copy. -/
+def writableBuf (n : Nat) : ImpType → Bool
+  | .ref (.array _ k) true => k == n
+  | .array _ k => k == n
+  | _ => false
+
+/-- The parameter that holds an array result of length `n`: the first `&mut` parameter of that
+    length, else the first one of that length passed by value. A shared reference is never
+    one (`bufArg?_writable`). -/
+def bufArg? (ps : List (String × ImpType)) (args : List AbiArg) (n : Nat) : Option AbiArg :=
+  let isMutN : String × ImpType → Bool := fun p =>
+    match p.2 with
+    | .ref (.array _ k) true => k == n
+    | _ => false
+  ((ps.find? fun p => isMutN p && writableBuf n p.2) <|> ps.find? fun p => writableBuf n p.2).bind
+    fun p => args.find? (·.name == p.1)
+
 /-- The read-back of a result of type `τ`: a scalar in `%rax`; an array of `n` words in a
-    `&mut` parameter of length `n`, else in a parameter of length `n`, else in a further
-    output parameter `_out`, the result buffer into which the back half copies a returned
-    array that is not the buffer (`RegionBackend.regionCopy`); for the result `()` of a body that ends by reading its `&mut`
-    array parameter `x` of length `n` (`tail = some x`, the in-place form), the `n` words at
-    the pointer of `x`, whose source value is the final binding of `x`
-    (`tailVar_denoteSpine`); for a pair result `([u64; n], u64)` of a body whose spine ends in
-    `let y = a[k]; (a, y)` (`pair = some (a, k)`, `spineArrTail`) with `a` an array parameter
-    of length `n` and `k` a scalar parameter, the pair `.tuple [.words r n, .wordAt r i]` of
-    the words at the register `r` of `a` and the word at the index in the register `i` of `k`,
-    which the pair stage of `compileA` reads back (`pairStage`). -/
+    `&mut` parameter of length `n`, else in a by-value parameter of length `n` (`bufArg?`),
+    else in a further output parameter `_out`, the result buffer into which the back half
+    copies a returned array that is not the buffer (`RegionBackend.regionCopy`); for the result
+    `()` of a body that ends by reading its `&mut` array parameter `x` of length `n`
+    (`tail = some x`, the in-place form), the `n` words at the pointer of `x`, whose source
+    value is the final binding of `x` (`tailVar_denoteSpine`); for a pair result
+    `([u64; n], u64)` of a body whose spine ends in `let y = a[k]; (a, y)`
+    (`pair = some (a, k)`, `spineArrTail`) with `a` an array parameter of length `n` that is no
+    shared reference (`sharedParam`) and `k` a scalar parameter, the pair
+    `.tuple [.words r n, .wordAt r i]` of the words at the register `r` of `a` and the word at
+    the index in the register `i` of `k`, which the pair stage of `compileA` reads back
+    (`pairStage`). -/
 def mkResult (wide : Bool) (ps : List (String × ImpType)) (args : List AbiArg)
     (tail : Option String) (pair : Option (String × String)) (τ : ImpType) :
     Except String (List AbiArg × ResultKind) :=
   match argKind? wide τ with
   | some .scalar => .ok (args, .reg "%rax")
   | some (.words n) =>
-      let isMutN : String × ImpType → Bool := fun p =>
-        match p.2 with
-        | .ref (.array _ k) true => k == n
-        | _ => false
-      match ((ps.find? isMutN).bind fun p => args.find? (·.name == p.1)) <|>
-          args.find? (·.kind == .words n) with
+      match bufArg? ps args n with
       | some a => .ok (args, .words a.reg n)
       | none =>
           match regs[args.length]? with
@@ -506,7 +532,9 @@ def mkResult (wide : Bool) (ps : List (String × ImpType)) (args : List AbiArg)
             let i ← args.find? (·.name == k)
             match argKind? wide ta, argKind? wide tw, a.kind, i.kind with
             | some (.words n), some .scalar, .words n', .scalar =>
-                if n == n' then some (.tuple [.words a.reg n, .wordAt a.reg i.reg]) else none
+                if n == n' && !sharedParam ps x then
+                  some (.tuple [.words a.reg n, .wordAt a.reg i.reg])
+                else none
             | _, _, _, _ => none
         | _ => none
       match inPlace <|> pairRes with
@@ -584,20 +612,60 @@ theorem mkResult_words_isOk {wide : Bool} {ps : List (String × ImpType)} {args 
     simp only [hr']
     exact ⟨_, rfl⟩
 
+/-- **A result buffer is a parameter that the callee may write**, so never a shared
+    reference. -/
+theorem bufArg?_writable {ps : List (String × ImpType)} {args : List AbiArg} {n : Nat}
+    {a : AbiArg} (h : bufArg? ps args n = some a) :
+    a ∈ args ∧ ∃ p ∈ ps, a.name = p.1 ∧ writableBuf n p.2 = true ∧ sharedRef p.2 = false := by
+  obtain ⟨p, hp, ha⟩ := Option.bind_eq_some_iff.mp h
+  have hw : p ∈ ps ∧ writableBuf n p.2 = true := by
+    simp only [Option.orElse_eq_orElse, Option.orElse_eq_or, Option.or_eq_some_iff] at hp
+    rcases hp with hp | ⟨-, hp⟩
+    · refine ⟨List.mem_of_find?_eq_some hp, ?_⟩
+      have hq := List.find?_some (p := fun q : String × ImpType => _) hp
+      simp only [Bool.and_eq_true] at hq
+      exact hq.2
+    · grind
+  refine ⟨List.mem_of_find?_eq_some ha, p, hw.1, by simpa using List.find?_some ha, hw.2, ?_⟩
+  have := hw.2
+  unfold writableBuf at this
+  split at this <;> simp_all [sharedRef]
+
+/-- **An array result is in no shared reference**: it is in a parameter that the callee may
+    write or in the further output parameter. -/
+theorem mkResult_words_buffer {wide : Bool} {ps : List (String × ImpType)}
+    {args args' : List AbiArg} {tail : Option String} {pair : Option (String × String)}
+    {τ : ImpType} {n : Nat}
+    {rk : ResultKind} (hτ : argKind? wide τ = some (.words n))
+    (h : mkResult wide ps args tail pair τ = .ok (args', rk)) :
+    ∃ r, rk = .words r n ∧
+      ((args' = args ∧ ∃ a ∈ args, a.reg = r ∧
+          ∃ p ∈ ps, a.name = p.1 ∧ writableBuf n p.2 = true ∧ sharedRef p.2 = false) ∨
+        args' = args ++ [⟨"_out", r, .words n⟩]) := by
+  simp only [mkResult, hτ] at h
+  split at h
+  · rename_i a ha
+    cases h
+    obtain ⟨hm, hp⟩ := bufArg?_writable ha
+    exact ⟨_, rfl, .inl ⟨rfl, a, hm, rfl, hp⟩⟩
+  · split at h <;> cases h
+    exact ⟨_, rfl, .inr rfl⟩
+
 /-- **The result check accepts every pair tail**: at a result type `([u64; n], u64)` (a pair
     whose components `argKind?` reads as an array of `n` words and a scalar) of a body ending in
-    `let y = a[k]; (a, y)` with `a` an array parameter of length `n` and `k` a scalar parameter,
-    the result is the words of `a` and its word at `k`. -/
+    `let y = a[k]; (a, y)` with `a` an array parameter of length `n` that is no shared reference
+    and `k` a scalar parameter, the result is the words of `a` and its word at `k`. -/
 theorem mkResult_pair {wide : Bool} {ps : List (String × ImpType)} {args : List AbiArg}
     {tail : Option String} {x k : String} {ta tw : ImpType} {n : Nat} {a i : AbiArg}
     (hta : argKind? wide ta = some (.words n)) (htw : argKind? wide tw = some .scalar)
     (ha : args.find? (·.name == x) = some a) (hi : args.find? (·.name == k) = some i)
-    (hak : a.kind = .words n) (hik : i.kind = .scalar) (hnu : tail = none) :
+    (hak : a.kind = .words n) (hik : i.kind = .scalar) (hnu : tail = none)
+    (hs : sharedParam ps x = false) :
     mkResult wide ps args tail (some (x, k)) (.tuple [ta, tw])
       = .ok (args, .tuple [.words a.reg n, .wordAt a.reg i.reg]) := by
   subst hnu
   have h0 : argKind? wide (.tuple [ta, tw]) = none := rfl
-  simp [mkResult, h0, ha, hi, hta, htw, hak, hik, bind, Option.bind]
+  simp [mkResult, h0, ha, hi, hta, htw, hak, hik, hs, bind, Option.bind]
 
 /-! ## The constructs of a refusal -/
 
