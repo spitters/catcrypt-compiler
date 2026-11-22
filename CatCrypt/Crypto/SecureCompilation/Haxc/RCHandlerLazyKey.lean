@@ -5,6 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed
 public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerStateful
 
 /-!

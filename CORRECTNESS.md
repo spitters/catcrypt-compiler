@@ -488,7 +488,8 @@ simulator are at distance `ε` in every context. The statements below instantiat
   `haxc_rcHKeyed` in `Haxc/RCHandlerKeyed.lean`), keyed with the key drawn at the first call
   (`HandlerRCLazy`, `haxc_rcHLazy` in `Haxc/RCHandlerLazyKey.lean`), or stateful (`HandlerRCSt`,
   `haxc_rcHSt` in `Haxc/RCHandlerStateful.lean`), where source and target handlers are coupled
-  up to failure.
+  up to failure. A keyed oracle is the stateful oracle whose state is the key (`keyedSt`), and
+  `haxc_rcHKeyed` is derived from `haxc_rcHSt` at it.
   `HandlerRC.toω` (`Haxc/CallTreeInterpSPFuelSource.lean`) removes the source fuel: the
   source interpretations along the diagonal of the fuels form a chain whose supremum
   `interpSrcω` is attained at some fuel, and `HandlerRCω` states robust compilation at

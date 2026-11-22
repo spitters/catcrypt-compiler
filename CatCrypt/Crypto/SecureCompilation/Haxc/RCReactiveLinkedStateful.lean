@@ -137,7 +137,7 @@ theorem rHoareApprox_graph_of_tvMargin {c₁ : SPComp α} {c₂ : SPComp β} {g 
     obtain ⟨h1, h2⟩ := Prod.mk.inj h
     exact ⟨h1, h2⟩
   · intro b
-    have h0 := ENNReal.tsum_eq_zero.mp (le_antisymm (h₁ s₀) zero_le) b
+    have h0 := tsum_eq_zero_iff.mp (le_antisymm (h₁ s₀) zero_le) b
     rw [readBack_some_apply_some] at h0
     convert tsub_eq_zero_iff_le.mp h0
   · have h0 := h₂ s₀

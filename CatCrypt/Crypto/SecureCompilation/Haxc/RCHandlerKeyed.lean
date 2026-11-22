@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerInstance
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerStateful
 
 /-!
 # Robust compilation over keyed source oracles
@@ -19,27 +19,29 @@ point mass at `ans k` on the separation contracts at the typed answer relation
 `contractRACA TypedAns m`. The source and target computations draw the same key and then run the
 source tree, respectively the target trees of the calling body, under the handlers at that key.
 
-The relation of the call trees at the skip predicate `SkipAns TypedAns m`
-(`NFCallTreeR3TypedAns.r3FA_of_shape_int`) is, at each key, the relation `RuttF` at the pure
-handler `ans k`, since its answers satisfy the skip predicate. The statistical distance bound of
-`sdist_readBack_ruttF` then holds at each key, and the common draw of the key keeps it
-(`sdist_bind_right_dep`).
+A keyed oracle is the stateful oracle of `RCHandlerStateful` whose handler state is the key:
+drawn by `keyDist`, and kept by every call (`keyedSt`). Its source and target computations and
+its couplings are those of that stateful oracle, so the statistical distance bound and robust
+compilation over keyed oracles are instances of the theorems over stateful oracles.
 
 ## Main definitions
 
 * `KeyedOracle`: a source oracle of the keyed-game form with typed answers.
 * `keyedSrc`, `keyedTgt`: the source and target computations of a keyed oracle.
 * `HandlerCoupledKeyed`: a target handler family coupled at each key with the keyed oracle.
+* `keyedSt`: a keyed oracle as a stateful oracle.
 * `HandlerRCKeyed`: robust compilation over the target handler families coupled with a keyed
   oracle whose failure weight is bounded.
 * `pointOracle`: the point mass at the meanings of the linked functions as a keyed oracle.
 
 ## Main results
 
-* `sdist_keyed_contract`: the statistical distance of the source and target computations.
+* `sdist_keyed_contract`: the statistical distance of the source and target computations, the
+  instance of `sdist_st_contract` at `keyedSt`.
+* `handlerRCKeyed_of_handlerRCSt`: `HandlerRCKeyed` from `HandlerRCSt` at `keyedSt`.
 * `handlerCoupledKeyed_point`: a handler of `HandlerCoupledCG` is coupled with `pointOracle`.
 * `handlerRC_of_handlerRCKeyed`: `HandlerRC` from `HandlerRCKeyed` at `pointOracle`.
-* `haxc_rcHKeyed`: for a result of `compileA` under the hypotheses of `r3FA_of_shape_int`,
+* `haxc_rcHKeyed`: for a result of `compileA` under the hypotheses of `haxc_rcHSt`,
   `HandlerRCKeyed` at every keyed oracle.
 -/
 
@@ -87,6 +89,7 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall
 open CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSP (HandlerCoupled)
 open CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSPFuel
 open CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerInstance (HandlerRC)
+open CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerStateful
 open _root_.Hax
 
 /-! ## Keyed source oracles -/
@@ -130,6 +133,47 @@ def HandlerCoupledKeyed (O : KeyedOracle m)
   ∀ k, HandlerCoupled eqPre (contractREG m) (contractRACA TypedAns m)
     (fun e => SPComp.pure (O.ans k e)) (h₂ k)
 
+/-! ## The keyed oracle as a stateful oracle -/
+
+/-- **A keyed oracle as a stateful oracle**: the handler state is the key, drawn by `keyDist`
+    and kept by every call. -/
+noncomputable def keyedSt (O : KeyedOracle m) : StOracle m where
+  St := O.Key
+  init := O.keyDist
+  step := constSt fun k e => SPComp.pure (O.ans k e)
+  skips := by
+    rintro e k _ rfl
+    change RelF _ ((SPComp.pure _).bind _) _ _
+    rw [SPComp.pure_bind]
+    exact RelF.ret fun _ _ hs => ⟨O.typed k e, rfl, hs⟩
+
+/-- The source computation of a keyed oracle as a stateful oracle is `keyedSrc`. -/
+theorem stSrc_keyedSt (O : KeyedOracle m) (t : CallTree linkSig (Outcome × Env)) :
+    stSrc (keyedSt O) t = keyedSrc O t := by
+  simp only [stSrc, keyedSrc, keyedSt, readBack_interpSt_constSt]
+
+/-- The target computation of a keyed oracle as a stateful oracle, at a target handler family
+    indexed by the key, is `keyedTgt`. -/
+theorem stTgt_keyedSt (σ : AbiLayout) (pc : List RInstr) (sym : Nat → String) (sa : AState)
+    (O : KeyedOracle m)
+    (h₂ : O.Key → ∀ e : (kSig AState).Event, SPComp ((kSig AState).Resp e)) :
+    stTgt σ pc sym sa (keyedSt O) (constSt h₂) = keyedTgt σ pc sym sa O h₂ := by
+  simp only [stTgt, keyedTgt, keyedSt, interpTargetStω, interpStω_constSt, interpTargetω]
+
+/-- **A target handler family coupled with a keyed oracle is coupled with it as a stateful
+    oracle.** -/
+theorem handlerCoupledSt_keyedSt {O : KeyedOracle m}
+    {h₂ : O.Key → ∀ e : (kSig AState).Event, SPComp ((kSig AState).Resp e)}
+    (hc : HandlerCoupledKeyed O h₂) : HandlerCoupledSt (keyedSt O) (constSt h₂) := by
+  rintro e₁ e₂ he k _ rfl
+  have hk := hc k e₁ e₂ he
+  have hnf : ∀ s, h₂ k e₂ s none = 0 :=
+    rHoare_noFail_right (Φ := eqPre) hk (fun s => ⟨s, rfl⟩) fun _ => SDistr.pure_apply_none _
+  change RelF eqPre ((SPComp.pure (O.ans k e₁)).bind fun a => SPComp.pure (a, k))
+    ((h₂ k e₂).bind fun a => SPComp.pure (a, k)) _
+  refine RelF.bind (RelF.of_rHoare (fun _ => SDistr.pure_apply_none _) hnf hk) fun a b => ?_
+  exact RelF.ret fun _ _ hp => ⟨hp.1, rfl, hp.2⟩
+
 /-- **Statistical distance at a keyed oracle.** Let a source tree be related by `RuttFA` at the
     skip predicate `SkipAns TypedAns m` and the separation contracts at `TypedAns` to the target
     trees of the calling body `pc` from `sa`, and let the target handler family be coupled with
@@ -146,20 +190,15 @@ theorem sdist_keyed_contract {σ : AbiLayout} {sa : AState} {pc : List RInstr}
     (hδ : ∀ k s, readBack srcRead (interpSP (fun e => SPComp.pure (O.ans k e)) t₁) s none ≤ δ) :
     sdist (fun _ : Unit => keyedSrc O t₁) (fun _ : Unit => keyedTgt σ pc sym sa O h₂) ≤
       ε + δ := by
-  have hk : ∀ k, sdist
-      (fun _ : Unit => readBack srcRead (interpSP (fun e => SPComp.pure (O.ans k e)) t₁))
-      (fun _ : Unit => readBack (fun s' => some (σ.result.read sa s'))
-        (interpTargetω m pc sym sa (h₂ k))) ≤ ε + δ := fun k =>
-    sdist_readBack_ruttF (hc k) (fun _ => srcFail_of_resRel_none) _
-      (ruttFA_iff_ruttF.mp (h.imp (fun e a ha => by subst ha; exact O.typed k e)
-        (fun _ _ he => he) (fun _ _ _ _ _ ha => ha) (fun _ _ hr => hr) (fun _ hf => hf)))
-      srcRead _ (fun _ => srcRead_of_srcFail) (fun _ _ _ => read_of_resRel) (hε k) (hδ k)
-  have hfun : sdist
-      (fun k => readBack srcRead (interpSP (fun e => SPComp.pure (O.ans k e)) t₁))
-      (fun k => readBack (fun s' => some (σ.result.read sa s'))
-        (interpTargetω m pc sym sa (h₂ k))) ≤ ε + δ :=
-    iSup_le fun D => iSup_le fun k => iSup_le fun h₀ => sdist_le_of_forall (hk k) D () h₀
-  exact sdist_bind_right_dep (fun _ : Unit => O.keyDist) _ _ fun _ => hfun
+  rw [← stSrc_keyedSt, ← stTgt_keyedSt]
+  refine sdist_st_contract (keyedSt O) (handlerCoupledSt_keyedSt hc) h
+    (fun (k : O.Key) s => ?_) (fun (k : O.Key) s => ?_)
+  · have he := hε k s
+    rw [interpTargetω, ← interpStω_constSt] at he
+    exact he
+  · have he := readBack_interpSt_constSt (S := O.Key) srcRead
+      (fun k e => SPComp.pure (O.ans k e)) t₁ k
+    exact (congrArg (fun c : SPComp Value => c s none) he).trans_le (hδ k s)
 
 /-! ## Robust compilation over keyed oracles -/
 
@@ -181,6 +220,25 @@ def HandlerRCKeyed (m : HaxModule) (σ : AbiLayout) (pc : List RInstr) (sym : Na
         (fun h₂ (_ : Unit) => keyedTgt σ pc sym sa O h₂)
         (fun _ (_ : Unit) =>
           keyedSrc O (nfTree (moduleTreeTable m hax64WExit fuelC) fuel m.entry.erase env))
+
+/-- **`HandlerRCKeyed` is the instance of `HandlerRCSt` at a keyed oracle**, whose handler state
+    is the key. -/
+theorem handlerRCKeyed_of_handlerRCSt {σ : AbiLayout} {pc : List RInstr} {sym : Nat → String}
+    {O : KeyedOracle m} (h : HandlerRCSt m σ pc sym (keyedSt O)) :
+    HandlerRCKeyed m σ pc sym O := by
+  intro sa hsa env henv fC fuel ε δ hδ
+  refine (robustCompilationH_iff_sdist _ _ _ _).mpr fun h₂ hh => ?_
+  have hk := (robustCompilationH_iff_sdist _ _ _ _).mp
+    (h sa hsa env henv fC fuel ε δ fun (k : O.Key) s => by
+      have he := readBack_interpSt_constSt (S := O.Key) srcRead
+        (fun k e => SPComp.pure (O.ans k e))
+        (nfTree (moduleTreeTable m hax64WExit fC) fuel m.entry.erase env) k
+      exact (congrArg (fun c : SPComp Value => c s none) he).trans_le (hδ k s)) (constSt h₂)
+    ⟨handlerCoupledSt_keyedSt hh.1, fun (k : O.Key) s => by
+      have hk := hh.2 k s
+      rw [interpTargetω, ← interpStω_constSt] at hk
+      exact hk⟩
+  rwa [stTgt_keyedSt, stSrc_keyedSt] at hk
 
 /-- **The meanings of the linked functions as a keyed oracle**: a single key, and the answers
     of `linkHandler m`. -/
@@ -211,8 +269,9 @@ theorem handlerRC_of_handlerRCKeyed {σ : AbiLayout} {pc : List RInstr} {sym : N
 
 /-- **Robust compilation over keyed oracles, for the hax compiler.** Let `compileA` compile the
     module `m` to `(P, bytes)` under the hypotheses of `NFCallTreeR3Linked.r3FA_of_shape_linked`.
-    The bytes decode to a calling body `pc` followed by the shifted linked code `Q`, and `HandlerRCKeyed` holds at
-    `pc` for every keyed oracle of `m`. -/
+    The bytes decode to a calling body `pc` followed by the shifted linked code `Q`, and
+    `HandlerRCKeyed` holds at `pc` for every keyed oracle of `m`, as the instance of `haxc_rcHSt`
+    at the stateful oracles `keyedSt`. -/
 theorem haxc_rcHKeyed {σ : AbiLayout} {fname : String} {P : Lprog}
     {bytes : List (BitVec 8)} (hc : compileA m σ fname = some (P, bytes))
     (hnd : (m.linked.map (·.name)).Nodup) (hk : ∀ l ∈ m.linked, LinkedKernel l)
@@ -242,12 +301,8 @@ theorem haxc_rcHKeyed {σ : AbiLayout} {fname : String} {P : Lprog}
     ∃ (pc Q : List RInstr) (sym : Nat → String),
       decodeLprog bytes = some (pc ++ shiftProg pc.length Q) ∧
       ∀ O : KeyedOracle m, HandlerRCKeyed m σ pc sym O := by
-  obtain ⟨pc, Q, sym, hd, hrel⟩ :=
-    NFCallTreeR3Linked.r3FA_of_shape_linked hc hnd hk hn hpt hcf tE htE hpar hword hin
-      hspine hfs hint hfp hbody hintB
-  refine ⟨pc, Q, sym, hd, fun O sa hsa env henv fC fuel ε δ hδ => ?_⟩
-  refine (robustCompilationH_iff_sdist _ _ _ _).mpr fun h hh => ?_
-  rw [sdist_sym]
-  exact sdist_keyed_contract O hh.1 (hrel sa hsa env henv fC fuel) hh.2 hδ
+  obtain ⟨pc, Q, sym, hd, h⟩ := haxc_rcHSt hc hnd hk hn hpt hcf tE htE hpar hword hin
+    hspine hfs hint hfp hbody hintB
+  exact ⟨pc, Q, sym, hd, fun O => handlerRCKeyed_of_handlerRCSt (h (keyedSt O))⟩
 
 end CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed

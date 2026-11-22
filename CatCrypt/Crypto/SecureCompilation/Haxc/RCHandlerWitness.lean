@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerStateful
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed
 
 /-!
 # Target handlers that meet the separation contracts

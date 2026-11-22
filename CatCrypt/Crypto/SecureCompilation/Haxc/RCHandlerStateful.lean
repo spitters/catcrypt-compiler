@@ -5,16 +5,17 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed
+public import CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerInstance
 public import CatCryptCore.Relational.CouplingMass
 
 /-!
 # Robust compilation over stateful probabilistic source oracles
 
-`RCHandlerKeyed` states robust compilation for source oracles that draw a key before the run and
-answer each call by a point mass at that key. This module states it for source oracles whose
-state changes across calls: a stateful handler answers a call at a handler state by a
-computation of the answer and the next handler state (`interpSt`). The handler state is kept
+`RCHandlerInstance` states robust compilation at the point mass at the meanings of the linked
+functions. This module states it for source oracles whose state changes across calls: a stateful
+handler answers a call at a handler state by a computation of the answer and the next handler
+state (`interpSt`). The keyed oracles of `RCHandlerKeyed`, which draw a key before the run, are
+the instance at which the handler state is the key. The handler state is kept
 apart from the heap, so that the heaps of the source and the target stay equal and the
 distinguisher, which reads the final heap, sees no oracle state.
 
@@ -35,8 +36,7 @@ supremum over the fuel (`tvMargin_le_of_iSup`).
   handler answering skipped calls within the skip predicate.
 * `StOracle`, `stSrc`, `stTgt`, `HandlerCoupledSt`, `HandlerRCSt`: stateful source oracles of
   the linked functions and robust compilation over them.
-* `constSt`, `keyedSt`: a handler family indexed by the state, and a keyed oracle as a stateful
-  oracle.
+* `constSt`: a handler family indexed by the state, as a stateful handler that keeps the state.
 
 ## Main results
 
@@ -45,7 +45,6 @@ supremum over the fuel (`tvMargin_le_of_iSup`).
 * `sdist_readBack_ruttFA`: the statistical distance of the read-backs under stateful handlers.
 * `sdist_st_contract`: the statistical distance at a stateful oracle and the separation
   contracts.
-* `handlerRCKeyed_of_handlerRCSt`: `HandlerRCKeyed` is the instance at `keyedSt`.
 * `haxc_rcHSt`: for a result of `compileA`, `HandlerRCSt` at every stateful oracle.
 -/
 
@@ -82,7 +81,7 @@ noncomputable def totC (c : SPComp α) : SPComp (Option α) :=
 /-- A computation with failure as a value does not fail. -/
 theorem totC_apply_none (c : SPComp α) (s : Heap) : totC c s none = 0 := by
   simp only [totC, PMF.map_apply]
-  refine ENNReal.tsum_eq_zero.mpr fun o => ?_
+  refine tsum_eq_zero_iff.mpr fun o => ?_
   cases o <;> simp [failVal]
 
 /-- The weight of a value with failure as a value is its weight. -/
@@ -562,19 +561,19 @@ theorem tvMargin_le_none_of_relF {c₁ c₂ : SPComp V} (h : RelF eqPre c₁ c�
     have h1 : c₁ s (some (v, hv)) ≤ J.joint (some ((some v, hv), (some v, hv))) +
         J.joint (some ((some v, hv), (none, Heap.empty))) := by
       rw [← totC_apply_some_some, ← Coupling.left_marginal_sum J]
-      refine (ENNReal.tsum_le_tsum hle).trans ?_
-      rw [ENNReal.tsum_add, tsum_ite_eq, tsum_ite_eq]
+      refine (tsum_le_tsum hle).trans ?_
+      rw [tsum_add, tsum_ite_eq, tsum_ite_eq]
     have h2 : J.joint (some ((some v, hv), (some v, hv))) ≤ c₂ s (some (v, hv)) := by
       rw [← totC_apply_some_some, ← Coupling.right_marginal_sum J,
-        ENNReal.tsum_eq_add_tsum_ite (some v, hv)]
+        tsum_eq_add_tsum_ite (some v, hv)]
       exact le_self_add
     refine tsub_le_iff_left.mpr (h1.trans ?_)
     gcongr
   calc tvMargin (c₁ s) (c₂ s)
       ≤ ∑' x : V × Heap, J.joint (some ((some x.1, x.2), (none, Heap.empty))) :=
-        ENNReal.tsum_le_tsum hpt
+        tsum_le_tsum hpt
     _ ≤ ∑' p : Option V × Heap, J.joint (some (p, (none, Heap.empty))) :=
-        ENNReal.tsum_comp_le_tsum_of_injective (f := fun x : V × Heap => (some x.1, x.2))
+        tsum_comp_le_tsum_of_injective (f := fun x : V × Heap => (some x.1, x.2))
           (fun x y hxy => by
             simp only [Prod.mk.injEq, Option.some.injEq] at hxy
             exact Prod.ext hxy.1 hxy.2) (fun p => J.joint (some (p, (none, Heap.empty))))
@@ -793,7 +792,6 @@ open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeContract (contractREG)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeOracle
 open CatCrypt.Crypto.SecureCompilation.Haxc.RegionLinkCall
 open CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSPFuel
-open CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerKeyed
 open _root_.Hax
 
 /-! ## Stateful source oracles of the linked functions -/
@@ -897,70 +895,11 @@ def HandlerRCSt (m : HaxModule) (σ : AbiLayout) (pc : List RInstr) (sym : Nat �
         (fun _ (_ : Unit) =>
           stSrc O (nfTree (moduleTreeTable m hax64WExit fuelC) fuel m.entry.erase env))
 
-/-! ## The keyed oracle as a stateful oracle -/
-
-/-- **A keyed oracle as a stateful oracle**: the handler state is the key, drawn by `keyDist`
-    and kept by every call. -/
-noncomputable def keyedSt (O : KeyedOracle m) : StOracle m where
-  St := O.Key
-  init := O.keyDist
-  step := constSt fun k e => SPComp.pure (O.ans k e)
-  skips := by
-    rintro e k _ rfl
-    change RelF _ ((SPComp.pure _).bind _) _ _
-    rw [SPComp.pure_bind]
-    exact RelF.ret fun _ _ hs => ⟨O.typed k e, rfl, hs⟩
-
-/-- The source computation of a keyed oracle as a stateful oracle is `keyedSrc`. -/
-theorem stSrc_keyedSt (O : KeyedOracle m) (t : CallTree linkSig (Outcome × Env)) :
-    stSrc (keyedSt O) t = keyedSrc O t := by
-  simp only [stSrc, keyedSrc, keyedSt, readBack_interpSt_constSt]
-
-/-- The target computation of a keyed oracle as a stateful oracle, at a target handler family
-    indexed by the key, is `keyedTgt`. -/
-theorem stTgt_keyedSt (σ : AbiLayout) (pc : List RInstr) (sym : Nat → String) (sa : AState)
-    (O : KeyedOracle m)
-    (h₂ : O.Key → ∀ e : (kSig AState).Event, SPComp ((kSig AState).Resp e)) :
-    stTgt σ pc sym sa (keyedSt O) (constSt h₂) = keyedTgt σ pc sym sa O h₂ := by
-  simp only [stTgt, keyedTgt, keyedSt, interpTargetStω, interpStω_constSt, interpTargetω]
-
-/-- **A target handler family coupled with a keyed oracle is coupled with it as a stateful
-    oracle.** -/
-theorem handlerCoupledSt_keyedSt {O : KeyedOracle m}
-    {h₂ : O.Key → ∀ e : (kSig AState).Event, SPComp ((kSig AState).Resp e)}
-    (hc : HandlerCoupledKeyed O h₂) : HandlerCoupledSt (keyedSt O) (constSt h₂) := by
-  rintro e₁ e₂ he k _ rfl
-  have hk := hc k e₁ e₂ he
-  have hnf : ∀ s, h₂ k e₂ s none = 0 :=
-    rHoare_noFail_right (Φ := eqPre) hk (fun s => ⟨s, rfl⟩) fun _ => SDistr.pure_apply_none _
-  change RelF eqPre ((SPComp.pure (O.ans k e₁)).bind fun a => SPComp.pure (a, k))
-    ((h₂ k e₂).bind fun a => SPComp.pure (a, k)) _
-  refine RelF.bind (RelF.of_rHoare (fun _ => SDistr.pure_apply_none _) hnf hk) fun a b => ?_
-  exact RelF.ret fun _ _ hp => ⟨hp.1, rfl, hp.2⟩
-
-/-- **`HandlerRCKeyed` is the instance of `HandlerRCSt` at a keyed oracle**, whose handler state
-    is the key. -/
-theorem handlerRCKeyed_of_handlerRCSt {σ : AbiLayout} {pc : List RInstr} {sym : Nat → String}
-    {O : KeyedOracle m} (h : HandlerRCSt m σ pc sym (keyedSt O)) :
-    HandlerRCKeyed m σ pc sym O := by
-  intro sa hsa env henv fC fuel ε δ hδ
-  refine (robustCompilationH_iff_sdist _ _ _ _).mpr fun h₂ hh => ?_
-  have hk := (robustCompilationH_iff_sdist _ _ _ _).mp
-    (h sa hsa env henv fC fuel ε δ fun (k : O.Key) s => by
-      have he := readBack_interpSt_constSt (S := O.Key) srcRead
-        (fun k e => SPComp.pure (O.ans k e))
-        (nfTree (moduleTreeTable m hax64WExit fC) fuel m.entry.erase env) k
-      exact (congrArg (fun c : SPComp Value => c s none) he).trans_le (hδ k s)) (constSt h₂)
-    ⟨handlerCoupledSt_keyedSt hh.1, fun (k : O.Key) s => by
-      have hk := hh.2 k s
-      rw [interpTargetω, ← interpStω_constSt] at hk
-      exact hk⟩
-  rwa [stTgt_keyedSt, stSrc_keyedSt] at hk
-
 /-- **Robust compilation over stateful oracles, for the hax compiler.** Let `compileA` compile
     the module `m` to `(P, bytes)` under the hypotheses of
-    `NFCallTreeR3Linked.r3FA_of_shape_linked`. The bytes decode to a calling body `pc` followed by the shifted linked code `Q`, and `HandlerRCSt` holds at
-    `pc` for every stateful oracle of `m`. -/
+    `NFCallTreeR3Linked.r3FA_of_shape_linked`. The bytes decode to a calling body `pc` followed
+    by the shifted linked code `Q`, and `HandlerRCSt` holds at `pc` for every stateful oracle
+    of `m`. -/
 theorem haxc_rcHSt {σ : AbiLayout} {fname : String} {P : Lprog}
     {bytes : List (BitVec 8)} (hc : compileA m σ fname = some (P, bytes))
     (hnd : (m.linked.map (·.name)).Nodup) (hk : ∀ l ∈ m.linked, LinkedKernel l)
