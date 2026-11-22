@@ -450,7 +450,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontLinked
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed
 CatCrypt.Crypto.SecureCompilation.Haxc.LinkKeep
-CatCrypt.Crypto.SecureCompilation.Haxc.LinkStepsTyped
+CatCrypt.Crypto.SecureCompilation.Haxc.LinkTable
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
 CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTreeGoodCheck
