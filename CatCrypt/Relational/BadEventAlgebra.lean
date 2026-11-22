@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Relational.Approx
 public import CatCryptCore.Prob.Support
+public import CatCryptCore.ForMathlib.TsumExchange
 
 /-!
 # Identical-Until-Bad as a Graded Exception Structure
@@ -157,13 +158,6 @@ open scoped ENNReal
 variable {α β : Type*}
 
 /-! ## tsub helpers -/
-
-private theorem tsum_tsub_tsum_le {ι : Type*} (f g : ι → ℝ≥0∞) :
-    (∑' i, f i) - (∑' i, g i) ≤ ∑' i, (f i - g i) := by
-  rw [tsub_le_iff_right]
-  calc ∑' i, f i
-      ≤ ∑' i, ((f i - g i) + g i) := ENNReal.tsum_le_tsum fun i => le_tsub_add
-    _ = (∑' i, (f i - g i)) + ∑' i, g i := ENNReal.tsum_add
 
 private theorem mul_tsub_le' (a x y : ℝ≥0∞) : a * x - a * y ≤ a * (x - y) := by
   rw [tsub_le_iff_right, ← mul_add]
