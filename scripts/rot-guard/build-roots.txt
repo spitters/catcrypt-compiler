@@ -231,7 +231,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
-CatCrypt.Crypto.SecureCompilation.Ascent.CorresIsaWP
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresRelationalWeld
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresSymScalar
@@ -267,6 +266,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
 CatCrypt.Crypto.SecureCompilation.Ascent.ImageSpFreeCell
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
+CatCrypt.Crypto.SecureCompilation.Ascent.IsaTextWP
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT
