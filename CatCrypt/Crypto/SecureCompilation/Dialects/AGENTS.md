@@ -110,8 +110,8 @@ legality check consumed by `../X86Backend/ComLegalityToGather*.lean`.
   `catLevelCheck_sound`; `TranslateDialectCT.lean`: the front check `levelCheckF`
   and `levelCheckF_ct` (an accepted LowCT body translates to a `catCT` program).
 - `CryptoDialectLeakFactoring.lean`, `CryptoDialectVerifiedMiddle.lean`
-  (`RHP_leakage_verified_middle_dialect`), `ConstantTimeTrait.lean`: structural
-  statements over the valuation-free trace; not CT evidence.
+  (`DialectCtx`, `linkedLeakTraceCom`), `ConstantTimeTrait.lean`: structural
+  definitions and statements over the valuation-free trace; not CT evidence.
 - `CryptoDialectSecurity.lean` (`comSdist`), `CryptoDialectSecurityNative.lean`,
   `CatCryptDialectSP.lean` (the `SPComp` interpretation), `CryptoDialectRelCompile.lean`,
   `OtpDialectSecurity.lean`, `MoreDialectSecurity*.lean`.
