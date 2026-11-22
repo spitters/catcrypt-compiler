@@ -448,6 +448,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.HaxcMain
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontEc
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontLinked
 CatCrypt.Crypto.SecureCompilation.Haxc.LeanFrontMixed
+CatCrypt.Crypto.SecureCompilation.Haxc.LinkKeep
 CatCrypt.Crypto.SecureCompilation.Haxc.LowCTEntryCompile
 CatCrypt.Crypto.SecureCompilation.Haxc.ModuleCalls
 CatCrypt.Crypto.SecureCompilation.Haxc.MpnBytes
