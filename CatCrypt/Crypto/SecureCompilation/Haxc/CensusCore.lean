@@ -52,8 +52,10 @@ the firings of the optimiser rules along the stages it reaches.
    extraction leaves the root type unknown (`DeriveBounds.spineTy`), and a scalar parameter
    that bounds a counted loop whose every trip indexes an array at the counter, or that
    indexes an array on the spine, is bounded by the least length it needs
-   (`DeriveBounds.deriveBounds`); any other parameter or result type is a refusal at stage `ABI`, and the
-   stages are then run under the widened layout that admits signed and narrow scalars,
+   (`DeriveBounds.deriveBounds`); any other parameter or result type is a refusal at stage
+   `ABI`, as is a shared reference and a `&mut` that does not hold the result
+   (`entryParamOk`: the code may write every pointer parameter), and the stages are then run
+   under the widened layout that admits these references, signed and narrow scalars,
    Booleans and arrays of narrow words (columns `wideStage`, `wideConstruct`);
 2. the module `crateModule c te` (the entry, the census functions of the crate it reaches by
    calls, each as `ModFn.ofTExpr` makes it, and the length of the longest chain of calls, at
@@ -555,8 +557,40 @@ def narrowWidths (ps : List (String × ImpType)) (args : List AbiArg) : List (St
     let a ← args.find? (·.name == p.1)
     pure (a.reg, w)
 
+/-- The register of the array that a result is read back from, when there is one. -/
+def resultReg? : ResultKind → Option String
+  | .words r _ => some r
+  | .tuple (.words r _ :: _) => some r
+  | _ => none
+
+/-- A parameter that the calling convention of an entry admits. The compiled code may write the
+    region of every pointer parameter, so a shared reference is none, and a `&mut` is one only
+    when the body returns it (`tail`, or the array of the pair tail `pair`) and the result is
+    read back from it. An array passed by value is the callee's copy. -/
+def entryParamOk (args : List AbiArg) (rk : ResultKind) (tail : Option String)
+    (pair : Option (String × String)) (p : String × ImpType) : Bool :=
+  match p.2 with
+  | .ref _ false => false
+  | .ref _ true =>
+      (tail == some p.1 || pair.map (·.1) == some p.1) &&
+        (args.find? (·.name == p.1)).any fun a => resultReg? rk == some a.reg
+  | _ => true
+
+/-- `mkResult` with the parameters of the entry checked (`entryParamOk`); the widened layout,
+    under which the census only locates refusals, admits every parameter. -/
+def mkEntryResult (wide : Bool) (ps : List (String × ImpType)) (args : List AbiArg)
+    (tail : Option String) (pair : Option (String × String)) (τ : ImpType) :
+    Except String (List AbiArg × ResultKind) :=
+  match mkResult wide ps args tail pair τ with
+  | .error e => .error e
+  | .ok (args', rk) =>
+      match if wide then none else ps.find? fun p => !entryParamOk args' rk tail pair p with
+      | some p => .error s!"{p.1} : {tyStr 8 p.2}: pass it by value or return the &mut"
+      | none => .ok (args', rk)
+
 /-- The System V layout of an extraction, with the literal constants of `consts` that occur
     free in it. The result type is read off the statement spine (`DeriveBounds.spineTy`), each
+    parameter is one the calling convention admits (`mkEntryResult`), each
     parameter of an unsigned type narrower than `64` bits is read at its width
     (`narrowWidths`), and each scalar parameter that bounds a counted loop whose accesses every
     trip reaches, or that indexes an array on the spine, is bounded by its least cap
@@ -565,7 +599,7 @@ def deriveAbi (wide : Bool) (consts : List (String × TExpr)) (te : TExpr) :
     Except String AbiLayout := do
   let ps := prelude 64 te
   let args ← mkArgs wide ps regs
-  let (args', rk) ← mkResult wide ps args (tailVar te.erase) (spineArrTail te.erase)
+  let (args', rk) ← mkEntryResult wide ps args (tailVar te.erase) (spineArrTail te.erase)
     (DeriveBounds.spineTy te)
   let free := (_root_.Hax.freeVars te.erase).eraseDups
   let cs := consts.filterMap fun c =>
@@ -587,6 +621,45 @@ theorem deriveAbi_bounds {wide : Bool} {consts : List (String × TExpr)} {te : T
     · cases h
     · cases h
       rfl
+
+/-- **Every parameter of a derived entry is one the calling convention admits.** -/
+theorem deriveAbi_entryParamOk {consts : List (String × TExpr)} {te : TExpr} {σ : AbiLayout}
+    (h : deriveAbi false consts te = .ok σ) :
+    ∀ p ∈ prelude 64 te,
+      entryParamOk σ.args σ.result (tailVar te.erase) (spineArrTail te.erase) p = true := by
+  simp only [deriveAbi, bind, Except.bind, pure, Except.pure] at h
+  split at h
+  · cases h
+  · split at h
+    · cases h
+    · rename_i r hr
+      cases h
+      unfold mkEntryResult at hr
+      split at hr
+      · cases hr
+      · split at hr
+        · cases hr
+        · rename_i hf
+          cases hr
+          intro p hp
+          simpa using List.find?_eq_none.mp (show List.find? _ _ = none from hf) p hp
+
+/-- **A derived entry has no shared-reference parameter.** -/
+theorem deriveAbi_no_sharedRef {consts : List (String × TExpr)} {te : TExpr} {σ : AbiLayout}
+    (h : deriveAbi false consts te = .ok σ) :
+    ∀ p ∈ prelude 64 te, sharedRef p.2 = false := by
+  intro p hp
+  have hok := deriveAbi_entryParamOk h p hp
+  unfold entryParamOk at hok
+  split at hok <;> simp_all [sharedRef]
+
+/-- **A `&mut` parameter of a derived entry holds the result**, read back from its register. -/
+theorem deriveAbi_mutRef_result {consts : List (String × TExpr)} {te : TExpr} {σ : AbiLayout}
+    (h : deriveAbi false consts te = .ok σ) {x : String} {t : ImpType}
+    (hp : (x, .ref t true) ∈ prelude 64 te) :
+    (tailVar te.erase == some x || (spineArrTail te.erase).map (·.1) == some x) = true ∧
+      (σ.args.find? (·.name == x)).any (fun a => resultReg? σ.result == some a.reg) = true := by
+  simpa [entryParamOk] using deriveAbi_entryParamOk h _ hp
 
 /-- **The result check accepts every scalar result**: a result type that `argKind?` reads as a
     scalar is read back from `%rax`. -/
