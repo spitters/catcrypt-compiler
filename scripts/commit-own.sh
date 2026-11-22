@@ -42,6 +42,15 @@ else
                && ROT_GUARD_WRITE_MANIFEST=1 bash scripts/rot-guard-build.sh --check >/dev/null; }
 fi
 
+# One run at a time per repository: two runs would exchange their generated lists through
+# the working tree. The kernel drops the lock when the run ends, however it ends.
+exec 9>"$(git rev-parse --git-common-dir)/commit-own.lock"
+if ! flock -n 9; then
+  echo "commit-own: another run is in progress in this repository; waiting." >&2
+  flock -w "${COMMIT_OWN_LOCK_WAIT_S:-1800}" 9 \
+    || { echo "commit-own: the other run did not end in time; nothing committed. Retry." >&2; exit 1; }
+fi
+
 staged="$(git diff --cached --name-only -- "${lists[@]}")"
 [ -z "$staged" ] || { echo "commit-own: a module list is staged in the shared index ($staged); another commit is in preparation. Retry after it lands." >&2; exit 1; }
 
@@ -104,12 +113,31 @@ if [ -f scripts/gen-dev-module-globs.sh ] && [ -f scripts/rot-guard/secure-compi
   [ -s "$work/manifest" ] || { echo "commit-own: the manifest filter produced an empty file; nothing committed." >&2; exit 1; }
   cp "$work/manifest" scripts/rot-guard/secure-compilation.txt
 fi
-GIT_INDEX_FILE="$idx" generate || { echo "commit-own: a list generator failed; nothing committed." >&2; exit 1; }
+# The generated lists go into the private index as soon as they are written, and the
+# commit is made from that index: another session may regenerate the working-tree lists
+# (with its unregistered modules) at any moment, and a commit read from the working tree
+# would take its version (514e0bc08 registered five untracked modules that way).
+# Every module the staged lakefile names must be in the committed tree; a peer's
+# regeneration between the two steps is retried.
+GIT_INDEX_FILE="$idx" git ls-files 'CatCrypt/*.lean' 'CatCrypt/**/*.lean' > "$work/tree"
+for try in 1 2 3; do
+  GIT_INDEX_FILE="$idx" generate \
+    && GIT_INDEX_FILE="$idx" git update-index --add -- "${lists[@]}" \
+    || { echo "commit-own: a list generator failed; nothing committed." >&2; exit 1; }
+  GIT_INDEX_FILE="$idx" git show :lakefile.lean | grep -o 'Glob.one `CatCrypt\.[A-Za-z0-9_.]*' \
+    | sed 's/^Glob.one `//; s#\.#/#g; s#$#.lean#' > "$work/named"
+  foreign="$(grep -vxFf "$work/tree" "$work/named" | while read -r f; do [ -e "$f" ] && echo "$f"; done)"
+  [ -z "$foreign" ] && break
+done
+[ -z "$foreign" ] || { echo "commit-own: the generated lakefile names modules outside the committed tree: $foreign; nothing committed." >&2; exit 1; }
 
 [ "$(git rev-parse HEAD)" = "$head0" ] || { echo "commit-own: HEAD moved while the lists were generated; nothing committed. Retry." >&2; exit 1; }
-changed=()
-for l in "${lists[@]}"; do git diff --quiet HEAD -- "$l" 2>/dev/null || changed+=("$l"); done
-git commit "${msgargs[@]}" -- "${paths[@]}" "${changed[@]}"
+# git's detached maintenance must not inherit the lock.
+GIT_INDEX_FILE="$idx" git commit "${msgargs[@]}" 9>&-
 rc=$?
-[ "$rc" = 0 ] && committed=1
+if [ "$rc" = 0 ]; then
+  committed=1
+  # The shared index takes the committed versions of exactly these paths.
+  git reset -q HEAD -- "${paths[@]}" "${lists[@]}" 2>/dev/null || true
+fi
 exit $rc
