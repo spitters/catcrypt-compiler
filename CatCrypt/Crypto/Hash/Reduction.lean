@@ -14,16 +14,15 @@ public import CatCrypt.Crypto.UCDSL
 Concrete SHAKE-128 and SHAKE-256 instances of the bound
 `eps_rp + q^2/2^c` of `Security.lean`, where
 
-- `eps_rp` = random permutation advantage for Keccak-f[1600]
+- `eps_rp` = a free number, standing for a permutation term
 - `q` = number of permutation queries
 - `c` = capacity bits (256 for SHAKE-128, 512 for SHAKE-256)
 
-The bound is the one of Bertoni-Daemen-Peeters-Van Assche (CRYPTO 2008) for
-sponge indifferentiability. No theorem in this package proves it: in
-`shake_rom_security` (`Security.lean`) both hops, the permutation replacement
-(`h_rp`) and the sponge-to-random-oracle step (`h_reduce`), are hypotheses, and
-the games are parameters not tied to Keccak-f. This file states the
-arithmetic of the bound: monotonicity in the query count and the capacity.
+The term `q^2/2^c` has the shape of the bound of Bertoni-Daemen-Peeters-Van
+Assche (CRYPTO 2008) for sponge indifferentiability. No theorem in this package
+proves that bound or relates SHAKE to a random oracle: `eps_rp` is tied to no
+game. This file states the arithmetic of the expression: monotonicity in the
+query count and the capacity.
 
 ## Main results
 
