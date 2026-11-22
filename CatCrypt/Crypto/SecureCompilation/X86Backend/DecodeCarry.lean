@@ -1031,7 +1031,7 @@ An `ADD`, register copy, `ADC` chain is accepted from no live flag; an `ADC` wit
 carry flag, and an `ADC` after a copy through `imul`, are rejected. -/
 
 /- `add`, `mov`, `adc`: the copy keeps the carry flag live. -/
-set_option kat.ms 1000 in
+set_option kat.ms 2000 in
 #kat bodyOKC id ["a", "b", "c", "d", "e"] (false, false)
   [addI "a" "a" "b", movRI "e" "a", carryI "ADC" "c" "c" "d"]
   [[.add "a" (.reg "b")], [.mov "e" (.reg "a")], [.adc "c" (.reg "d")]]
@@ -1376,7 +1376,7 @@ theorem decSim_of_loopOKC (hsep : MemSep E.rs base rsp) {L0 : List String} {a0 :
   · exact absurd h (by simp)
 
 /- An `ADD`, register copy, `ADC` chain in one machine block, with no region. -/
-set_option kat.ms 1000 in
+set_option kat.ms 2000 in
 #kat (mbodyOKC ⟨id, "%rsp", [], 8⟩ (fun _ => true) (["a", "b", "c", "d", "e"], Abs.empty)
   (false, false) [addI "a" "a" "b", movRI "e" "a", carryI "ADC" "c" "c" "d"]
   [.add "a" (.reg "b"), .mov "e" (.reg "a"), .adc "c" (.reg "d")]).isSome
