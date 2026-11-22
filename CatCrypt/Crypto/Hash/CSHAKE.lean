@@ -8,49 +8,29 @@ module
 public import CatCrypt.Crypto.Hash.SHAKE
 
 /-!
-# cSHAKE: Customizable SHAKE (SP 800-185, Section 6.2)
+# Domain separation by a prefix: an abstract model
 
-Formalizes cSHAKE-128 and cSHAKE-256, the customizable variants of SHAKE
-that provide built-in domain separation via function name and customization
-string parameters.
-
-## Overview
-
-cSHAKE extends SHAKE with two additional inputs:
-- **N**: function name string (identifies the derived function, e.g., "KMAC")
-- **S**: customization string (user-chosen domain separator)
-
-When both N and S are empty, cSHAKE reduces to SHAKE. Otherwise, the
-inputs are encoded using `left_encode` and prepended to the message
-before absorption.
-
-## Key property: domain separation
-
-The central theorem is `cshake_domain_separation`: different (N, S) pairs
-produce independent functions. In the random oracle model, cSHAKE with
-distinct customization strings behaves as independent random oracles.
-This is the property that enables NIST SP 800-185 derived functions
-(KMAC, TupleHash, ParallelHash) to share a single sponge primitive
-without interference.
-
-The domain separation property is stated abstractly: the encoding
-function `cshake_encode` is injective, so different customization
-parameters always produce different sponge inputs.
+An abstract model of domain separation by a prefix. A customization is a pair (N, S)
+of byte strings, and an encoding is a parameter: any injective function from
+customizations to byte strings that maps the empty pair to the empty string.
+`cshake_eval` applies `shake_xof` to the message when the customization is empty and
+to the encoded customization followed by the message otherwise.
 
 ## Main definitions
 
-* `CSHAKECustomization` -- (N, S) pair for domain separation
-* `cshake_encode` -- encode N, S into padding (abstract, injective)
-* `CSHAKEInstance` -- cSHAKE-128 or cSHAKE-256 instance
-* `cshake128`, `cshake256` -- cSHAKE XOF constructors
-* `cshake_domain_separation` -- different (N, S) give different sponge inputs
+* `CSHAKECustomization` -- the pair (N, S)
+* `CSHAKEEncoding` -- an injective prefix function
+* `CSHAKEInstance` -- a level, a customization, an encoding and a SHAKE instance
+* `cshake_eval` -- `shake_xof` of the prefixed message
+* `cshake128`, `cshake256` -- `cshake_eval` packaged as an `XOFDef`, by level
 
-## References
+## Main results
 
-* [SP 800-185 -- SHA-3 Derived Functions, Section 6.2, NIST 2016]
-* [Kelsey, Chang, Perlner -- SHA-3 Derived Functions, 2016]
-
-**0 axioms**, **all goals closed**.
+* `cshake_eval_empty`, `cshake_eval_nonempty` -- the two cases of `cshake_eval`
+* `cshake_different_inputs` -- distinct non-empty customizations give distinct
+  prefixed messages
+* `cshake_differs_from_shake` -- for a non-empty customization and message, the
+  prefixed message differs from the message
 -/
 
 @[expose] public section
@@ -66,12 +46,7 @@ namespace CatCrypt.Crypto.Hash.CSHAKE
 
 /-! ## Customization Parameters -/
 
-/-- cSHAKE customization parameters.
-
-    - `N`: function name bit string (identifies the higher-level function)
-    - `S`: customization bit string (user-chosen domain separator)
-
-    When both are empty, cSHAKE degenerates to plain SHAKE. -/
+/-- A customization: the pair (N, S) of byte strings that selects the prefix. -/
 structure CSHAKECustomization where
   /-- Function name string N. -/
   functionName : List (BitVec 8)
@@ -93,61 +68,34 @@ theorem emptyCustomization_isEmpty : emptyCustomization.isEmpty = true := rfl
 
 /-! ## Encoding (Abstract Interface) -/
 
-/-- Abstract encoding function for cSHAKE customization.
-
-    This captures the SP 800-185 `bytepad(encode_string(N) || encode_string(S), w)`
-    encoding. We model it as an abstract injective function from customization
-    parameters to byte strings, since the security-relevant property is
-    injectivity (domain separation), not the concrete byte layout.
-
-    In the concrete implementation:
-    - `encode_string(X) = left_encode(len(X)) || X`
-    - `left_encode(x)` encodes the integer x as a variable-length big-endian byte string
-    - The encoding is prefix-free by construction (length comes first) -/
+/-- An abstract prefix function: any injective function from customizations to byte
+    strings that maps the empty customization to the empty string. -/
 structure CSHAKEEncoding where
-  /-- Encode customization parameters into a byte prefix. -/
+  /-- The prefix of a customization. -/
   encode : CSHAKECustomization → List (BitVec 8)
-  /-- The encoding is injective: different customizations produce different prefixes.
-      This is the prefix-free property of left_encode. -/
+  /-- Different customizations have different prefixes. -/
   injective : Function.Injective encode
   /-- Empty customization encodes to the empty list. -/
   encode_empty : encode emptyCustomization = []
 
-/-- Domain separation: different customizations produce different encoded prefixes.
+/-! ## Instances -/
 
-    This is the fundamental property that enables cSHAKE-based derived
-    functions to act as independent random oracles. -/
-theorem cshake_domain_separation (enc : CSHAKEEncoding)
-    (c₁ c₂ : CSHAKECustomization) (h : enc.encode c₁ = enc.encode c₂) :
-    c₁ = c₂ :=
-  enc.injective h
-
-/-! ## cSHAKE Instances -/
-
-/-- cSHAKE security level (128 or 256). -/
+/-- The level of the model: which SHAKE parameter set it uses. -/
 inductive CSHAKELevel where
-  /-- cSHAKE-128 (128-bit security). -/
+  /-- The level with the SHAKE-128 parameters. -/
   | cshake128 : CSHAKELevel
-  /-- cSHAKE-256 (256-bit security). -/
+  /-- The level with the SHAKE-256 parameters. -/
   | cshake256 : CSHAKELevel
 deriving DecidableEq
 
-/-- Get the underlying SHAKE parameters for a cSHAKE level. -/
+/-- The SHAKE parameters of a level. -/
 def CSHAKELevel.toSHAKEParams : CSHAKELevel → SHAKEParams
   | .cshake128 => shake128_params
   | .cshake256 => shake256_params
 
-/-- cSHAKE-128 has 128-bit security. -/
-theorem CSHAKELevel.cshake128_security :
-    CSHAKELevel.cshake128.toSHAKEParams.security_level = 128 := rfl
-
-/-- cSHAKE-256 has 256-bit security. -/
-theorem CSHAKELevel.cshake256_security :
-    CSHAKELevel.cshake256.toSHAKEParams.security_level = 256 := rfl
-
-/-- A cSHAKE instance: customizable XOF built on SHAKE. -/
+/-- An instance of the prefix model over a SHAKE instance. -/
 structure CSHAKEInstance where
-  /-- Security level (128 or 256). -/
+  /-- The level (128 or 256). -/
   level : CSHAKELevel
   /-- Customization parameters (N, S). -/
   custom : CSHAKECustomization
@@ -158,28 +106,24 @@ structure CSHAKEInstance where
   /-- Parameters match the level. -/
   params_match : shakeInst.params = level.toSHAKEParams
 
-/-- Evaluate cSHAKE: prepend encoded customization, then apply SHAKE.
-
-    If N = S = "" (empty customization), falls back to plain SHAKE.
-    Otherwise, prepend the encoded (N, S) to the message. -/
+/-- Evaluation of the prefix model: `shake_xof` of the message for the empty
+    customization, and of the encoded customization followed by the message otherwise. -/
 def cshake_eval (inst : CSHAKEInstance) (msg : List (BitVec 8))
     (outputBytes : ℕ) : List (BitVec 8) :=
   if inst.custom = emptyCustomization then
-    -- When N = S = "", cSHAKE is just SHAKE
     shake_xof inst.shakeInst msg outputBytes
   else
-    -- Prepend bytepad(encode_string(N) || encode_string(S), w)
     let pfx := inst.encoding.encode inst.custom
     shake_xof inst.shakeInst (pfx ++ msg) outputBytes
 
-/-- cSHAKE with empty customization equals plain SHAKE. -/
+/-- At the empty customization `cshake_eval` is `shake_xof`. -/
 theorem cshake_eval_empty (inst : CSHAKEInstance)
     (h : inst.custom = emptyCustomization)
     (msg : List (BitVec 8)) (n : ℕ) :
     cshake_eval inst msg n = shake_xof inst.shakeInst msg n := by
   simp [cshake_eval, h]
 
-/-- cSHAKE with non-empty customization prepends the encoding. -/
+/-- At a non-empty customization `cshake_eval` is `shake_xof` of the prefixed message. -/
 theorem cshake_eval_nonempty (inst : CSHAKEInstance)
     (h : inst.custom ≠ emptyCustomization)
     (msg : List (BitVec 8)) (n : ℕ) :
@@ -189,28 +133,24 @@ theorem cshake_eval_nonempty (inst : CSHAKEInstance)
 
 /-! ## XOF Wrappers -/
 
-/-- cSHAKE-128 as an abstract XOF. -/
+/-- The prefix model at level 128 as an `XOFDef`. -/
 def cshake128 (inst : CSHAKEInstance) (_ : inst.level = .cshake128) :
     XOFDef where
-  name := "cSHAKE128"
+  name := "SHAKE128 prefix model"
   security := 128
   eval := cshake_eval inst
 
-/-- cSHAKE-256 as an abstract XOF. -/
+/-- The prefix model at level 256 as an `XOFDef`. -/
 def cshake256 (inst : CSHAKEInstance) (_ : inst.level = .cshake256) :
     XOFDef where
-  name := "cSHAKE256"
+  name := "SHAKE256 prefix model"
   security := 256
   eval := cshake_eval inst
 
-/-! ## Domain Separation Consequences -/
+/-! ## Distinctness of the prefixed messages -/
 
-/-- Two cSHAKE instances with different non-empty customizations always
-    produce different sponge inputs (for the same message).
-
-    This is the key consequence of encoding injectivity: if c₁ ≠ c₂
-    and neither is empty, then the sponge sees different byte sequences,
-    so in the random oracle model the outputs are independent. -/
+/-- Distinct non-empty customizations give distinct prefixed messages, for the same
+    message. The statement is about the argument of `shake_xof`. -/
 theorem cshake_different_inputs (enc : CSHAKEEncoding)
     (c₁ c₂ : CSHAKECustomization)
     (_h₁ : c₁ ≠ emptyCustomization) (_h₂ : c₂ ≠ emptyCustomization)
@@ -221,8 +161,8 @@ theorem cshake_different_inputs (enc : CSHAKEEncoding)
   apply enc.injective
   exact List.append_cancel_right heq
 
-/-- cSHAKE with non-empty customization differs from plain SHAKE
-    (the encoding adds a non-empty prefix). -/
+/-- For a non-empty customization and a non-empty message, the prefixed message
+    differs from the message. The statement is about the argument of `shake_xof`. -/
 theorem cshake_differs_from_shake (enc : CSHAKEEncoding)
     (c : CSHAKECustomization) (hne : c ≠ emptyCustomization)
     (msg : List (BitVec 8)) (_hm : msg ≠ []) :
