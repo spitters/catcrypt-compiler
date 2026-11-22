@@ -427,6 +427,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
 CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
+CatCrypt.Crypto.SecureCompilation.Haxc.CrateStructs
 CatCrypt.Crypto.SecureCompilation.Haxc.DecompilePropose
 CatCrypt.Crypto.SecureCompilation.Haxc.DeriveAbiBounds
 CatCrypt.Crypto.SecureCompilation.Haxc.DeriveBoundsTest
