@@ -36,14 +36,11 @@ the graph of the read-back then relates the two activations at that grade
 
 ## Main definitions
 
-* `stSys` — a reactive system holding a state drawn at its first activation and passed on by
-  every activation.
-* `gateTgtStepSt`, `gateSrcStepSt` — one activation of the target and the source at a state.
-* `haxcStSrcRel`, `haxcStSrc`, `haxcStTgtSys`, `haxcStSrcSys` — the hax instance.
+* `haxcStSrcRel`, `haxcStSrc`, `haxcStTgtSys`, `haxcStSrcSys` — the hax instance of `stSys`,
+  `gateTgtStepSt` and `gateSrcStepSt` (`RCReactiveLinkedState`).
 
 ## Main results
 
-* `realizesSim_of_gate_run_st` — the generic reactive statement at a carried state.
 * A checked `example` derives `realizesSim_of_gate_run_keyed` of `RCReactiveLinkedState` as the
   instance of `realizesSim_of_gate_run_st` whose state is the key.
 * `haxc_rrcHSt_of_ruttFA`, `haxc_rrcHSt` — reactive robust compilation for stateful linked
@@ -152,125 +149,6 @@ end Graph
 section CarriedState
 
 variable {St E V Tr P X : Type}
-
-/-- **A reactive system carrying a state across activations.** The system state holds the
-    carried state once drawn and the state of the steps; each activation draws the carried
-    state by `kd` when none is held, steps as `S` at the carried state, and holds the carried
-    state that `S` returns. -/
-noncomputable def stSys {τ O : Type} (kd : SPComp X) (S : X → τ → E → SPComp ((X × τ) × O))
-    (init : τ) : Sys (Option X × τ) E O where
-  init := (none, init)
-  step t e := SPComp.bind (keyAt kd t.1) fun x =>
-    SPComp.bind (S x t.2 e) fun q => SPComp.pure ((some q.1.1, q.1.2), q.2)
-
-/-- **A system with a key drawn at its first activation carries the key**: `keyedSys` is
-    `stSys` at the steps that return the key they receive. -/
-theorem keyedSys_eq_stSys {τ O : Type} (kd : SPComp X) (S : X → τ → E → SPComp (τ × O))
-    (S' : X → τ → E → SPComp ((X × τ) × O)) (init : τ)
-    (hS : ∀ k t e, SPComp.map (fun q => ((k, q.1), q.2)) (S k t e) = S' k t e) :
-    keyedSys kd S init = stSys kd S' init := by
-  simp only [keyedSys, stSys, ← hS, SPComp.map, SPComp.bind_assoc, SPComp.pure_bind]
-
-open Classical in
-/-- **One target activation at a carried state `x`.** In the domain of the one-call statement
-    at the source relation `srcX x`, the call from the entry state `enter e t` runs `run x` to a
-    return state and a carried state, answers the value `read` reads back with the leakage
-    trace, and holds both states; outside the domain it answers `none` and keeps both. -/
-noncomputable def gateTgtStepSt (enter : E → St → St) (Pre : St → Prop)
-    (srcX : X → St → V → Prop) (leakRun : St → Tr → Prop) (run : X → St → SPComp (St × X))
-    (read : St → St → V) (x : X) (t : St) (e : E) : SPComp ((X × St) × Option (V × Tr)) :=
-  if h : (Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr then
-    SPComp.map (fun p => ((p.2, p.1), some (read (enter e t) p.1,
-      leakOf (Pre := Pre) (srcRun := srcX x) (leakRun := leakRun) ⟨enter e t, h⟩)))
-      (run x (enter e t))
-  else SPComp.pure ((x, t), none)
-
-open Classical in
-/-- **One source activation at a carried state `x`.** When the entry state `enter e u`
-    satisfies the precondition and the source relation `srcX x` has a run, the call runs
-    `src x` to a value and a carried state, answers the value and keeps the entry state;
-    otherwise it answers `none` and keeps both states. -/
-noncomputable def gateSrcStepSt (enter : E → St → St) (Pre : St → Prop)
-    (srcX : X → St → V → Prop) (src : X → St → SPComp (V × X)) (x : X) (u : St) (e : E) :
-    SPComp ((X × St) × Option V) :=
-  if Pre (enter e u) ∧ ∃ v, srcX x (enter e u) v then
-    SPComp.map (fun p => ((p.2, enter e u), some p.1)) (src x (enter e u))
-  else SPComp.pure ((x, u), none)
-
-/-- **Reactive robust compilation at a carried state.** Let the gate conclusion of `srcRun`
-    give constant-time leakage, with public projections whose equality implies the public
-    relation and a target that has a leakage trace whenever it has a result, and let the entry
-    map `enter` give entry states whose precondition, source relations and source computations
-    do not depend on the kept state and whose public projection is `pe e`. Let each source
-    relation `srcX x` run only where `srcRun` runs. When at every carried state `x` and every
-    entry state `s` of the domain of `srcX x` the target run `run x s` and the source
-    computation `src x s` are related at grade `ε` with the read-back value and the carried
-    state equal, the system that steps as the target realizes the system that steps as the
-    source, both carrying the state drawn by `kd`, behind the leakage simulator of `srcRun`, at
-    `Z.input.rounds * ε`. -/
-theorem realizesSim_of_gate_run_st [Nonempty Tr] {Pre : St → Prop} {Pub : St → St → Prop}
-    {srcRun : St → V → Prop} {tgtRes : St → V → Prop} {leakRun : St → Tr → Prop}
-    (g : GateConclusion Pre Pub srcRun tgtRes leakRun) (pub : St → P)
-    (hpub : ∀ s₁ s₂, pub s₁ = pub s₂ → Pub s₁ s₂)
-    (hterm : ∀ s v, Pre s → tgtRes s v → ∃ tr, leakRun s tr)
-    (enter : E → St → St) (pe : E → P)
-    (hPre : ∀ e t u, Pre (enter e t) ↔ Pre (enter e u))
-    (hpe : ∀ e t, pub (enter e t) = pe e) (kd : SPComp X) (srcX : X → St → V → Prop)
-    (hsub : ∀ x s v, srcX x s v → ∃ w, srcRun s w)
-    (hsrcX : ∀ x e t u, srcX x (enter e t) = srcX x (enter e u))
-    (run : X → St → SPComp (St × X)) (read : St → St → V) (src : X → St → SPComp (V × X))
-    (hsrcS : ∀ x e t u, src x (enter e t) = src x (enter e u)) (ε : ℝ≥0∞)
-    (hrun : ∀ x s, Pre s → (∃ v, srcX x s v) → rHoareApprox ε eqPre (run x s) (src x s)
-      (fun a h₁ b h₂ => (read s a.1, a.2) = b ∧ h₁ = h₂))
-    (t₀ u₀ : St) :
-    RealizesSim (stSys kd (gateTgtStepSt enter Pre srcX leakRun run read) t₀)
-      (stSys kd (gateSrcStepSt enter Pre srcX src) u₀)
-      (leakSim pe (simLeak Pre srcRun leakRun pub)) (fun _ Z => Z.input.rounds * ε) := by
-  refine realizes_of_couplingApprox _ _ (fun t x => t.1 = x.2.1) ε rfl ?_
-  rintro ⟨kt, t⟩ ⟨l, ku, u⟩ e (rfl : kt = ku)
-  rw [leakSim_withSub_step]
-  simp only [stSys, SPComp.bind_assoc, SPComp.pure_bind]
-  rw [← zero_add ε]
-  refine rHoareApprox_bind (rHoareApprox_of_rHoare (rHoare_refl (keyAt kd kt))) fun x x' => ?_
-  rintro h₁ h₂ ⟨rfl, hh⟩
-  revert h₁ h₂ hh
-  change rHoareApprox ε eqPre _ _ _
-  by_cases hD : Pre (enter e u) ∧ ∃ v, srcX x (enter e u) v
-  · obtain ⟨v, hv⟩ := hD.2
-    have hp : Pre (enter e t) := (hPre e t u).2 hD.1
-    have hv' : srcX x (enter e t) v := by rw [hsrcX x e t u]; exact hv
-    obtain ⟨w, hw'⟩ := hsub x _ v hv'
-    have hT : (Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr :=
-      ⟨⟨hp, v, hv'⟩, hterm _ w hp (g.value _ _ hp hw')⟩
-    have hL : leakOf (Pre := Pre) (srcRun := srcX x) (leakRun := leakRun)
-        ⟨enter e t, hT⟩ = simLeak Pre srcRun leakRun pub (pe e) := by
-      rw [← hpe e t]
-      exact leakOf_eq_simLeak g pub hpub ⟨enter e t, ⟨hp, w, hw'⟩, hT.2⟩
-    simp only [gateTgtStepSt, gateSrcStepSt, dite_eq_left hT,
-      ite_eq_left_of_eq_true _ _ (eq_true hD), hL, SPComp.map, SPComp.bind_assoc,
-      SPComp.pure_bind, ← hsrcS x e t u]
-    rw [← add_zero ε]
-    refine rHoareApprox_bind (hrun x _ hp ⟨v, hv'⟩) fun a b => ?_
-    refine rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ?_)
-    obtain ⟨hab, hs⟩ := hh
-    subst hab
-    exact ⟨hs, rfl, rfl⟩
-  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧
-        ∃ tr, leakRun (enter e t) tr) := by
-      rintro ⟨⟨hp, v, hv⟩, -⟩
-      refine hD ⟨(hPre e t u).1 hp, v, ?_⟩
-      rw [← hsrcX x e t u]; exact hv
-    simp only [gateTgtStepSt, gateSrcStepSt, dite_eq_right hT,
-      ite_eq_right_of_eq_false _ _ (eq_false hD), SPComp.pure_bind,
-      pairLeak, Option.bind_none]
-    exact rHoareApprox_mono_eps zero_le
-      (rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, rfl, rfl⟩))
-
-open Classical in
-/-- **The source computation of a relation at a key**: the point mass at a value of the
-    relation `srcX k s`, with the key `k`, and failure where the relation has no value. -/
-noncomputable def chooseSt (srcX : X → St → V → Prop) (k : X) (s : St) : SPComp (V × X) :=
-  if h : ∃ v, srcX k s v then SPComp.pure (Classical.choose h, k) else SPComp.fail
 
 /- The keyed statement as the instance whose carried state is the key: under the hypotheses of
 `realizesSim_of_gate_run_keyed`, its conclusion follows from `realizesSim_of_gate_run_st` at the

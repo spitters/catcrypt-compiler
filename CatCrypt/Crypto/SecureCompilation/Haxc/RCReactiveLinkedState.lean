@@ -39,8 +39,15 @@ the target interpretation; the bound of a run is `Z.input.rounds * ε`.
 * `haxcKeyedTgtSys`, `haxcKeyedSrcSys` — the compiled module and the source module with keyed
   linked functions, as reactive systems.
 
+* `stSys` — a reactive system holding a state drawn at its first activation and passed on by
+  every activation.
+* `gateTgtStepSt`, `gateSrcStepSt` — one activation of the target and the source at a carried
+  state.
+* `chooseSt` — the source computation of a relation at a carried state.
+
 ## Main results
 
+* `realizesSim_of_gate_run_st` — the generic reactive statement at a carried state.
 * `realizesSim_of_gate_run_keyed` — the keyed target system realizes the keyed source system
   behind the leakage simulator at `Z.input.rounds * ε`, from per-key statistical distances `ε`
   of the read-back values.
@@ -94,6 +101,131 @@ noncomputable def keyedSys {τ O : Type} (kd : SPComp K) (S : K → τ → E →
 def gatedRun (srcRun srcK : St → V → Prop) (s : St) (v : V) : Prop :=
   (∃ w, srcRun s w) ∧ srcK s v
 
+section CarriedState
+
+variable {X : Type}
+
+/-- **A reactive system carrying a state across activations.** The system state holds the
+    carried state once drawn and the state of the steps; each activation draws the carried
+    state by `kd` when none is held, steps as `S` at the carried state, and holds the carried
+    state that `S` returns. -/
+noncomputable def stSys {τ O : Type} (kd : SPComp X) (S : X → τ → E → SPComp ((X × τ) × O))
+    (init : τ) : Sys (Option X × τ) E O where
+  init := (none, init)
+  step t e := SPComp.bind (keyAt kd t.1) fun x =>
+    SPComp.bind (S x t.2 e) fun q => SPComp.pure ((some q.1.1, q.1.2), q.2)
+
+/-- **A system with a key drawn at its first activation carries the key**: `keyedSys` is
+    `stSys` at the steps that return the key they receive. -/
+theorem keyedSys_eq_stSys {τ O : Type} (kd : SPComp X) (S : X → τ → E → SPComp (τ × O))
+    (S' : X → τ → E → SPComp ((X × τ) × O)) (init : τ)
+    (hS : ∀ k t e, SPComp.map (fun q => ((k, q.1), q.2)) (S k t e) = S' k t e) :
+    keyedSys kd S init = stSys kd S' init := by
+  simp only [keyedSys, stSys, ← hS, SPComp.map, SPComp.bind_assoc, SPComp.pure_bind]
+
+open Classical in
+/-- **One target activation at a carried state `x`.** In the domain of the one-call statement
+    at the source relation `srcX x`, the call from the entry state `enter e t` runs `run x` to a
+    return state and a carried state, answers the value `read` reads back with the leakage
+    trace, and holds both states; outside the domain it answers `none` and keeps both. -/
+noncomputable def gateTgtStepSt (enter : E → St → St) (Pre : St → Prop)
+    (srcX : X → St → V → Prop) (leakRun : St → Tr → Prop) (run : X → St → SPComp (St × X))
+    (read : St → St → V) (x : X) (t : St) (e : E) : SPComp ((X × St) × Option (V × Tr)) :=
+  if h : (Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr then
+    SPComp.map (fun p => ((p.2, p.1), some (read (enter e t) p.1,
+      leakOf (Pre := Pre) (srcRun := srcX x) (leakRun := leakRun) ⟨enter e t, h⟩)))
+      (run x (enter e t))
+  else SPComp.pure ((x, t), none)
+
+open Classical in
+/-- **One source activation at a carried state `x`.** When the entry state `enter e u`
+    satisfies the precondition and the source relation `srcX x` has a run, the call runs
+    `src x (enter e u)` to a value and a carried state, answers the value and keeps the entry
+    state; otherwise it answers `none` and keeps both states. -/
+noncomputable def gateSrcStepSt (enter : E → St → St) (Pre : St → Prop)
+    (srcX : X → St → V → Prop) (src : X → St → SPComp (V × X)) (x : X) (u : St) (e : E) :
+    SPComp ((X × St) × Option V) :=
+  if Pre (enter e u) ∧ ∃ v, srcX x (enter e u) v then
+    SPComp.map (fun p => ((p.2, enter e u), some p.1)) (src x (enter e u))
+  else SPComp.pure ((x, u), none)
+
+/-- **Reactive robust compilation at a carried state.** Let the gate conclusion of `srcRun`
+    give constant-time leakage, with public projections whose equality implies the public
+    relation and a target that has a leakage trace whenever it has a result, and let the entry
+    map `enter` give entry states whose precondition, source relations and source computations
+    do not depend on the kept state and whose public projection is `pe e`. Let each source
+    relation `srcX x` run only where `srcRun` runs. When at every carried state `x` and every
+    entry state `s` of the domain of `srcX x` the target run `run x s` and the source
+    computation `src x s` are related at grade `ε` with the read-back value and the carried
+    state equal, the system that steps as the target realizes the system that steps as the
+    source, both carrying the state drawn by `kd`, behind the leakage simulator of `srcRun`, at
+    `Z.input.rounds * ε`. -/
+theorem realizesSim_of_gate_run_st [Nonempty Tr] {Pre : St → Prop} {Pub : St → St → Prop}
+    {srcRun : St → V → Prop} {tgtRes : St → V → Prop} {leakRun : St → Tr → Prop}
+    (g : GateConclusion Pre Pub srcRun tgtRes leakRun) (pub : St → P)
+    (hpub : ∀ s₁ s₂, pub s₁ = pub s₂ → Pub s₁ s₂)
+    (hterm : ∀ s v, Pre s → tgtRes s v → ∃ tr, leakRun s tr)
+    (enter : E → St → St) (pe : E → P)
+    (hPre : ∀ e t u, Pre (enter e t) ↔ Pre (enter e u))
+    (hpe : ∀ e t, pub (enter e t) = pe e) (kd : SPComp X) (srcX : X → St → V → Prop)
+    (hsub : ∀ x s v, srcX x s v → ∃ w, srcRun s w)
+    (hsrcX : ∀ x e t u, srcX x (enter e t) = srcX x (enter e u))
+    (run : X → St → SPComp (St × X)) (read : St → St → V) (src : X → St → SPComp (V × X))
+    (hsrcS : ∀ x e t u, src x (enter e t) = src x (enter e u)) (ε : ℝ≥0∞)
+    (hrun : ∀ x s, Pre s → (∃ v, srcX x s v) → rHoareApprox ε eqPre (run x s) (src x s)
+      (fun a h₁ b h₂ => (read s a.1, a.2) = b ∧ h₁ = h₂))
+    (t₀ u₀ : St) :
+    RealizesSim (stSys kd (gateTgtStepSt enter Pre srcX leakRun run read) t₀)
+      (stSys kd (gateSrcStepSt enter Pre srcX src) u₀)
+      (leakSim pe (simLeak Pre srcRun leakRun pub)) (fun _ Z => Z.input.rounds * ε) := by
+  refine realizes_of_couplingApprox _ _ (fun t x => t.1 = x.2.1) ε rfl ?_
+  rintro ⟨kt, t⟩ ⟨l, ku, u⟩ e (rfl : kt = ku)
+  rw [leakSim_withSub_step]
+  simp only [stSys, SPComp.bind_assoc, SPComp.pure_bind]
+  rw [← zero_add ε]
+  refine rHoareApprox_bind (rHoareApprox_of_rHoare (rHoare_refl (keyAt kd kt))) fun x x' => ?_
+  rintro h₁ h₂ ⟨rfl, hh⟩
+  revert h₁ h₂ hh
+  change rHoareApprox ε eqPre _ _ _
+  by_cases hD : Pre (enter e u) ∧ ∃ v, srcX x (enter e u) v
+  · obtain ⟨v, hv⟩ := hD.2
+    have hp : Pre (enter e t) := (hPre e t u).2 hD.1
+    have hv' : srcX x (enter e t) v := by rw [hsrcX x e t u]; exact hv
+    obtain ⟨w, hw'⟩ := hsub x _ v hv'
+    have hT : (Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧ ∃ tr, leakRun (enter e t) tr :=
+      ⟨⟨hp, v, hv'⟩, hterm _ w hp (g.value _ _ hp hw')⟩
+    have hL : leakOf (Pre := Pre) (srcRun := srcX x) (leakRun := leakRun)
+        ⟨enter e t, hT⟩ = simLeak Pre srcRun leakRun pub (pe e) := by
+      rw [← hpe e t]
+      exact leakOf_eq_simLeak g pub hpub ⟨enter e t, ⟨hp, w, hw'⟩, hT.2⟩
+    simp only [gateTgtStepSt, gateSrcStepSt, dite_eq_left hT,
+      ite_eq_left_of_eq_true _ _ (eq_true hD), hL, SPComp.map, SPComp.bind_assoc,
+      SPComp.pure_bind, ← hsrcS x e t u]
+    rw [← add_zero ε]
+    refine rHoareApprox_bind (hrun x _ hp ⟨v, hv'⟩) fun a b => ?_
+    refine rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ?_)
+    obtain ⟨hab, hs⟩ := hh
+    subst hab
+    exact ⟨hs, rfl, rfl⟩
+  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, srcX x (enter e t) v) ∧
+        ∃ tr, leakRun (enter e t) tr) := by
+      rintro ⟨⟨hp, v, hv⟩, -⟩
+      refine hD ⟨(hPre e t u).1 hp, v, ?_⟩
+      rw [← hsrcX x e t u]; exact hv
+    simp only [gateTgtStepSt, gateSrcStepSt, dite_eq_right hT,
+      ite_eq_right_of_eq_false _ _ (eq_false hD), SPComp.pure_bind,
+      pairLeak, Option.bind_none]
+    exact rHoareApprox_mono_eps zero_le
+      (rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, rfl, rfl⟩))
+
+open Classical in
+/-- **The source computation of a relation at a key**: the point mass at a value of the
+    relation `srcX k s`, with the key `k`, and failure where the relation has no value. -/
+noncomputable def chooseSt (srcX : X → St → V → Prop) (k : X) (s : St) : SPComp (V × X) :=
+  if h : ∃ v, srcX k s v then SPComp.pure (Classical.choose h, k) else SPComp.fail
+
+end CarriedState
+
 /-- **Reactive robust compilation with a key drawn once per run, from per-key statistical
     distances.** Let the gate conclusion of `srcRun` give constant-time leakage, with public
     projections whose equality implies the public relation and a target that has a leakage
@@ -124,41 +256,42 @@ theorem realizesSim_of_gate_run_keyed [Nonempty Tr] {Pre : St → Prop} {Pub : S
         (gateTgtSysRun enter Pre (gatedRun srcRun (srcK k)) leakRun (run k) read t₀).step) t₀)
       (keyedSys kd (fun k => (gateSrcSys enter Pre (gatedRun srcRun (srcK k)) u₀).step) u₀)
       (leakSim pe (simLeak Pre srcRun leakRun pub)) (fun _ Z => Z.input.rounds * ε) := by
-  refine realizes_of_couplingApprox _ _ (fun t x => t.1 = x.2.1) ε rfl ?_
-  rintro ⟨kt, t⟩ ⟨l, ku, u⟩ e (rfl : kt = ku)
-  rw [leakSim_withSub_step]
-  simp only [keyedSys, SPComp.bind_assoc, SPComp.pure_bind]
-  rw [← zero_add ε]
-  refine rHoareApprox_bind (rHoareApprox_of_rHoare (rHoare_refl (keyAt kd kt))) fun k k' => ?_
-  rintro h₁ h₂ ⟨rfl, hh⟩
-  revert h₁ h₂ hh
-  change rHoareApprox ε eqPre _ _ _
-  by_cases hD : Pre (enter e u) ∧ ∃ v, gatedRun srcRun (srcK k) (enter e u) v
-  · obtain ⟨⟨w, hw⟩, hv⟩ := Classical.choose_spec hD.2
-    have hp : Pre (enter e t) := (hPre e t u).2 hD.1
-    have hw' : srcRun (enter e t) w := by rw [hsrc e t u]; exact hw
-    have hv' : srcK k (enter e t) (Classical.choose hD.2) := by rw [hsrcK k e t u]; exact hv
-    have hT : (Pre (enter e t) ∧ ∃ v, gatedRun srcRun (srcK k) (enter e t) v) ∧
-        ∃ tr, leakRun (enter e t) tr :=
-      ⟨⟨hp, _, ⟨w, hw'⟩, hv'⟩, hterm _ w hp (g.value _ _ hp hw')⟩
-    have hL : leakOf (Pre := Pre) (srcRun := gatedRun srcRun (srcK k)) (leakRun := leakRun)
-        ⟨enter e t, hT⟩ = simLeak Pre srcRun leakRun pub (pe e) := by
-      rw [← hpe e t]
-      exact leakOf_eq_simLeak g pub hpub ⟨enter e t, ⟨hp, w, hw'⟩, hT.2⟩
-    simp only [gateTgtSysRun, gateSrcSys, dite_eq_left hT, dite_eq_left hD, SPComp.pure_bind,
-      pairLeak, Option.bind_some, Option.map_some, hL, SPComp.map, SPComp.bind_assoc]
-    exact rHoareApprox_map_pure_of_sdist (h := hrun k _ _ hp ⟨w, hw'⟩ hv')
-      fun s' hs' => ⟨rfl, by rw [hs']⟩
-  · have hT : ¬ ((Pre (enter e t) ∧ ∃ v, gatedRun srcRun (srcK k) (enter e t) v) ∧
-        ∃ tr, leakRun (enter e t) tr) := by
-      rintro ⟨⟨hp, v, ⟨w, hw⟩, hv⟩, -⟩
-      refine hD ⟨(hPre e t u).1 hp, v, ⟨w, ?_⟩, ?_⟩
-      · rw [← hsrc e t u]; exact hw
-      · rw [← hsrcK k e t u]; exact hv
-    simp only [gateTgtSysRun, gateSrcSys, dite_eq_right hT, dite_eq_right hD, SPComp.pure_bind,
-      pairLeak, Option.bind_none]
-    exact rHoareApprox_mono_eps zero_le
-      (rHoareApprox_of_rHoare (rHoare_ret fun _ _ hh => ⟨hh, rfl, rfl⟩))
+  have hsrcX : ∀ k e t u, gatedRun srcRun (srcK k) (enter e t) =
+      gatedRun srcRun (srcK k) (enter e u) := fun k e t u => by
+    funext v
+    simp only [gatedRun, hsrc e t u, hsrcK k e t u]
+  rw [keyedSys_eq_stSys kd _ (gateTgtStepSt enter Pre (fun k => gatedRun srcRun (srcK k))
+      leakRun (fun k s => SPComp.map (fun a => (a, k)) (run k s)) read) t₀ ?_,
+    keyedSys_eq_stSys kd _ (gateSrcStepSt enter Pre (fun k => gatedRun srcRun (srcK k))
+      (chooseSt fun k => gatedRun srcRun (srcK k))) u₀ ?_]
+  · refine realizesSim_of_gate_run_st g pub hpub hterm enter pe hPre hpe kd _
+      (fun _ _ _ h => h.1) hsrcX _ read _ (fun k e t u => ?_) ε (fun k s hp hv => ?_) t₀ u₀
+    · unfold chooseSt
+      beta_reduce
+      rw [hsrcX k e t u]
+    · have hv' := Classical.choose_spec hv
+      simp only [chooseSt, dite_eq_left hv]
+      refine rHoareApprox_conseq (fun _ _ h => h) ?_ le_rfl
+        (rHoareApprox_map_pure_of_sdist (rel := fun a v => read s a = v)
+          (y := (Classical.choose hv, k)) (F := fun a => (a, k))
+          (h := hrun k s _ hp hv'.1 hv'.2) fun a ha => ⟨ha, rfl⟩)
+      rintro ⟨a, k'⟩ h₁ ⟨v, k''⟩ h₂ ⟨hh, hr, hk⟩
+      exact ⟨Prod.ext hr hk, hh⟩
+  · intro k u e
+    unfold gateSrcSys gateSrcStepSt chooseSt
+    beta_reduce
+    by_cases h : Pre (enter e u) ∧ ∃ v, gatedRun srcRun (srcK k) (enter e u) v
+    · simp only [dite_eq_left h, ite_eq_left_of_eq_true _ _ (eq_true h), dite_eq_left h.2,
+        SPComp.map, SPComp.pure_bind]
+    · simp only [dite_eq_right h, ite_eq_right_of_eq_false _ _ (eq_false h), SPComp.map,
+        SPComp.pure_bind]
+  · intro k t e
+    unfold gateTgtSysRun gateTgtStepSt
+    beta_reduce
+    by_cases h : (Pre (enter e t) ∧ ∃ v, gatedRun srcRun (srcK k) (enter e t) v) ∧
+        ∃ tr, leakRun (enter e t) tr
+    · simp only [dite_eq_left h, SPComp.map, SPComp.bind_assoc, SPComp.pure_bind]
+    · simp only [dite_eq_right h, SPComp.map, SPComp.pure_bind]
 
 end KeyedGate
 
