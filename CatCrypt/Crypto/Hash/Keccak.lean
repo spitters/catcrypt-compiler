@@ -33,8 +33,9 @@ a good pseudorandom permutation, not on its internal structure.
 
 ## Security model
 
-The security of SHA-3 constructions relies on Keccak-f being modeled as a
-random permutation. The `RPAssumption` in `Security.lean` captures this.
+No theorem of this package models Keccak-f as a random permutation or relates
+it to an adversary. `Security.lean` has the birthday expression `q^2 / 2^c` at
+the SHAKE capacities as numbers.
 
 ## References
 
