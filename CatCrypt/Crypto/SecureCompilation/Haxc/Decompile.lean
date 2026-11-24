@@ -132,8 +132,8 @@ theorem decompileB_spec {c : DecompCand Γ t} {bytes : List (BitVec 8)}
     `sa` in a state `sa'` from which `σ` reads back the source value of the result. The
     stack register of `sa'` holds its value in `sa`, and the memory of `sa'` agrees with that
     of `sa` outside the stack words of the frame and the words of each pointer region of
-    `σ`; some run of the address machine on `c.body` from `entryA σ sa` halts and accesses
-    `layoutMem σ sa` only. -/
+    `σ`. The last conjunct, a run of the address machine on `c.body` at some frame and fuel,
+    does not relate that frame to the bytes and states nothing of their accesses. -/
 theorem decompile_correct {c : DecompCand Γ t} {bytes : List (BitVec 8)}
     (h : decompileB σ fn c bytes = true)
     (sa : AState) (V : Ctxt.Valuation Γ) (hV : AbiValOf σ sa V) (hreg : σ.Regions sa)
