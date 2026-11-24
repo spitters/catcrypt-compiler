@@ -229,6 +229,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.CarryChainInterleave
 CatCrypt.Crypto.SecureCompilation.Ascent.CondKernelCapstone
 CatCrypt.Crypto.SecureCompilation.Ascent.ControlFlowCT
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresBridgeMemStore
+CatCrypt.Crypto.SecureCompilation.Ascent.CorresCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresDescent
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresInstanceSpec
 CatCrypt.Crypto.SecureCompilation.Ascent.CorresMachineTieFragments
@@ -249,7 +250,6 @@ CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FieldWordAddCorres
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.FootprintDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.HeapAbs
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.JasminJumpDemo
-CatCrypt.Crypto.SecureCompilation.Ascent.Demos.KrakenCallDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.KrakenCfgDemo
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.LeanSourceRiscv
 CatCrypt.Crypto.SecureCompilation.Ascent.Demos.MillerLoopKernelBench
@@ -266,7 +266,8 @@ CatCrypt.Crypto.SecureCompilation.Ascent.GradedWP
 CatCrypt.Crypto.SecureCompilation.Ascent.ImageSpFreeCell
 CatCrypt.Crypto.SecureCompilation.Ascent.Imported.ShippedCTPointAdd
 CatCrypt.Crypto.SecureCompilation.Ascent.InvariantSchemas
-CatCrypt.Crypto.SecureCompilation.Ascent.IsaTextWP
+CatCrypt.Crypto.SecureCompilation.Ascent.IsaRunLaws
+CatCrypt.Crypto.SecureCompilation.Ascent.IsaTextCalls
 CatCrypt.Crypto.SecureCompilation.Ascent.JStateSepLogic
 CatCrypt.Crypto.SecureCompilation.Ascent.JasminMirrorTie
 CatCrypt.Crypto.SecureCompilation.Ascent.LeakageExceptT
@@ -283,10 +284,7 @@ CatCrypt.Crypto.SecureCompilation.Ascent.RelationalExceptTMvcgen
 CatCrypt.Crypto.SecureCompilation.Ascent.RightUnitOffName
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockLoopTriple
 CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockMvcgenMorphism
-CatCrypt.Crypto.SecureCompilation.Ascent.RunBlockWP
 CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDemo
-CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
-CatCrypt.Crypto.SecureCompilation.Ascent.SquareStrictDouble
 CatCrypt.Crypto.SecureCompilation.Ascent.UCLeakageDecomp
 CatCrypt.Crypto.SecureCompilation.Ascent.Width32Leaf
 CatCrypt.Crypto.SecureCompilation.Ascent.XAdvantageHybrid
@@ -426,7 +424,7 @@ CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256MultiRef
 CatCrypt.Crypto.SecureCompilation.HaxExtractionSurfaceDemo
 CatCrypt.Crypto.SecureCompilation.Haxc.BoolEntry
 CatCrypt.Crypto.SecureCompilation.Haxc.CTVerdict
-CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
+CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRuttHFree
 CatCrypt.Crypto.SecureCompilation.Haxc.ClosedConsts
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeCTDeclass
 CatCrypt.Crypto.SecureCompilation.Haxc.ComposeJazz
@@ -512,6 +510,7 @@ CatCrypt.Crypto.SecureCompilation.RISCVBackend.RvAsmSim
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscv32Refinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRiscvBranchRefinement
 CatCrypt.Crypto.SecureCompilation.RISCVBackend.SailRvvDecoder
+CatCrypt.Crypto.SecureCompilation.RefinementSquares
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254EC
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBN254Emit
 CatCrypt.Crypto.SecureCompilation.RelationalFrontBls377ECInv
@@ -710,7 +709,6 @@ CatCrypt.Crypto.SecureCompilation.VIR.ParamDescent
 CatCrypt.Crypto.SecureCompilation.VIR.ParamDialectTransport
 CatCrypt.Crypto.SecureCompilation.VIR.ParamPqcKernel
 CatCrypt.Crypto.SecureCompilation.VIR.ParamWordField
-CatCrypt.Crypto.SecureCompilation.VIR.PassChainDouble
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3ExtFriFoldEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3FiatShamirEmit
 CatCrypt.Crypto.SecureCompilation.VIR.Plonky3GlueEmit
@@ -1035,7 +1033,6 @@ CatCrypt.Deep.ReflectUCHelpers
 CatCrypt.Deep.Strategy
 CatCrypt.Deep.Tactics
 CatCrypt.EmitArtifacts.P384Rust
-CatCrypt.Hax.Ascent.SquareDouble
 CatCrypt.Hax.ClassBuiltinsTest
 CatCrypt.Hax.LoopFacts
 CatCrypt.Hax.ReifyFieldArrayTest
@@ -1052,7 +1049,7 @@ CatCrypt.Quantum.Benchmark.QrunchExportMain
 CatCrypt.Quantum.Benchmark.SKMeasure
 CatCrypt.Quantum.GottesmanKnill
 CatCrypt.Quantum.KochenSpecker
-CatCrypt.Quantum.Optimization.UnitarySoundCapstone
+CatCrypt.Quantum.Optimization.PassRefinesWP
 CatCrypt.Quantum.Programs.BellCHSH
 CatCrypt.Quantum.Programs.EntanglementDistillation
 CatCrypt.Quantum.Programs.GroverN
@@ -1134,7 +1131,7 @@ HaxAscent.RustSemantics.AscendRustM
 HaxAscent.RustSemantics.RangeBridgeKinded
 HaxAscent.RustSemantics.RangeReading
 HaxAscent.RustSemantics.ReadingTacTest
+HaxAscent.RustSemantics.RustMLevel
 HaxAscent.RustSemantics.ToRustMSContractDemo
 HaxAscent.RustSemantics.ToRustMSLoopSpec
 HaxAscent.RustSemantics.ToRustMSTotal
-HaxAscent.RustSemantics.TripleToFnCorresWP

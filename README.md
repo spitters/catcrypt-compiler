@@ -83,6 +83,22 @@ technique applies to Rust extracted by hax
 [Transfer](CORRECTNESS.md#transfer-parametricity-across-representations) proves a fact across a
 change of representation, by parametricity.
 
+## Quantum circuits
+
+The compiler has an optimizer for quantum circuits. Every level of the optimizer, and every list
+of its passes, preserves the channel of a circuit
+([`fullOptimize_unitaryCorrect`](CatCrypt/Quantum/Optimization/UnitarySoundCapstone.lean),
+[`runNamed_unitaryCorrect`](CatCrypt/Quantum/Optimization/PassPipeline.lean)). Through the
+[weakest precondition of channels](https://github.com/spitters/CatCrypt-core/blob/main/CatCryptCore/Refinement/RRelWRPQuantum.lean)
+in CatCrypt-core, each circuit and its optimized circuit refine each other in the sense of
+[refinement-wp](https://github.com/spitters/refinement-wp), on arbitrary nonnegative observations
+of states ([`fullOptimize_passRefines`](CatCrypt/Quantum/Optimization/PassRefinesWP.lean),
+[`runNamed_passRefines`](CatCrypt/Quantum/Optimization/PassRefinesWP.lean)). A pass refines
+exactly when it preserves channels
+([`passRefines_iff`](CatCrypt/Quantum/Optimization/PassRefinesWP.lean)), and composition of passes
+is pasting of refinements
+([`runPasses_passRefines`](CatCrypt/Quantum/Optimization/PassRefinesWP.lean)).
+
 ## Applications
 
 - [lean4lean](https://github.com/spitters/lean4lean) is a Lean kernel with verified limb arithmetic
