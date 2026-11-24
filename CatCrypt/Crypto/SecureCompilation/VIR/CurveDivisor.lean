@@ -7,7 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.VIR.CoordinateRingDedekind
 public import Mathlib.RingTheory.DedekindDomain.Factorization
-public import Mathlib.RingTheory.DedekindDomain.AdicValuation
+public import Mathlib.RingTheory.DedekindDomain.AdicValuation.Completion
 
 
 @[expose] public section
@@ -125,12 +125,12 @@ lemma ord_mul (v : HeightOneSpectrum W.CoordinateRing) (f g : W.FunctionFieldˣ)
     rw [spanSingleton_ne_zero_iff]; exact Units.ne_zero f
   have hg : spanSingleton W.CoordinateRing⁰ (g : W.FunctionField) ≠ 0 := by
     rw [spanSingleton_ne_zero_iff]; exact Units.ne_zero g
-  simp only [ord, Units.val_mul, ← spanSingleton_mul_spanSingleton]
+  simp only [ord, Units.val_mul, map_mul]
   rw [FractionalIdeal.count_mul _ v hf hg]
 
 @[simp] lemma ord_one (v : HeightOneSpectrum W.CoordinateRing) :
     ord W v (1 : W.FunctionFieldˣ) = 0 := by
-  simp only [ord, Units.val_one, spanSingleton_one]
+  simp only [ord, Units.val_one, map_one]
   exact FractionalIdeal.count_one _ v
 
 @[simp] lemma divisorOf_one : divisorOf W (1 : W.FunctionFieldˣ) = 0 := by
