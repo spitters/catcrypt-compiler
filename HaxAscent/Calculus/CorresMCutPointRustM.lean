@@ -29,7 +29,7 @@ set_option autoImplicit false
 
 namespace Hax.Ascent.RustM
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.Ascent
 
 /-- **The invariant rule for a `RustM` loop from the cut-point rule.** The statement of
@@ -39,7 +39,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent
     the loop from `x` returns `(V σ, c')` with `Q c' σ`. A `.cont` trip is a segment to
     the cut point at a smaller measure; a `.done` trip is an exit at the same state. -/
 theorem corresM_loop_of_cutPoint {α C S A : Type} {P Q : C → S → Prop} {G : S → Prop}
-    {V : S → A} {body : α → Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α}
+    {V : S → A} {body : α → HaxLean.Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α}
     (inv : S → α → Prop) (measure : S → α → Nat)
     (hinit : ∀ c σ, P c σ → G σ → inv σ (init c))
     (hbody : ∀ σ, G σ → ∀ x, inv σ x → WP.spec (body x) (fun r => match r with

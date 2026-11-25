@@ -38,7 +38,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.SecureCompilation.VIR

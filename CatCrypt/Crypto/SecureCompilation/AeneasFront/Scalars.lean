@@ -59,7 +59,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std Transfer
+open HaxLean.Aeneas.Std Transfer
 open _root_.Hax (Value hax64Builtins hax64WordOps)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax

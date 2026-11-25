@@ -23,7 +23,7 @@ A selection of the definitions the hax 0.4.2 Lean backend prints for the Aeneas 
 
 @[expose] public section
 open CoreModels Aeneas
-open Aeneas.Std hiding namespace core alloc
+open HaxLean.Aeneas.Std hiding namespace core alloc
 open RustM ControlFlow Error
 open Std.Do
 

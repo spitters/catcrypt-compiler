@@ -62,7 +62,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RangeRustM
 
-open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxAscent.RustSemantics Aeneas.Std
+open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxAscent.RustSemantics HaxLean.Aeneas.Std
 open Hax.Ascent (stateM_bind_apply bindCF_eq_val)
 
 variable {κ : Type}

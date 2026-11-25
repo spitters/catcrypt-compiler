@@ -51,8 +51,8 @@ variable {C S A : Type}
     assertions over the state: at `c`, the `RustM` weakest precondition of `p c` at the
     postcondition `Φ` of the returned value and state and the exception conditions
     `E`. -/
-def wpRustM (p : C → Aeneas.Std.RustM (A × C)) (Φ : A → Assertion (.arg C .pure))
-    (E : ExceptConds (.except (ULift Aeneas.Std.Error) (.except PUnit .pure))) :
+def wpRustM (p : C → HaxLean.Aeneas.Std.RustM (A × C)) (Φ : A → Assertion (.arg C .pure))
+    (E : ExceptConds (.except (ULift HaxLean.Aeneas.Std.Error) (.except PUnit .pure))) :
     Assertion (.arg C .pure) :=
   fun c => wp⟦p c⟧ (fun r => Φ r.1 r.2, E)
 
@@ -61,11 +61,11 @@ def wpRustM (p : C → Aeneas.Std.RustM (A × C)) (Φ : A → Assertion (.arg C 
     `entryExitRel P Q`, with the abstract exception `none` fixed to false, arbitrary
     failure and divergence postconditions of `RustM`, and equality of values. -/
 theorem corresM_iff_rrelPT {P Q : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} :
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} :
     CorresM P G p V Q ↔
       RRelPT (AssnRel.ofStateRel (entryExitRel P Q))
         (fun (E : ExceptConds (.except (Option Empty) (.arg (S ⊕ S) .pure)))
-          (_ : ExceptConds (.except (ULift Aeneas.Std.Error) (.except PUnit .pure))) =>
+          (_ : ExceptConds (.except (ULift HaxLean.Aeneas.Std.Error) (.except PUnit .pure))) =>
           ∀ y, ¬ (E.1 none y).down)
         (@_root_.Eq A) (fun Φ E => wp⟦guardProg (ε := Empty) G (fun σ => .ok (V σ))⟧ (Φ, E))
         (wpRustM p) := by

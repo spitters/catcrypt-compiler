@@ -30,7 +30,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open Ctxt (Var Valuation)

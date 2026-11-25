@@ -35,7 +35,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Hax
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
 open CatCrypt.Crypto.Hax (hax64WExit)
@@ -45,7 +45,7 @@ open CatCrypt.Crypto.Hax.ImpToNF (PDenP)
 def indexIndexArray := reifyAeneas% arrays.index_index_array
 
 /-- A value of `arrays.index_index_array` is the denotation of its NF program. -/
-theorem indexIndexArray_denote (s : Aeneas.Std.Array (Aeneas.Std.Array U32 32#usize) 32#usize)
+theorem indexIndexArray_denote (s : HaxLean.Aeneas.Std.Array (HaxLean.Aeneas.Std.Array U32 32#usize) 32#usize)
     (i j : Usize) (z : U32) (h : arrays.index_index_array s i j = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel indexIndexArray.prog (vCons s (vCons i (vCons j vNil))) =

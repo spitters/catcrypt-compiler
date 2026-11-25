@@ -25,7 +25,7 @@ The module states no theorem; it elaborates over the prelude's names.
 
 @[expose] public section
 open CoreModels Aeneas
-open Aeneas.Std hiding namespace core alloc
+open HaxLean.Aeneas.Std hiding namespace core alloc
 open RustM ControlFlow Error
 open Std.Do
 

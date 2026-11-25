@@ -94,11 +94,11 @@ def tagWidths (names : Array String) : List Nat := Id.run do
 
 /-- The unsigned scalar type of a width. -/
 def uTyOf? : Nat → Option Name
-  | 8 => some ``Aeneas.Std.UScalarTy.U8
-  | 16 => some ``Aeneas.Std.UScalarTy.U16
-  | 32 => some ``Aeneas.Std.UScalarTy.U32
-  | 64 => some ``Aeneas.Std.UScalarTy.U64
-  | 128 => some ``Aeneas.Std.UScalarTy.U128
+  | 8 => some ``HaxLean.Aeneas.Std.UScalarTy.U8
+  | 16 => some ``HaxLean.Aeneas.Std.UScalarTy.U16
+  | 32 => some ``HaxLean.Aeneas.Std.UScalarTy.U32
+  | 64 => some ``HaxLean.Aeneas.Std.UScalarTy.U64
+  | 128 => some ``HaxLean.Aeneas.Std.UScalarTy.U128
   | _ => none
 
 /-- The strings of a list literal. -/
@@ -204,7 +204,7 @@ def rustMFn (ns : Name) (f : String) : TermElabM String := do
       if kernelDefEq (← getEnv) (← getLCtx) tot trueE then
         let htot ← mkExpectedTypeHint (← mkEqRefl trueE) (← mkEq tot trueE)
         let ρAty ← mkArrow (mkConst ``String) (← mkAppM ``Option
-          #[← mkAppM ``Aeneas.Std.UScalar #[ty]])
+          #[← mkAppM ``HaxLean.Aeneas.Std.UScalar #[ty]])
         let totPf ← withLocalDeclD `ρA ρAty fun ρA => do
           let p ← mkAppM ``CatCrypt.Hax.RustSemantics.toRustM_isOk_of_totalOk
             #[e, ρA, boundE, htot]

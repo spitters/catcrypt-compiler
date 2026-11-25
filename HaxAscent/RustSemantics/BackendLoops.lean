@@ -40,7 +40,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 /-- Two computations that return a value together, with values related by `R`. -/
 def ROk {α β : Type} (R : α → β → Prop) (x : RustM α) (y : RustM β) : Prop :=
@@ -188,7 +188,7 @@ theorem next_usize (s n : Usize) :
     runs `f` on the current index, is the hax backend's `foldRangeAux f`. -/
 theorem loop_range {α : Type}
     (body : core.ops.range.Range Usize × α →
-      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × α) α))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (core.ops.range.Range Usize × α) α))
     (f : α → Usize → RustM α) (n : Usize)
     (hbody : ∀ (s : Usize) (acc : α), body ({ start := s, «end» := n }, acc) =
       if s.val < n.val then

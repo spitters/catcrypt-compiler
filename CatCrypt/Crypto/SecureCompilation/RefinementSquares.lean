@@ -393,7 +393,7 @@ theorem sq_iff_refSq {a b c d : MLevel C S} (u : Hor.of a ⟶ Hor.of b) (f : a �
 
 /-- The refinement square at the concrete-over-abstract boundary, with the continuation `f`
 on top and the value map `W` at the bottom. -/
-theorem sq_conc_iff_refSq {A B : Type} (f : A → C → Aeneas.Std.RustM (B × C))
+theorem sq_conc_iff_refSq {A B : Type} (f : A → C → HaxLean.Aeneas.Std.RustM (B × C))
     (R : A × C → A × S → Prop) (R' : B × C → B × S → Prop) (W : S → A → B) :
     (∀ x a σ, R x (a, σ) → ∃ y, f x.1 x.2 = .ok y ∧ R' y (W σ a, σ)) ↔
       Sq ((relDouble (relSemantics (C := C) (S := S))).mapH (a := .conc A) (b := .conc B) f)
@@ -406,7 +406,7 @@ theorem sq_conc_iff_refSq {A B : Type} (f : A → C → Aeneas.Std.RustM (B × C
 /-- `CorresM P G p V Q` is the refinement square from `conc Unit` to `conc A` over `abs Unit`
 to `abs A` with top the program `p` and bottom the value map `V`. -/
 theorem corresM_iff_refSq {A : Type} (P Q : C → S → Prop) (G : S → Prop)
-    (p : C → Aeneas.Std.RustM (A × C)) (V : S → A) :
+    (p : C → HaxLean.Aeneas.Std.RustM (A × C)) (V : S → A) :
     CorresM P G p V Q ↔
       Sq ((relDouble (relSemantics (C := C) (S := S))).mapH (a := .conc Unit) (b := .conc A)
           (fun (_ : Unit) c => p c))
@@ -420,12 +420,12 @@ theorem corresM_iff_refSq {A : Type} (P Q : C → S → Prop) (G : S → Prop)
     (sq_iff_refSq (a := .conc Unit) (b := .conc A) (c := .abs Unit) (d := .abs A) _ _ _ _)
 
 /-- A continuation relates an input to at most one output: its `.ok` result. -/
-theorem sem_conc_deterministic {A B : Type} (f : A → C → Aeneas.Std.RustM (B × C))
+theorem sem_conc_deterministic {A B : Type} (f : A → C → HaxLean.Aeneas.Std.RustM (B × C))
     (x : A × C) (y₁ y₂ : B × C)
     (h₁ : (relSemantics (C := C) (S := S)).sem (a := .conc A) (b := .conc B) f x y₁)
     (h₂ : (relSemantics (C := C) (S := S)).sem (a := .conc A) (b := .conc B) f x y₂) :
     y₁ = y₂ := by
-  have h : Aeneas.Std.RustM.ok y₁ = .ok y₂ :=
+  have h : HaxLean.Aeneas.Std.RustM.ok y₁ = .ok y₂ :=
     (show f x.1 x.2 = .ok y₁ from h₁).symm.trans h₂
   cases h
   rfl
@@ -437,7 +437,7 @@ from `conc Unit` to `conc A` the bottom, and the converses of the sides of
 determinism of `RustM` continuations (`sem_conc_deterministic`) and the totality of the
 value map; it constrains the `.ok` results of `p` only. -/
 theorem refSq_spec_of_corresM {A : Type} {P Q : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} (h : CorresM P G p V Q) :
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} (h : CorresM P G p V Q) :
     Sq ((relDouble (relSemantics (C := C) (S := S))).mapH (a := .abs Unit) (b := .abs A)
         (fun σ _ => V σ))
       ((relDouble (relSemantics (C := C) (S := S))).mapV (a := .abs Unit) (c := .conc Unit)

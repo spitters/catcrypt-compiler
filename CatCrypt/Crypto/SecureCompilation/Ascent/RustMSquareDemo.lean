@@ -40,15 +40,15 @@ set_option autoImplicit false
 
 namespace Hax.Ascent.RustM.Demos
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 /-- A checked decrement: a panic at zero. -/
-def dec (n : Nat) : Aeneas.Std.RustM (Nat × Nat) :=
+def dec (n : Nat) : HaxLean.Aeneas.Std.RustM (Nat × Nat) :=
   if n = 0 then .fail .panic else .ok (n - 1, n - 1)
 
 /-- The two-step program: decrement twice, carrying the counter as both value and
     state. -/
-def decTwice : Nat → Aeneas.Std.RustM (Nat × Nat) := kseq dec (fun _ c => dec c)
+def decTwice : Nat → HaxLean.Aeneas.Std.RustM (Nat × Nat) := kseq dec (fun _ c => dec c)
 
 /-- The abstract counterpart of `decTwice`. -/
 def decTwiceSpec (σ : Nat) : Nat := σ - 2

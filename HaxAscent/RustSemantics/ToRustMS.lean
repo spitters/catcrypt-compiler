@@ -13,14 +13,14 @@ public import HaxAscent.Ascent.ExtTable
 /-!
 # The state-passing `RustM` reading of haxpipe literals
 
-`toRustMS app e ρ` reads the literal `e` as an Aeneas program over `Aeneas.Std.RustM` that
+`toRustMS app e ρ` reads the literal `e` as an Aeneas program over `HaxLean.Aeneas.Std.RustM` that
 threads an environment, as `Hax.denote'` does: a `letBind` extends the environment for the
 rest of the run, a counted loop `forFold` (upwards) or `forFoldRev` (downwards) binds its
 index and keeps the bindings its body makes, and a call `.app f args` evaluates its arguments left to right and applies
 `app f` to their values, a tuple `.tuple es` of any arity evaluates its components left to
 right, and a projection `.proj e i` returns component `i` of the tuple
 `e` returns. The values (`AVal`) are integer literals, Booleans, unsigned
-words of every Aeneas width, Aeneas arrays `Aeneas.Std.Array (UScalar ty) n` of words,
+words of every Aeneas width, Aeneas arrays `HaxLean.Aeneas.Std.Array (UScalar ty) n` of words,
 tuples and the unit value.
 
 `appRt` is the reading of the runtime operations: the width-tagged word operations of
@@ -86,7 +86,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 /-! ## Values and environments -/
 
@@ -101,7 +101,7 @@ inductive AVal where
   /-- An unsigned word. -/
   | w (ty : UScalarTy) (x : UScalar ty)
   /-- An Aeneas array of unsigned words. -/
-  | arr (ty : UScalarTy) (n : Usize) (a : Aeneas.Std.Array (UScalar ty) n)
+  | arr (ty : UScalarTy) (n : Usize) (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
   /-- A tuple. -/
   | tup (vs : List AVal)
   /-- The unit value. -/
@@ -347,7 +347,7 @@ def appUpdate : AVal → AVal → AVal → RustM AVal
 def appRepeat : AVal → AVal → RustM AVal
   | .w ty x, n => do
     let m ← n.asW .Usize
-    .ok (.arr ty m (Aeneas.Std.Array.repeat m x))
+    .ok (.arr ty m (HaxLean.Aeneas.Std.Array.repeat m x))
   | _, _ => .fail .undef
 
 /-- `len` of an array: its length, an integer literal. -/
@@ -365,7 +365,7 @@ def AVal.asWList (ty : UScalarTy) : List AVal → RustM (List (UScalar ty))
 def appArrayLit : List AVal → RustM AVal
   | .w ty x :: as => AVal.asWList ty (.w ty x :: as) >>= fun xs =>
     (AVal.int xs.length).asW .Usize >>= fun n =>
-      if h : xs.length = n.val then .ok (.arr ty n (Aeneas.Std.Array.make n xs h))
+      if h : xs.length = n.val then .ok (.arr ty n (HaxLean.Aeneas.Std.Array.make n xs h))
       else .fail .undef
   | _ => .fail .undef
 
@@ -746,8 +746,8 @@ theorem appIndex_ok {a i r : AVal} (h : appIndex a i = .ok r) :
     obtain ⟨x, hx, h⟩ := rustM_bind_ok h
     cases h
     refine ⟨_, enc j, rfl, AVal.asW_ok hj, ?_⟩
-    unfold Aeneas.Std.Array.index_usize at hx
-    rw [Aeneas.Std.Array.getElem?_Usize_eq] at hx
+    unfold HaxLean.Aeneas.Std.Array.index_usize at hx
+    rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at hx
     split at hx
     · cases hx
     · rename_i y hy
@@ -767,8 +767,8 @@ theorem appUpdate_ok {a i v r : AVal} (h : appUpdate a i v = .ok r) :
     cases h
     refine ⟨_, enc j, rfl, AVal.asW_ok hj, ?_⟩
     rw [AVal.asW_ok hx]
-    unfold Aeneas.Std.Array.update at harr
-    rw [Aeneas.Std.Array.getElem?_Usize_eq] at harr
+    unfold HaxLean.Aeneas.Std.Array.update at harr
+    rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at harr
     split at harr
     · cases harr
     · rename_i y hy

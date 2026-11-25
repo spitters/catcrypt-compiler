@@ -46,7 +46,7 @@ set_option autoImplicit false
 
 namespace HaxAscent.RustSemantics
 
-open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics Aeneas.Std
+open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxLean.Aeneas.Std
 open _root_.Hax.Ascent (HaxEnc)
 
 /-! ## The relation -/
@@ -168,8 +168,8 @@ theorem rd_index {A : Array Int} {I : Int} (h : appRt "index" [a, b] = .ok r)
         rw [List.map_map]
         exact (_root_.Hax.Value.array.inj ha).symm
       exact (List.map_inj_right (fun _ _ h => _root_.Hax.Value.int.inj h)).mp h1
-    unfold Aeneas.Std.Array.index_usize at hx
-    rw [Aeneas.Std.Array.getElem?_Usize_eq] at hx
+    unfold HaxLean.Aeneas.Std.Array.index_usize at hx
+    rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at hx
     split at hx
     · cases hx
     · rename_i y hy

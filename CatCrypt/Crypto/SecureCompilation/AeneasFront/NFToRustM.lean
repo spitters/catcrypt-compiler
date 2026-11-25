@@ -48,7 +48,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
@@ -101,12 +101,12 @@ theorem readWs_ok : ∀ {vs : List Value} {xs : List U64}, readWs vs = .ok xs �
     rw [List.map_cons, readW_ok hx, readWs_ok hys]
 
 /-- The Aeneas array of `u64` words a chain array stands for, with its length. -/
-def readArr : Value → RustM (Σ n : Usize, Aeneas.Std.Array U64 n)
+def readArr : Value → RustM (Σ n : Usize, HaxLean.Aeneas.Std.Array U64 n)
   | .array vs => readWs vs >>= fun xs => litA .Usize xs.length >>= fun n =>
-      if h : xs.length = n.val then .ok ⟨n, Aeneas.Std.Array.make n xs h⟩ else .fail .undef
+      if h : xs.length = n.val then .ok ⟨n, HaxLean.Aeneas.Std.Array.make n xs h⟩ else .fail .undef
   | _ => .fail .undef
 
-theorem readArr_ok {v : Value} {a : Σ n : Usize, Aeneas.Std.Array U64 n}
+theorem readArr_ok {v : Value} {a : Σ n : Usize, HaxLean.Aeneas.Std.Array U64 n}
     (h : readArr v = .ok a) : v = arrV a.2 := by
   cases v with
   | array vs =>
@@ -401,7 +401,7 @@ theorem aeExpr_sim {Γ : Ctxt nfDialect} {t : NfTy} (e : Expr nfDialect Γ t)
 /-- One run of the body of an exit-flag loop as a step of the Aeneas `loop`: continue with
     the next tuple on the bit `true`, stop with it on `false`. -/
 def flagStep {cs : List NfTy} (r : Valuation (d := nfDialect) (NfTy.bit :: cs)) :
-    Aeneas.Std.ControlFlow (Valuation (d := nfDialect) cs) (Valuation (d := nfDialect) cs) :=
+    HaxLean.Aeneas.Std.ControlFlow (Valuation (d := nfDialect) cs) (Valuation (d := nfDialect) cs) :=
   if r.head then .cont r.tail else .done r.tail
 
 /-- **The Aeneas reading of an NF program.** -/

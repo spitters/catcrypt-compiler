@@ -74,21 +74,21 @@ def carrier : MLevel C S → Type
 /-- Horizontal arrows: state-passing `RustM` continuations at the concrete level,
 state-indexed value maps at the abstract level, none between the levels. -/
 def HHom : MLevel C S → MLevel C S → Type
-  | .conc A, .conc B => A → C → Aeneas.Std.RustM (B × C)
+  | .conc A, .conc B => A → C → HaxLean.Aeneas.Std.RustM (B × C)
   | .abs A, .abs B => S → A → B
   | _, _ => PEmpty
 
 /-- The horizontal identity: `pureK`, the identity value map. -/
 def hid : (a : MLevel C S) → HHom a a
-  | .conc A => (fun a c => pureK a c : A → C → Aeneas.Std.RustM (A × C))
+  | .conc A => (fun a c => pureK a c : A → C → HaxLean.Aeneas.Std.RustM (A × C))
   | .abs A => (fun _ a => a : S → A → A)
 
 /-- Horizontal composition: Kleisli composition by `kseq`, pointwise diagrammatic
 composition of value maps. -/
 def hcomp : {a b c : MLevel C S} → HHom a b → HHom b c → HHom a c
   | .conc A, .conc B, .conc D, f, g =>
-      (fun a c => kseq ((f : A → C → Aeneas.Std.RustM (B × C)) a)
-        (g : B → C → Aeneas.Std.RustM (D × C)) c : A → C → Aeneas.Std.RustM (D × C))
+      (fun a c => kseq ((f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) a)
+        (g : B → C → HaxLean.Aeneas.Std.RustM (D × C)) c : A → C → HaxLean.Aeneas.Std.RustM (D × C))
   | .abs A, .abs B, .abs D, f, g =>
       (fun σ a => (g : S → B → D) σ ((f : S → A → B) σ a) : S → A → D)
   | .conc _, .abs _, _, u, _ => PEmpty.elim u
@@ -122,7 +122,7 @@ instance : Category (Hor (MLevel C S)) where
 of a value map at a fixed abstract state. -/
 def sem : {a b : MLevel C S} → HHom a b → carrier a → carrier b → Prop
   | .conc A, .conc B, f => fun x y =>
-      (f : A → C → Aeneas.Std.RustM (B × C)) (x : A × C).1 x.2 = .ok (y : B × C)
+      (f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) (x : A × C).1 x.2 = .ok (y : B × C)
   | .abs A, .abs B, W => fun x y =>
       (y : B × S) = ((W : S → A → B) (x : A × S).2 x.1, x.2)
   | .conc _, .abs _, u => PEmpty.elim u
@@ -135,7 +135,7 @@ def relSemantics : RelSemantics (C := MLevel C S) carrier where
   sem_id a := by
     cases a
     · funext x y; apply propext
-      show Aeneas.Std.RustM.ok (x.1, x.2) = .ok y ↔ x = y
+      show HaxLean.Aeneas.Std.RustM.ok (x.1, x.2) = .ok y ↔ x = y
       exact ⟨fun h => by cases h; rfl, fun h => by subst h; rfl⟩
     · funext x y; apply propext
       show y = (x.1, x.2) ↔ x = y
@@ -149,7 +149,7 @@ def relSemantics : RelSemantics (C := MLevel C S) carrier where
       simp only [kseq]
       cases hu : u x.1 x.2 with
       | ok r =>
-        simp only [Aeneas.Std.bind_tc_ok]
+        simp only [HaxLean.Aeneas.Std.bind_tc_ok]
         exact ⟨fun h => ⟨r, rfl, h⟩, fun ⟨_, h1, h2⟩ => by cases h1; exact h2⟩
       | fail e =>
         exact ⟨fun h => (by cases h), fun ⟨_, h1, _⟩ => (by cases h1)⟩
@@ -170,7 +170,7 @@ instance : ThinDoubleCategory (MLevel C S) := ofRelSemantics relSemantics
 /-- The square at the concrete-over-abstract boundary: from a concrete point related to
 `(a, σ)` by the left side, the continuation returns `.ok` at a point related to
 `(W σ a, σ)` by the right side. -/
-theorem sq_conc_iff {A B : Type} (f : A → C → Aeneas.Std.RustM (B × C))
+theorem sq_conc_iff {A B : Type} (f : A → C → HaxLean.Aeneas.Std.RustM (B × C))
     (R : A × C → A × S → Prop) (R' : B × C → B × S → Prop) (W : S → A → B) :
     Sq (C := MLevel C S) (a := .conc A) (b := .conc B) (c := .abs A) (d := .abs B)
         f R R' W ↔
@@ -186,7 +186,7 @@ theorem sq_conc_iff {A B : Type} (f : A → C → Aeneas.Std.RustM (B × C))
 `abs A` with left side `P` under the guard `G`, right side `Q` with equal values, top the
 program `p` and bottom the value map `V`. -/
 theorem corresM_iff_sq {A : Type} (P Q : C → S → Prop) (G : S → Prop)
-    (p : C → Aeneas.Std.RustM (A × C)) (V : S → A) :
+    (p : C → HaxLean.Aeneas.Std.RustM (A × C)) (V : S → A) :
     CorresM P G p V Q ↔
       Sq (C := MLevel C S) (a := .conc Unit) (b := .conc A) (c := .abs Unit) (d := .abs A)
         (fun (_ : Unit) c => p c) (fun x y => P x.2 y.2 ∧ G y.2)

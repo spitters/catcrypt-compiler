@@ -32,7 +32,7 @@ namespace HaxAscent.RustSemantics.ReadingTacTest
 
 open Hax
 open HaxAscent.RustSemantics CatCrypt.Hax.RustSemantics
-open Aeneas.Std (RustM bind_assoc_eq bind_tc_ok)
+open HaxLean.Aeneas.Std (RustM bind_assoc_eq bind_tc_ok)
 
 /-! ## Checked arithmetic -/
 
@@ -156,16 +156,16 @@ theorem sumLoop_reading (a : Array Int) (n : Int) (v_a : AVal) (v_n : AVal) (ρ 
       (by
         intro i s ρ o ρ' hi ⟨hρa, v, hρv, hv⟩ hst
         have hc : (ctr i).toValue = Hax.Ascent.HaxEnc.enc (i : Int) := ctr_toValue (by
-          simp only [Aeneas.Std.UScalarTy.numBits]
+          simp only [HaxLean.Aeneas.Std.UScalarTy.numBits]
           exact_mod_cast (show (i : Int) < 2 ^ System.Platform.numBits by omega))
         simp [AEnv.upd, hρa, hρv] at hst
         obtain ⟨r1, h1, hst⟩ := rustM_bind_ok hst
         obtain ⟨z1, hz1, hr1⟩ := rd_index h1 h_a hc
         obtain ⟨r2, h2, hst⟩ := rustM_bind_ok hst
         obtain ⟨z2, hz2, hr2⟩ := rd_checked (by rfl) (by rfl) h2 hv hr1
-        simp only [AOp.emitM, Aeneas.Std.UScalarTy.numBits] at hz2
+        simp only [AOp.emitM, HaxLean.Aeneas.Std.UScalarTy.numBits] at hz2
         cases hst
-        exact ⟨rfl, z2, by simp only [hz1, hz2, Aeneas.Std.bind_tc_ok], by simp [AEnv.upd, hρa],
+        exact ⟨rfl, z2, by simp only [hz1, hz2, HaxLean.Aeneas.Std.bind_tc_ok], by simp [AEnv.upd, hρa],
           r2, by simp [AEnv.upd], hr2⟩)
       n.toNat 0 0 _ o1 ρ1 (by omega) (by simp [AEnv.upd]; rfl) hl
     obtain ⟨rfl, s', hgo, -, v', hv', hvs⟩ := hloop

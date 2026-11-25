@@ -49,7 +49,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 
 variable {bi : Hax.Builtins} {A β : Type} [Hax.Ascent.HaxEnc β]
   {e : Hax.ImpExpr} {entry : A → Hax.Env} {G : A → Prop} {f : A → β}

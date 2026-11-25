@@ -12,7 +12,7 @@ public import HaxAscent.RustSemantics.ToRustMS
 
 A function correspondence `Hax.Ascent.FnCorres bi e entry G f` and a reading of the calls
 `app` with `AppOk bi app` give specifications of the program `toRustMS app e ρ` over
-`Aeneas.Std.RustM`, in the forms of `HaxLean/Rust/WP.lean` and as `Std.Do` triples that
+`HaxLean.Aeneas.Std.RustM`, in the forms of `HaxLean/Rust/WP.lean` and as `Std.Do` triples that
 `mvcgen` applies. The postcondition is fixed by the argument `a`: the returned value
 encodes `f a`.
 
@@ -41,7 +41,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 
 variable {bi : Hax.Builtins} {A β : Type} [Hax.Ascent.HaxEnc β]
   {e : Hax.ImpExpr} {entry : A → Hax.Env} {G : A → Prop} {f : A → β}

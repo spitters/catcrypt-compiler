@@ -58,7 +58,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 section Arrays
 
@@ -97,13 +97,13 @@ theorem listRel_of_getElem? {l : List α} {arr : _root_.Array β} (hlen : l.leng
   exact h j _ _ (List.getElem?_eq_getElem hj) (_root_.Array.getElem?_eq_getElem hj')
 
 /-- Array indexing returns, when the index is in range, the entry `Hax.index` reads. -/
-theorem index_array_square [Inhabited β] {n : Usize} (v : Aeneas.Std.Array α n)
+theorem index_array_square [Inhabited β] {n : Usize} (v : HaxLean.Aeneas.Std.Array α n)
     {arr : _root_.Array β} (hv : ListRel R v.val arr) (i : Usize) :
     RCompOk R (v.index_usize i) (pure (Hax.index arr (enc i)) : Id β) := by
   rw [rcompOk_iff]
   intro a h
-  unfold Aeneas.Std.Array.index_usize at h
-  rw [Aeneas.Std.Array.getElem?_Usize_eq] at h
+  unfold HaxLean.Aeneas.Std.Array.index_usize at h
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at h
   split at h
   · cases h
   · cases h
@@ -124,14 +124,14 @@ theorem index_slice_square [Inhabited β] (v : Slice α) {arr : _root_.Array β}
 
 /-- Mutable array indexing returns, when the index is in range, an element related
     to the entry `Hax.index` reads. -/
-theorem index_mut_array_square [Inhabited β] {n : Usize} (v : Aeneas.Std.Array α n)
+theorem index_mut_array_square [Inhabited β] {n : Usize} (v : HaxLean.Aeneas.Std.Array α n)
     {arr : _root_.Array β} (hv : ListRel R v.val arr) (i : Usize) :
     RCompOk (fun r c => R r.1 c) (v.index_mut_usize i)
       (pure (Hax.index arr (enc i)) : Id β) := by
   rw [rcompOk_iff]
   intro a h
   have hi := (rcompOk_iff.mp (index_array_square v hv i))
-  unfold Aeneas.Std.Array.index_mut_usize at h
+  unfold HaxLean.Aeneas.Std.Array.index_mut_usize at h
   simp only [Bind.bind] at h
   cases hx : v.index_usize i with
   | ok x => rw [hx] at h; cases h; exact hi x hx
@@ -140,14 +140,14 @@ theorem index_mut_array_square [Inhabited β] {n : Usize} (v : Aeneas.Std.Array 
 
 /-- Array update returns, when the index is in range, an array related to the one
     `Hax.array_update` returns. -/
-theorem array_update_square {n : Usize} (v : Aeneas.Std.Array α n) {arr : _root_.Array β}
+theorem array_update_square {n : Usize} (v : HaxLean.Aeneas.Std.Array α n) {arr : _root_.Array β}
     (hv : ListRel R v.val arr) (i : Usize) {x : α} {x' : β} (hx : R x x') :
     RCompOk (fun r c => ListRel R r.val c) (v.update i x)
       (pure (Hax.array_update arr (enc i) x') : Id (_root_.Array β)) := by
   rw [rcompOk_iff]
   intro a h
-  unfold Aeneas.Std.Array.update at h
-  rw [Aeneas.Std.Array.getElem?_Usize_eq] at h
+  unfold HaxLean.Aeneas.Std.Array.update at h
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at h
   split at h
   · cases h
   · rename_i y hy
@@ -164,9 +164,9 @@ theorem array_update_square {n : Usize} (v : Aeneas.Std.Array α n) {arr : _root
 
 /-- `[x; n]` is related to `Hax.repeat_`. -/
 theorem repeat_square (n : Usize) {x : α} {x' : β} (hx : R x x') :
-    RCompOk (fun r c => ListRel R r.val c) (lift (Aeneas.Std.Array.repeat n x))
+    RCompOk (fun r c => ListRel R r.val c) (lift (HaxLean.Aeneas.Std.Array.repeat n x))
       (pure (Hax.repeat_ x' (enc n)) : Id (_root_.Array β)) := by
-  rw [rcompOk_lift, Aeneas.Std.Array.repeat_val, listRel_iff_getElem]
+  rw [rcompOk_lift, HaxLean.Aeneas.Std.Array.repeat_val, listRel_iff_getElem]
   simp only [Hax.repeat_, enc_uscalar, Int.toNat_natCast]
   refine ⟨by simp, fun j hj hj' => ?_⟩
   simp only [List.getElem_replicate, List.getElem_toArray]
@@ -175,7 +175,7 @@ theorem repeat_square (n : Usize) {x : α} {x' : β} (hx : R x x') :
 /-- An array literal is related to the runtime array literal of related entries. -/
 theorem array_lit_square {n : Usize} {l : List α} {l' : List β} (hl : l.length = n.val)
     (h : List.Forall₂ R l l') :
-    RCompOk (fun r c => ListRel R r.val c) (lift (Aeneas.Std.Array.make n l hl))
+    RCompOk (fun r c => ListRel R r.val c) (lift (HaxLean.Aeneas.Std.Array.make n l hl))
       (pure l'.toArray : Id (_root_.Array β)) :=
   rcompOk_lift.mpr h
 

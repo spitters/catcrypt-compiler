@@ -45,7 +45,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
@@ -72,8 +72,8 @@ def incrAbi : AbiLayout where
 def incrArraySrc : AeSrc where
   args := [.arr 2#usize (.u .U32 (by decide))]
   res := .arr 2#usize (.u .U32 (by decide))
-  Γ := [AeVal.nty (Aeneas.Std.Array U32 2#usize)]
-  t := AeVal.nty (Aeneas.Std.Array U32 2#usize)
+  Γ := [AeVal.nty (HaxLean.Aeneas.Std.Array U32 2#usize)]
+  t := AeVal.nty (HaxLean.Aeneas.Std.Array U32 2#usize)
   argVal a := vCons a.1 vNil
   resVal := AeVal.emb
   fn a := arrays.incr_array a.1

@@ -46,7 +46,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do Hax.Ascent
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do Hax.Ascent
 
 /-- A predicate on values that holds of the values the reading makes without a call: the
     integer literals, the Booleans, the unit value, a tuple of values that satisfy it, and

@@ -37,7 +37,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
@@ -64,7 +64,7 @@ def mkPair1 := reifyAeneas% constants.mk_pair1
 
 /-- A value of `constants.mk_pair1` is, as the array of its field words, the denotation of its
     NF program, at every out-region `out`. -/
-theorem mkPair1_denote (out : Aeneas.Std.Array U64 (usz 2)) (x y : U32)
+theorem mkPair1_denote (out : HaxLean.Aeneas.Std.Array U64 (usz 2)) (x y : U32)
     (z : constants.Pair U32 U32) (h : constants.mk_pair1 x y = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel mkPair1.prog (vCons out (vCons x (vCons y vNil))) =
@@ -77,7 +77,7 @@ def incrX := reifyAeneas% structs.incr_x
 
 /-- A value of `structs.incr_x` is, as the array of its field words, the denotation of its NF
     program at the fields of the argument, at every out-region `out`. -/
-theorem incrX_denote (out : Aeneas.Std.Array U64 (usz 2)) (p z : constants.Pair U32 U32)
+theorem incrX_denote (out : HaxLean.Aeneas.Std.Array U64 (usz 2)) (p z : constants.Pair U32 U32)
     (h : structs.incr_x p = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel incrX.prog (vCons out (vCons p.x (vCons p.y vNil))) =

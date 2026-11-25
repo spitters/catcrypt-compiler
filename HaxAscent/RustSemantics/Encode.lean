@@ -12,7 +12,7 @@ public import HaxAscent.RustSemantics.RCompOk
 /-!
 # Encoding of Aeneas values as values of the Hax runtime
 
-The Aeneas `Std` model (`HaxLean.Rust`, namespace `Aeneas.Std`) represents a Rust
+The Aeneas `Std` model (`HaxLean.Rust`, namespace `HaxLean.Aeneas.Std`) represents a Rust
 value by its machine type: `UScalar ty` and `IScalar ty` over `BitVec`, `Bool`,
 `Option`, products, and the list-backed containers `Array α n`, `Slice α` and
 `alloc.vec.Vec α`. The Hax runtime (`HaxLean.Runtime`, namespace `Hax`) represents
@@ -64,7 +64,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Std.Do
+open HaxLean.Aeneas.Std Std.Do
 
 /-- The encoding of an Aeneas value of type `α` as a runtime value of type `β`. -/
 class Encode (α : Type) (β : outParam Type) where
@@ -94,7 +94,7 @@ instance instEncodeProd {α α' β β' : Type} [Encode α β] [Encode α' β'] :
 
 /-- A fixed-length array is encoded as the array of its encoded entries. -/
 instance instEncodeArray {α β : Type} [Encode α β] {n : Usize} :
-    Encode (Aeneas.Std.Array α n) (_root_.Array β) :=
+    Encode (HaxLean.Aeneas.Std.Array α n) (_root_.Array β) :=
   ⟨fun v => (v.val.map enc).toArray⟩
 
 /-- A slice is encoded as the array of its encoded entries. -/

@@ -42,7 +42,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
 open CatCrypt.Crypto.Hax (hax64WExit)
@@ -72,7 +72,7 @@ theorem useWrappingAdd_denote (x y z : U32) (h : scalars.u32_use_wrapping_add x 
 def indexArrayU32 := reifyAeneas% arrays.index_array_u32
 
 /-- A value of `arrays.index_array_u32` is the denotation of its NF program. -/
-theorem indexArrayU32_denote (s : Aeneas.Std.Array U32 32#usize) (i : Usize) (z : U32)
+theorem indexArrayU32_denote (s : HaxLean.Aeneas.Std.Array U32 32#usize) (i : Usize) (z : U32)
     (h : arrays.index_array_u32 s i = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel indexArrayU32.prog (vCons s (vCons i vNil)) =
@@ -83,7 +83,7 @@ theorem indexArrayU32_denote (s : Aeneas.Std.Array U32 32#usize) (i : Usize) (z 
 def incrArray := reifyAeneas% arrays.incr_array
 
 /-- A value of `arrays.incr_array` is the denotation of its NF program. -/
-theorem incrArray_denote (x y : Aeneas.Std.Array U32 2#usize)
+theorem incrArray_denote (x y : HaxLean.Aeneas.Std.Array U32 2#usize)
     (h : arrays.incr_array x = .ok y) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel incrArray.prog (vCons x vNil) = some (.cons (embA y) .nil) :=
@@ -105,7 +105,7 @@ theorem iterLoop_denote (max i z : U32) (h : loops.iter_loop max i = .ok z) :
 def copyArrays := reifyAeneas% iterators.copy_arrays
 
 /-- A value of `iterators.copy_arrays` is the denotation of its NF program. -/
-theorem copyArrays_denote (src dst y : Aeneas.Std.Array U8 256#usize)
+theorem copyArrays_denote (src dst y : HaxLean.Aeneas.Std.Array U8 256#usize)
     (h : iterators.copy_arrays src dst = .ok y) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel copyArrays.prog (vCons src (vCons dst vNil)) =

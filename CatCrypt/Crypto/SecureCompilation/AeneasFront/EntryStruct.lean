@@ -56,7 +56,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.Hax.ImpToNF (enc PDenP entryCtx EntryVals)
 open CatCrypt.Crypto.Hax (hax64WExit)
 open _root_.Hax (Value Env)
-open Aeneas.Std (RustM UScalar UScalarTy U64 Usize)
+open HaxLean.Aeneas.Std (RustM UScalar UScalarTy U64 Usize)
 
 /-! ## Scalar codes and argument tuples -/
 
@@ -130,12 +130,12 @@ def AeStruct.words {S : Type} [AeStruct S] (s : S) : List (BitVec 64) :=
 
 /-- The array of `k` `u64` words of a list of `k` words. -/
 def wordsArr (k : Usize) (bs : List (BitVec 64)) (h : bs.length = k.val) :
-    Aeneas.Std.Array U64 k :=
+    HaxLean.Aeneas.Std.Array U64 k :=
   ⟨bs.map fun b => ⟨b⟩, by rw [List.length_map, h]⟩
 
 /-- The array of the field words of a structure value, at `k` fields. -/
 def AeStruct.toWords {R : Type} [AeStruct R] (k : Usize)
-    (hk : k.val = (AeStruct.fields R).length) (y : R) : Aeneas.Std.Array U64 k :=
+    (hk : k.val = (AeStruct.fields R).length) (y : R) : HaxLean.Aeneas.Std.Array U64 k :=
   wordsArr k (AeStruct.words y) (by rw [AeStruct.words, AeTy.length_argWords, hk])
 
 /-- The code of an out-region of `k` words. -/
@@ -195,7 +195,7 @@ theorem aeneasRuns_struct {σ : AbiLayout} {S R : Type} [AeStruct S] [AeStruct R
         some (.cons ((AeTy.outArr k).val y) .nil)}
     {sa : AState} {v : Value}
     (hr : aeneasRuns σ (AeSrc.ofStructFn S R rest k hk f prog cert) sa v) :
-    ∃ (o : Aeneas.Std.Array U64 k) (s : S) (q : AeTy.Args rest) (y : R),
+    ∃ (o : HaxLean.Aeneas.Std.Array U64 k) (s : S) (q : AeTy.Args rest) (y : R),
       (∃ (h : entryCtx (abiEntry σ) =
           (AeTy.outArr k :: (AeStruct.fields S ++ rest)).map AeTy.nf)
         (e : Env) (V : Valuation (entryCtx (abiEntry σ))),

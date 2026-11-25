@@ -35,7 +35,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.Hax.ImpToNF (PDenP tableOf)
@@ -45,7 +45,7 @@ open Ctxt (Var Valuation)
 open MultiBlockLowering (hvAppend)
 
 -- The fixpoint induction on `loop` names the monotonicity proof of its `partial_fixpoint`
--- definition, as `Aeneas.Std.loop_spec` does; the generated `loop.fixpoint_induct` states
+-- definition, as `HaxLean.Aeneas.Std.loop_spec` does; the generated `loop.fixpoint_induct` states
 -- its bottom through `FlatOrder.mk`, which the module system does not expose.
 set_option linter.auxLemma false in
 /-- **The Aeneas `loop` against `whileIter`.** If every value of the Aeneas step `F` at a tuple
@@ -54,7 +54,7 @@ set_option linter.auxLemma false in
     bound on. -/
 theorem loop_whileIter {cs : List NfTy}
     (F : Valuation (d := nfDialect) cs →
-      RustM (Aeneas.Std.ControlFlow (Valuation (d := nfDialect) cs) (Valuation (d := nfDialect) cs)))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (Valuation (d := nfDialect) cs) (Valuation (d := nfDialect) cs)))
     (step : Nat → Valuation (d := nfDialect) cs →
       Option (Valuation (d := nfDialect) (HasBitType.bit (d := nfDialect) :: cs)))
     (hF : ∀ acc c, F acc = .ok c →

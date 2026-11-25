@@ -42,7 +42,7 @@ iterator indexes the list of the slice.
 
 set_option autoImplicit false
 
-namespace Aeneas.Std
+namespace HaxLean.Aeneas.Std
 
 /-- `core::iter::adapters::step_by::StepBy`: the inner iterator and the step. -/
 structure core.iter.adapters.step_by.StepBy (I : Type) where
@@ -227,4 +227,8 @@ def core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
     | none => .ok (none, ⟨a', b'⟩)
     | some b => .ok (some (a, b), ⟨a', b'⟩)
 
-end Aeneas.Std
+end HaxLean.Aeneas.Std
+
+/-! The printed output names these iterators `Aeneas.Std.core.iter.…`, as the prelude's aliases do. -/
+
+alias_namespace Aeneas => HaxLean.Aeneas

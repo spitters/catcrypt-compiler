@@ -33,7 +33,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.Haxc
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
@@ -50,7 +50,7 @@ open CatCrypt.Crypto.SecureCompilation.SepLogic.X86 (wordsLocs frameWords region
 def stepByRangeSum := reifyAeneas% iter_adapters.step_by_range_sum
 
 /-- A value of `step_by_range_sum` is the denotation of its NF program. -/
-theorem stepByRangeSum_denote (a : Aeneas.Std.Array U32 8#usize) (acc z : U32)
+theorem stepByRangeSum_denote (a : HaxLean.Aeneas.Std.Array U32 8#usize) (acc z : U32)
     (h : iter_adapters.step_by_range_sum a acc = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel stepByRangeSum.prog (vCons a (vCons acc vNil)) =

@@ -30,7 +30,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
 open CatCrypt.Crypto.Hax (hax64WExit)
@@ -40,7 +40,7 @@ open CatCrypt.Crypto.Hax.ImpToNF (PDenP)
 def enumRangeSum := reifyAeneas% iter_adapters.enum_range_sum
 
 /-- A value of `enum_range_sum` is the denotation of its NF program. -/
-theorem enumRangeSum_denote (a : Aeneas.Std.Array U32 4#usize) (acc z : U32)
+theorem enumRangeSum_denote (a : HaxLean.Aeneas.Std.Array U32 4#usize) (acc z : U32)
     (h : iter_adapters.enum_range_sum a acc = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel enumRangeSum.prog (vCons a (vCons acc vNil)) =
@@ -51,7 +51,7 @@ theorem enumRangeSum_denote (a : Aeneas.Std.Array U32 4#usize) (acc z : U32)
 def enumArraySum := reifyAeneas% iter_adapters.enum_array_sum
 
 /-- A value of `enum_array_sum` is the denotation of its NF program. -/
-theorem enumArraySum_denote (a b : Aeneas.Std.Array U32 4#usize) (acc z : U32)
+theorem enumArraySum_denote (a b : HaxLean.Aeneas.Std.Array U32 4#usize) (acc z : U32)
     (h : iter_adapters.enum_array_sum a b acc = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel enumArraySum.prog (vCons a (vCons b (vCons acc vNil))) =
@@ -62,7 +62,7 @@ theorem enumArraySum_denote (a b : Aeneas.Std.Array U32 4#usize) (acc z : U32)
 def zipArraySum := reifyAeneas% iter_adapters.zip_array_sum
 
 /-- A value of `zip_array_sum` is the denotation of its NF program. -/
-theorem zipArraySum_denote (a b : Aeneas.Std.Array U32 4#usize) (acc z : U32)
+theorem zipArraySum_denote (a b : HaxLean.Aeneas.Std.Array U32 4#usize) (acc z : U32)
     (h : iter_adapters.zip_array_sum a b acc = .ok z) :
     ∃ N, ∀ fuel, N ≤ fuel →
       PDenP hax64WExit fuel zipArraySum.prog (vCons a (vCons b (vCons acc vNil))) =

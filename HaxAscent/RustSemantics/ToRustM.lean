@@ -19,7 +19,7 @@ operations `BitAnd#w`, `BitOr#w`, `BitXor#w`, `wrapping_add#w`, `wrapping_sub#w`
 tag `w` is the
 tag of `ty` (`uTag`: the width in decimal, `size` for `usize`), and type ascriptions.
 
-* `toRustM ty e ρ` reads `e` as an Aeneas program over `Aeneas.Std.RustM`, each tagged
+* `toRustM ty e ρ` reads `e` as an Aeneas program over `HaxLean.Aeneas.Std.RustM`, each tagged
   name read as the Aeneas operation of its class-1 square (`WordOp.aen`). It fails on a
   construct outside the fragment, on an unbound variable and on a literal outside the
   range of `ty`.
@@ -65,7 +65,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 /-- Unsigned `wrapping_sub` agrees with the width-aware runtime `Hax.wrapping_sub_w`. -/
 theorem wrapping_sub_w_u_square {ty : UScalarTy} (x y : UScalar ty) :

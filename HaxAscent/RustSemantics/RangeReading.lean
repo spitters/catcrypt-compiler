@@ -39,7 +39,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RangeRustM
 
-open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxAscent.RustSemantics Aeneas.Std
+open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxAscent.RustSemantics HaxLean.Aeneas.Std
 
 variable {g : String → List _root_.Hax.Value → Bool} {bi : _root_.Hax.Builtins}
   {app : String → List AVal → _root_.RustM AVal} {entry : _root_.Hax.Range.AEnv}

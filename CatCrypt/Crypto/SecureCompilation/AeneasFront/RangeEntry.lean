@@ -47,7 +47,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.NFRange
@@ -167,7 +167,7 @@ theorem memB (b : Bool) (lo hi : Int) (h : lo ≤ (b.toNat : Int) ∧ (b.toNat :
   cases b <;> grind [AVal.Mem, Iv.Has, boolW, BitVec.toNat_ofNat]
 
 /-- An array of words in `[lo, hi]` has its element interval `(lo, hi)`. -/
-theorem memA {ty : UScalarTy} [Le64 ty] {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n)
+theorem memA {ty : UScalarTy} [Le64 ty] {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
     (lo hi : Int) (h : ∀ v ∈ a.val, lo ≤ (v.val : Int) ∧ (v.val : Int) ≤ hi) :
     AVal.Mem (.arr n.val (.word 64)) ((lo, hi) : Iv) (embA a) := by
   intro j
@@ -252,7 +252,7 @@ meta def memOf (x lo hi : Expr) : MetaM (Expr × Option Expr × Expr) := do
       let b ← whnfR b
       return (← ivOfMem (b.getArg! 0), ← ivOfMem (b.getArg! 1))
     return (a₁, some a₂, pf)
-  if ty.isAppOf ``Aeneas.Std.Array then return (iv, none, ← mkAppM ``memA #[x, lo, hi])
+  if ty.isAppOf ``HaxLean.Aeneas.Std.Array then return (iv, none, ← mkAppM ``memA #[x, lo, hi])
   throwError "aeneasRange%: no interval reading of the argument {x} of type{indentExpr ty}"
 
 /-- The entries of a valuation `vCons x₁ (… vNil)`: the type and the value of each. -/

@@ -35,7 +35,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do Hax.Ascent
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do Hax.Ascent
 
 /-- The conclusion of `toRustMS_congr` for a computation `r` that reads `e` from `ρ`. -/
 private def CongrOk (ok : String → Bool) (app' : String → List AVal → RustM AVal)

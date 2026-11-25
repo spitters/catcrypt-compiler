@@ -41,7 +41,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Hax.RustSemantics
 
 /-! ## Arithmetic of `usize` words -/
@@ -92,15 +92,15 @@ theorem usz_mul {j : Nat} (k : Usize) (hj : j < 2 ^ UScalarTy.Usize.numBits)
 theorem usz_zero : usz 0 = 0#usize := by
   rfl
 
-theorem index_usz {T : Type} {m : Usize} (a : Aeneas.Std.Array T m) {j : Nat}
-    (h : j < a.val.length) : Aeneas.Std.Array.index_usize a (usz j) = .ok a.val[j] := by
+theorem index_usz {T : Type} {m : Usize} (a : HaxLean.Aeneas.Std.Array T m) {j : Nat}
+    (h : j < a.val.length) : HaxLean.Aeneas.Std.Array.index_usize a (usz j) = .ok a.val[j] := by
   have hm : a.val.length = m.val := a.property
   have hj : j < 2 ^ UScalarTy.Usize.numBits := by
     have := m.bv.isLt
     simp only [UScalar.val] at hm
     omega
-  unfold Aeneas.Std.Array.index_usize
-  rw [Aeneas.Std.Array.getElem?_Usize_eq, usz_val hj, List.getElem?_eq_getElem h]
+  unfold HaxLean.Aeneas.Std.Array.index_usize
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq, usz_val hj, List.getElem?_eq_getElem h]
 
 /-- A natural number below a `usize` value is below the `usize` bound. -/
 theorem lt_usize_bound {j : Nat} (n : Usize) (h : j ≤ n.val) :
@@ -225,12 +225,12 @@ theorem stepByRange_item_bind {β : Type} (n k : Usize) (hk : 0 < k.val) (i : Us
 
 /-- **`a.iter().enumerate()` on an array.** The trip `j` is at the index `j` with the count
     `j` and yields `(j, a[j])`. -/
-def enumArrayIter {T : Type} {m : Usize} (a : Aeneas.Std.Array T m) :
+def enumArrayIter {T : Type} {m : Usize} (a : HaxLean.Aeneas.Std.Array T m) :
     IndexedIter (core.iter.adapters.enumerate.IteratorEnumerate.next
         (core.iter.traits.iterator.IteratorSliceIter T))
       { iter := { slice := a.to_slice, i := 0 }, count := 0#usize } m where
   pos j := { iter := { slice := a.to_slice, i := j }, count := usz j }
-  item i := Aeneas.Std.Array.index_usize a i >>= fun x => .ok (i, x)
+  item i := HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x => .ok (i, x)
   hnext j hj := by
     have hm : a.val.length = m.val := a.property
     have hja : j < a.val.length := by omega
@@ -251,11 +251,11 @@ def enumArrayIter {T : Type} {m : Usize} (a : Aeneas.Std.Array T m) :
   h0 := by
     simp only [usz_zero]
 
-theorem enumArray_item_bind {T β : Type} {m : Usize} (a : Aeneas.Std.Array T m) (i : Usize)
+theorem enumArray_item_bind {T β : Type} {m : Usize} (a : HaxLean.Aeneas.Std.Array T m) (i : Usize)
     (k : Usize × T → RustM β) :
     ((enumArrayIter a).item i >>= k) =
-      (Aeneas.Std.Array.index_usize a i >>= fun x => k (i, x)) := by
-  change ((Aeneas.Std.Array.index_usize a i >>= fun x => .ok (i, x)) >>= k) = _
+      (HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x => k (i, x)) := by
+  change ((HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x => .ok (i, x)) >>= k) = _
   rw [bind_assoc_eq]
   simp only [bind_tc_ok]
 
@@ -263,16 +263,16 @@ theorem enumArray_item_bind {T β : Type} {m : Usize} (a : Aeneas.Std.Array T m)
 
 /-- **`a.iter().zip(b.iter())` on two arrays.** The trip `j` is at the index `j` of both and
     yields `(a[j], b[j])`; the trip count is the smaller length. -/
-def zipArrayIter {A B : Type} {m m' : Usize} (a : Aeneas.Std.Array A m)
-    (b : Aeneas.Std.Array B m') :
+def zipArrayIter {A B : Type} {m m' : Usize} (a : HaxLean.Aeneas.Std.Array A m)
+    (b : HaxLean.Aeneas.Std.Array B m') :
     IndexedIter (core.iter.adapters.zip.Zip.Insts.CoreIterTraitsIteratorIteratorPair.next
         (core.iter.traits.iterator.IteratorSliceIter A)
         (core.iter.traits.iterator.IteratorSliceIter B))
       ⟨{ slice := a.to_slice, i := 0 }, { slice := b.to_slice, i := 0 }⟩ (usz (min m.val m'.val))
     where
   pos j := ⟨{ slice := a.to_slice, i := j }, { slice := b.to_slice, i := j }⟩
-  item i := Aeneas.Std.Array.index_usize a i >>= fun x =>
-    Aeneas.Std.Array.index_usize b i >>= fun y => .ok (x, y)
+  item i := HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x =>
+    HaxLean.Aeneas.Std.Array.index_usize b i >>= fun y => .ok (x, y)
   hnext j hj := by
     have hmn : (usz (min m.val m'.val)).val = min m.val m'.val :=
       usz_val (lt_usize_bound m (Nat.min_le_left _ _))
@@ -308,13 +308,13 @@ def zipArrayIter {A B : Type} {m m' : Usize} (a : Aeneas.Std.Array A m)
       exact ⟨_, rfl⟩
   h0 := rfl
 
-theorem zipArray_item_bind {A B β : Type} {m m' : Usize} (a : Aeneas.Std.Array A m)
-    (b : Aeneas.Std.Array B m') (i : Usize) (k : A × B → RustM β) :
+theorem zipArray_item_bind {A B β : Type} {m m' : Usize} (a : HaxLean.Aeneas.Std.Array A m)
+    (b : HaxLean.Aeneas.Std.Array B m') (i : Usize) (k : A × B → RustM β) :
     ((zipArrayIter a b).item i >>= k) =
-      (Aeneas.Std.Array.index_usize a i >>= fun x =>
-        Aeneas.Std.Array.index_usize b i >>= fun y => k (x, y)) := by
-  change ((Aeneas.Std.Array.index_usize a i >>= fun x =>
-    Aeneas.Std.Array.index_usize b i >>= fun y => .ok (x, y)) >>= k) = _
+      (HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x =>
+        HaxLean.Aeneas.Std.Array.index_usize b i >>= fun y => k (x, y)) := by
+  change ((HaxLean.Aeneas.Std.Array.index_usize a i >>= fun x =>
+    HaxLean.Aeneas.Std.Array.index_usize b i >>= fun y => .ok (x, y)) >>= k) = _
   simp only [bind_assoc_eq, bind_tc_ok]
 
 end CatCrypt.Crypto.SecureCompilation.AeneasFront

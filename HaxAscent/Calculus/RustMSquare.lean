@@ -83,7 +83,7 @@ set_option autoImplicit false
 
 namespace Hax.Ascent.RustM
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open Std.Do
 
 variable {C S A B : Type}
@@ -93,21 +93,21 @@ variable {C S A B : Type}
 /-- **The correspondence judgment over `RustM`.** From a concrete state `c` related to
     `σ` by `P` with the guard `G σ`, the program is `.ok (V σ, c')` for a `c'` related to
     `σ` by `Q`. -/
-def CorresM (P : C → S → Prop) (G : S → Prop) (p : C → Aeneas.Std.RustM (A × C))
+def CorresM (P : C → S → Prop) (G : S → Prop) (p : C → HaxLean.Aeneas.Std.RustM (A × C))
     (V : S → A) (Q : C → S → Prop) : Prop :=
   ∀ c σ, P c σ → G σ → ∃ c', p c = .ok (V σ, c') ∧ Q c' σ
 
 /-- Under the guard the program is not a failure. -/
 theorem corresM_ne_fail {P : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
-    (h : CorresM P G p V Q) {c : C} {σ : S} (hP : P c σ) (hG : G σ) (e : Aeneas.Std.Error) :
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
+    (h : CorresM P G p V Q) {c : C} {σ : S} (hP : P c σ) (hG : G σ) (e : HaxLean.Aeneas.Std.Error) :
     p c ≠ .fail e := by
   obtain ⟨c', hc, _⟩ := h c σ hP hG
   rw [hc]; intro hcon; cases hcon
 
 /-- Under the guard the program does not diverge. -/
 theorem corresM_ne_div {P : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
     (h : CorresM P G p V Q) {c : C} {σ : S} (hP : P c σ) (hG : G σ) :
     p c ≠ .div := by
   obtain ⟨c', hc, _⟩ := h c σ hP hG
@@ -118,7 +118,7 @@ theorem corresM_ne_div {P : C → S → Prop} {G : S → Prop}
 /-- **Consequence.** Strengthen the entry relation and the guard, weaken the exit
     relation, and replace the value by one equal to it under the guard. -/
 theorem corresM_conseq {P P' : C → S → Prop} {G G' : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V V' : S → A} {Q Q' : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V V' : S → A} {Q Q' : C → S → Prop}
     (h : CorresM P G p V Q)
     (hP : ∀ c σ, P' c σ → G' σ → P c σ) (hG : ∀ σ, G' σ → G σ)
     (hV : ∀ σ, G' σ → V σ = V' σ) (hQ : ∀ c σ, G' σ → Q c σ → Q' c σ) :
@@ -130,7 +130,7 @@ theorem corresM_conseq {P P' : C → S → Prop} {G G' : S → Prop}
 /-- **Reindexing the abstract state.** A square over `S` gives a square over `S'` along
     any `k : S' → S`, with every side read at `k σ'`. -/
 theorem corresM_reindex {S' : Type} {P : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
     (k : S' → S) (h : CorresM P G p V Q) :
     CorresM (fun c σ' => P c (k σ')) (fun σ' => G (k σ')) p (fun σ' => V (k σ'))
       (fun c σ' => Q c (k σ')) :=
@@ -185,18 +185,18 @@ theorem vmapM_comp_assoc {P₀ P₁ P₂ P₃ : C → S → Prop} {G₀ G₁ G�
 
 /-- **The action of a vertical arrow on a square.** -/
 theorem vsquareM_act {P P' : C → S → Prop} {G G' : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V V' : S → A} {Q Q' : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V V' : S → A} {Q Q' : C → S → Prop}
     (h : CorresM P G p V Q) (m : VMapM P P' G G' V V' Q Q') : CorresM P' G' p V' Q' :=
   corresM_conseq h m.hP m.hG m.hV m.hQ
 
 /-- Acting by the vertical identity changes nothing: both sides prove the same `Prop`. -/
 theorem vsquareM_act_id {P : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} {Q : C → S → Prop}
     (h : CorresM P G p V Q) : vsquareM_act h (VMapM.id P G V Q) = h := rfl
 
 /-- Acting by a vertical composite is acting by the two arrows in turn. -/
 theorem vsquareM_act_comp {P P' P'' : C → S → Prop} {G G' G'' : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V V' V'' : S → A} {Q Q' Q'' : C → S → Prop}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V V' V'' : S → A} {Q Q' Q'' : C → S → Prop}
     (h : CorresM P G p V Q) (m : VMapM P P' G G' V V' Q Q')
     (m' : VMapM P' P'' G' G'' V' V'' Q' Q'') :
     vsquareM_act h (m.comp m') = vsquareM_act (vsquareM_act h m) m' := rfl
@@ -205,27 +205,27 @@ theorem vsquareM_act_comp {P P' P'' : C → S → Prop} {G G' G'' : S → Prop}
 
 /-- The Kleisli composition of two state-passing `RustM` programs: the first program's
     value is handed to the continuation together with its exit state. -/
-def kseq (p : C → Aeneas.Std.RustM (A × C)) (f : A → C → Aeneas.Std.RustM (B × C)) :
-    C → Aeneas.Std.RustM (B × C) :=
+def kseq (p : C → HaxLean.Aeneas.Std.RustM (A × C)) (f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) :
+    C → HaxLean.Aeneas.Std.RustM (B × C) :=
   fun c => (p c) >>= fun r => f r.1 r.2
 
 /-- The program that returns `v` and leaves the state alone. -/
-def pureK (v : A) : C → Aeneas.Std.RustM (A × C) := fun c => .ok (v, c)
+def pureK (v : A) : C → HaxLean.Aeneas.Std.RustM (A × C) := fun c => .ok (v, c)
 
 /-- `pureK` is a left unit for `kseq`. -/
-theorem kseq_pure_left (v : A) (f : A → C → Aeneas.Std.RustM (B × C)) :
+theorem kseq_pure_left (v : A) (f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) :
     kseq (pureK v) f = f v := rfl
 
 /-- `pureK` is a right unit for `kseq`. -/
-theorem kseq_pure_right (p : C → Aeneas.Std.RustM (A × C)) :
+theorem kseq_pure_right (p : C → HaxLean.Aeneas.Std.RustM (A × C)) :
     kseq p (fun a c => pureK a c) = p := by
   funext c
   simp only [kseq, pureK]
   cases p c <;> rfl
 
 /-- `kseq` is associative. -/
-theorem kseq_assoc {D : Type} (p : C → Aeneas.Std.RustM (A × C))
-    (f : A → C → Aeneas.Std.RustM (B × C)) (g : B → C → Aeneas.Std.RustM (D × C)) :
+theorem kseq_assoc {D : Type} (p : C → HaxLean.Aeneas.Std.RustM (A × C))
+    (f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) (g : B → C → HaxLean.Aeneas.Std.RustM (D × C)) :
     kseq (kseq p f) g = kseq p (fun a c => kseq (f a) g c) := by
   funext c
   simp only [kseq]
@@ -240,7 +240,7 @@ theorem corresM_pureK (P : C → S → Prop) (G : S → Prop) (v : A) :
     for the continuation at `a` whose entry relation is the first square's exit relation
     restricted to the abstract states with value `a`, a square for `kseq p f`. -/
 theorem corresM_bind {P Q R : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {f : A → C → Aeneas.Std.RustM (B × C)}
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {f : A → C → HaxLean.Aeneas.Std.RustM (B × C)}
     {V : S → A} {W : S → B}
     (h₁ : CorresM P G p V Q)
     (h₂ : ∀ a, CorresM (fun c σ => Q c σ ∧ V σ = a) G (f a) W R) :
@@ -248,24 +248,24 @@ theorem corresM_bind {P Q R : C → S → Prop} {G : S → Prop}
   intro c σ hP hG
   obtain ⟨c₁, h₁c, hQ⟩ := h₁ c σ hP hG
   obtain ⟨c₂, h₂c, hR⟩ := h₂ (V σ) c₁ σ ⟨hQ, rfl⟩ hG
-  exact ⟨c₂, by simp only [kseq, h₁c, Aeneas.Std.bind_tc_ok]; exact h₂c, hR⟩
+  exact ⟨c₂, by simp only [kseq, h₁c, HaxLean.Aeneas.Std.bind_tc_ok]; exact h₂c, hR⟩
 
 /-- The left unit law of `kseq` as an equality of square statements. -/
 theorem corresM_kseq_pure_left_eq {P R : C → S → Prop} {G : S → Prop} {W : S → B}
-    (v : A) (f : A → C → Aeneas.Std.RustM (B × C)) :
+    (v : A) (f : A → C → HaxLean.Aeneas.Std.RustM (B × C)) :
     CorresM P G (kseq (pureK v) f) W R = CorresM P G (f v) W R := by
   rw [kseq_pure_left]
 
 /-- The right unit law of `kseq` as an equality of square statements. -/
 theorem corresM_kseq_pure_right_eq {P R : C → S → Prop} {G : S → Prop} {V : S → A}
-    (p : C → Aeneas.Std.RustM (A × C)) :
+    (p : C → HaxLean.Aeneas.Std.RustM (A × C)) :
     CorresM P G (kseq p (fun a c => pureK a c)) V R = CorresM P G p V R := by
   rw [kseq_pure_right]
 
 /-- Associativity of `kseq` as an equality of square statements. -/
 theorem corresM_kseq_assoc_eq {D : Type} {P R : C → S → Prop} {G : S → Prop} {W : S → D}
-    (p : C → Aeneas.Std.RustM (A × C)) (f : A → C → Aeneas.Std.RustM (B × C))
-    (g : B → C → Aeneas.Std.RustM (D × C)) :
+    (p : C → HaxLean.Aeneas.Std.RustM (A × C)) (f : A → C → HaxLean.Aeneas.Std.RustM (B × C))
+    (g : B → C → HaxLean.Aeneas.Std.RustM (D × C)) :
     CorresM P G (kseq (kseq p f) g) W R
       = CorresM P G (kseq p (fun a c => kseq (f a) g c)) W R := by
   rw [kseq_assoc]
@@ -275,16 +275,16 @@ theorem corresM_kseq_assoc_eq {D : Type} {P R : C → S → Prop} {G : S → Pro
 /-- The square as a `Std.Do` triple over `RustM`'s `WP` instance, with a total
     postcondition pinning the returned pair. -/
 theorem corresM_iff_triple {P Q : C → S → Prop} {G : S → Prop}
-    {p : C → Aeneas.Std.RustM (A × C)} {V : S → A} :
+    {p : C → HaxLean.Aeneas.Std.RustM (A × C)} {V : S → A} :
     CorresM P G p V Q ↔
       ∀ c σ, P c σ → G σ →
         ∃ c', Q c' σ ∧ (⦃⌜True⌝⦄ p c ⦃⇓ r => ⌜r = (V σ, c')⌝⦄) := by
   constructor
   · intro h c σ hP hG
     obtain ⟨c', hc, hQ⟩ := h c σ hP hG
-    exact ⟨c', hQ, Aeneas.Std.WP.triple_post_eq_iff_eq.mpr hc⟩
+    exact ⟨c', hQ, HaxLean.Aeneas.Std.WP.triple_post_eq_iff_eq.mpr hc⟩
   · intro h c σ hP hG
     obtain ⟨c', hQ, ht⟩ := h c σ hP hG
-    exact ⟨c', Aeneas.Std.WP.triple_post_eq_iff_eq.mp ht, hQ⟩
+    exact ⟨c', HaxLean.Aeneas.Std.WP.triple_post_eq_iff_eq.mp ht, hQ⟩
 
 end Hax.Ascent.RustM

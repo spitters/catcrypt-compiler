@@ -98,7 +98,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
@@ -106,7 +106,7 @@ open CatCrypt.Crypto.Hax.ImpToNF (enc dec encAll tableOf PDenP)
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open Ctxt (Var Valuation)
-open Aeneas.Std.ScalarElab
+open HaxLean.Aeneas.Std.ScalarElab
 open MultiBlockLowering (hvAppend)
 
 /-! ## Embedding Aeneas values -/
@@ -1227,7 +1227,7 @@ instance Reify.okBit {Γ Δ : Ctxt nfDialect} (b : Bool) (V : Valuation Γ)
 /-- The NF results of a step of a loop body: the bit `true` and the next state for
     `cont`, the bit `false` and the final state for `done`. -/
 def stepVal {σ : Type} [AeVal σ] :
-    Aeneas.Std.ControlFlow σ σ → Valuation (d := nfDialect) [.bit, AeVal.nty σ]
+    HaxLean.Aeneas.Std.ControlFlow σ σ → Valuation (d := nfDialect) [.bit, AeVal.nty σ]
   | .cont y => .cons true (.cons (AeVal.emb y) .nil)
   | .done y => .cons false (.cons (AeVal.emb y) .nil)
 
@@ -1267,17 +1267,17 @@ instance ReifyG.done {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} (x : σ) (V : 
     rfl
 
 -- The fixpoint induction on `loop` names the monotonicity proof of its `partial_fixpoint`
--- definition, as `Aeneas.Std.loop_spec` does (see `loop_whileIter`).
+-- definition, as `HaxLean.Aeneas.Std.loop_spec` does (see `loop_whileIter`).
 set_option linter.auxLemma false in
 /-- The Aeneas `loop` of a body read by `pb` and the Aeneas `loop` of the reading of `pb`
     agree on values. -/
 theorem loop_reify {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} (V : Valuation Γ)
     (pb : NFProg nfDialect (AeVal.nty σ :: Γ) [.bit, AeVal.nty σ])
-    (b : σ → RustM (Aeneas.Std.ControlFlow σ σ)) (hb : ∀ x, ReifyG stepVal (b x) (vCons x V) pb) :
+    (b : σ → RustM (HaxLean.Aeneas.Std.ControlFlow σ σ)) (hb : ∀ x, ReifyG stepVal (b x) (vCons x V) pb) :
     ∀ x y, loop b x = .ok y →
       loop (fun acc => nfToRustM pb (hvAppend acc V) >>= fun r => .ok (flagStep r))
         (single x) = .ok (single y) := by
-  generalize hL : Aeneas.Std.loop
+  generalize hL : HaxLean.Aeneas.Std.loop
     (fun acc => nfToRustM pb (hvAppend acc V) >>= fun r => .ok (flagStep r)) = L
   intro x
   delta loop
@@ -1311,9 +1311,9 @@ theorem loop_reify {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} (V : Valuation �
     loop of `pb` from the variable of its initial state. -/
 theorem Reify.loop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeVal.nty σ)}
     {pb : NFProg nfDialect (AeVal.nty σ :: Γ) [.bit, AeVal.nty σ]}
-    (b : σ → RustM (Aeneas.Std.ControlFlow σ σ)) (init : σ) (V : Valuation Γ)
+    (b : σ → RustM (HaxLean.Aeneas.Std.ControlFlow σ σ)) (init : σ) (V : Valuation Γ)
     [hi : Lookup V (AeVal.emb init) v] (hb : ∀ x, ReifyG stepVal (b x) (vCons x V) pb) :
-    ReifyG single (Aeneas.Std.loop b init) V
+    ReifyG single (HaxLean.Aeneas.Std.loop b init) V
       (.whileLoop (.cons v .nil) pb (.ret (.cons .here .nil))) where
   sound y hy := by
     rw [nfToRustM]
@@ -1332,9 +1332,9 @@ theorem Reify.loop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeV
     `Reify.letLit` and `Reify.loop`. -/
 theorem Reify.loopLit {ty : UScalarTy} [Le64 ty] {Γ : Ctxt nfDialect}
     {pb : NFProg nfDialect (.word 64 :: .word 64 :: Γ) [.bit, .word 64]}
-    (b : UScalar ty → RustM (Aeneas.Std.ControlFlow (UScalar ty) (UScalar ty))) (c : UScalar ty)
+    (b : UScalar ty → RustM (HaxLean.Aeneas.Std.ControlFlow (UScalar ty) (UScalar ty))) (c : UScalar ty)
     (V : Valuation Γ) (hb : ∀ x, ReifyG stepVal (b x) (vCons x (vCons c V)) pb) :
-    ReifyG single (Aeneas.Std.loop b c) V
+    ReifyG single (HaxLean.Aeneas.Std.loop b c) V
       (.var (litE c) (.whileLoop (.cons .here .nil) pb (.ret (.cons .here .nil)))) :=
   Reify.letLit c _ V (Reify.loop b c (vCons c V) hb)
 
@@ -1388,7 +1388,7 @@ theorem foldRange_reify {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} (V : Valuat
     takes. -/
 theorem range_body {σ : Type} (n s : Usize) (acc : σ)
     (K : Option Usize × core.ops.range.Range Usize →
-      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
     (f : σ → Usize → RustM σ)
     (hnone : ∀ r, K (none, r) = .ok (.done acc))
     (hsome : ∀ i r, K (some i, r) = f acc i >>= fun a => .ok (.cont (r, a))) :
@@ -1406,14 +1406,14 @@ theorem range_body {σ : Type} (n s : Usize) (acc : σ)
 /-- A continuation at the end of a bind chain: the computation is the chain `g` followed by
     continuing with the range `r` and the value of `g`. The last step. -/
 theorem tailCont_ok {σ R : Type} (r : R) (a : σ) :
-    (RustM.ok (Aeneas.Std.ControlFlow.cont (r, a)) :
-        RustM (Aeneas.Std.ControlFlow (R × σ) σ)) =
+    (RustM.ok (HaxLean.Aeneas.Std.ControlFlow.cont (r, a)) :
+        RustM (HaxLean.Aeneas.Std.ControlFlow (R × σ) σ)) =
       (RustM.ok a >>= fun a => .ok (.cont (r, a))) := by
   rw [bind_tc_ok]
 
 /-- A continuation at the end of a bind chain: the bind step. -/
 theorem tailCont_bind {α σ R : Type} (r : R) (m : RustM α)
-    (k : α → RustM (Aeneas.Std.ControlFlow (R × σ) σ)) (g : α → RustM σ)
+    (k : α → RustM (HaxLean.Aeneas.Std.ControlFlow (R × σ) σ)) (g : α → RustM σ)
     (h : ∀ x, k x = g x >>= fun a => .ok (.cont (r, a))) :
     (m >>= k) = ((m >>= g) >>= fun a => .ok (.cont (r, a))) := by
   cases m with
@@ -1429,7 +1429,7 @@ theorem tailCont_bind {α σ R : Type} (r : R) (m : RustM α)
 theorem Reify.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var Γ (AeVal.nty σ)}
     {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
     (F : core.ops.range.Range Usize × σ →
-      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
     (n : Usize) (init : σ) (f : σ → Usize → RustM σ) (V : Valuation Γ)
     [hi : Lookup V (AeVal.emb init) v]
     (hF : ∀ (s : Usize) (acc : σ), F ({ start := s, «end» := n }, acc) =
@@ -1438,7 +1438,7 @@ theorem Reify.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect} {v : Var
           .ok (.cont ({ start := ⟨BitVec.ofNat _ (s.val + 1)⟩, «end» := n }, acc'))
       else .ok (.done acc))
     (hb : ∀ (i : Usize) (acc : σ), ReifyG single (f acc i) (vCons acc (vCons i (vCons n V))) pb) :
-    ReifyG single (Aeneas.Std.loop F ({ start := 0#usize, «end» := n }, init)) V
+    ReifyG single (HaxLean.Aeneas.Std.loop F ({ start := 0#usize, «end» := n }, init)) V
       (.var (litE n) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) where
   sound y hy := by
     have h0 : (0#usize : Usize).val = 0 := rfl
@@ -1501,15 +1501,15 @@ structure IndexedIter {I Item : Type} (next : I → RustM (Option Item × I)) (s
     `foldRangeAux f` over the remaining trips. -/
 theorem loop_indexed {I Item σ : Type} {next : I → RustM (Option Item × I)} {st₀ : I}
     {cnt : Usize} (it : IndexedIter next st₀ cnt)
-    (F : I × σ → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
-    (K : σ → Option Item × I → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (F : I × σ → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
+    (K : σ → Option Item × I → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
     (f : σ → Usize → RustM σ)
     (hF : ∀ st acc, F (st, acc) = next st >>= K acc)
     (hnone : ∀ acc r, K acc (none, r) = .ok (.done acc))
     (hsome : ∀ acc i r, (it.item i >>= fun x => K acc (some x, r)) =
       f acc i >>= fun a => .ok (.cont (r, a))) :
     ∀ k j acc, j + k = cnt.val →
-      Aeneas.Std.loop F (it.pos j, acc) = HaxBackend.foldRangeAux f k j acc
+      HaxLean.Aeneas.Std.loop F (it.pos j, acc) = HaxBackend.foldRangeAux f k j acc
   | 0, j, acc, hk => by
     obtain rfl : j = cnt.val := by omega
     obtain ⟨rest, hr⟩ := it.hend
@@ -1539,8 +1539,8 @@ theorem Reify.indexedForLoop {I Item σ : Type} [AeVal σ] {Γ : Ctxt nfDialect}
     {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
     {next : I → RustM (Option Item × I)} {st₀ : I} {cnt : Usize}
     (it : IndexedIter next st₀ cnt)
-    (F : I × σ → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
-    (K : σ → Option Item × I → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (F : I × σ → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
+    (K : σ → Option Item × I → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
     (f : σ → Usize → RustM σ) (init : σ) (V : Valuation Γ)
     [hi : Lookup V (AeVal.emb init) v]
     (hF : ∀ st acc, F (st, acc) = next st >>= K acc)
@@ -1549,7 +1549,7 @@ theorem Reify.indexedForLoop {I Item σ : Type} [AeVal σ] {Γ : Ctxt nfDialect}
       f acc i >>= fun a => .ok (.cont (r, a)))
     (hb : ∀ (i : Usize) (acc : σ),
       ReifyG single (f acc i) (vCons acc (vCons i (vCons cnt V))) pb) :
-    ReifyG single (Aeneas.Std.loop F (st₀, init)) V
+    ReifyG single (HaxLean.Aeneas.Std.loop F (st₀, init)) V
       (.var (litE cnt) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) where
   sound y hy := by
     rw [← it.h0, loop_indexed it F K f hF hnone hsome cnt.val 0 init (by omega)] at hy
@@ -1679,14 +1679,14 @@ meta partial def tailCont (r M : Expr) : MetaM (Expr × Expr) := do
       let pg ← mkAppM ``tailCont_bind #[r, m, k, g, h]
       return (g', pg)
   let M ← whnfR M
-  if M.isAppOfArity ``Aeneas.Std.RustM.ok 2 then
+  if M.isAppOfArity ``HaxLean.Aeneas.Std.RustM.ok 2 then
     let c := M.getArg! 1
-    if c.isAppOfArity ``Aeneas.Std.ControlFlow.cont 3 then
+    if c.isAppOfArity ``HaxLean.Aeneas.Std.ControlFlow.cont 3 then
       let pr := c.getArg! 2
       if pr.isAppOfArity ``Prod.mk 4 then
         if ← isDefEq (pr.getArg! 2) r then
           let a := pr.getArg! 3
-          let g ← mkAppM ``Aeneas.Std.RustM.ok #[a]
+          let g ← mkAppM ``HaxLean.Aeneas.Std.RustM.ok #[a]
           let pg ← mkAppM ``tailCont_ok #[r, a]
           return (g, pg)
   throwError "reifyAeneas%: the step of the range loop does not end in continuing with the \
@@ -1698,7 +1698,7 @@ meta partial def tailCont (r M : Expr) : MetaM (Expr × Expr) := do
     `range_body`, whose continuation at `none` is done with `acc` and at `some i` and the
     stepped range `r` is the chain `f acc i` continued with `r` (`tailCont`). -/
 meta def rangeStep (F n σ : Expr) : MetaM (Expr × Expr) := do
-  let usize := Lean.mkConst ``Aeneas.Std.Usize
+  let usize := Lean.mkConst ``HaxLean.Aeneas.Std.Usize
   withLocalDeclD `s usize fun sv => withLocalDeclD `acc σ fun acc => do
     let rng ← mkAppM ``core.ops.range.Range.mk #[sv, n]
     let lhs ← whnfCore (mkApp F (← mkAppM ``Prod.mk #[rng, acc]))
@@ -1758,7 +1758,7 @@ meta def adapterIter? (st : Expr) : MetaM (Option (Expr × (Expr → Expr → Me
     if it.isAppOfArity ``core.slice.iter.Iter.mk 3 then
       if ← isDefEq (it.getArg! 2) (mkNatLit 0) then
         let sl ← whnfR (it.getArg! 1)
-        if sl.isAppOfArity ``Aeneas.Std.Array.to_slice 3 then
+        if sl.isAppOfArity ``HaxLean.Aeneas.Std.Array.to_slice 3 then
           return some (sl.getArg! 2)
     return none
   if st.isAppOfArity ``core.iter.adapters.enumerate.Enumerate.mk 3 then
@@ -1808,7 +1808,7 @@ meta def indexedStep (F σ itE : Expr) (ib : Expr → Expr → MetaM Expr) :
   let hnone ← withLocalDeclD `acc σ fun acc => withLocalDeclD `r I fun r => do
     let none' ← mkAppOptM ``Option.none #[Item]
     mkLambdaFVars #[acc, r] (← mkEqRefl (mkApp2 K acc (← mkAppM ``Prod.mk #[none', r])))
-  let usize := Lean.mkConst ``Aeneas.Std.Usize
+  let usize := Lean.mkConst ``HaxLean.Aeneas.Std.Usize
   let (f, hsome) ← withLocalDeclD `acc σ fun acc => withLocalDeclD `i usize fun i =>
     withLocalDeclD `r I fun r => do
       let kx ← withLocalDeclD `x Item fun x => do
@@ -1937,7 +1937,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
   if m.isAppOfArity ``Bind.bind 6 then
     let m1 := m.getArg! 4
     let k := m.getArg! 5
-    if m1.isAppOfArity ``Aeneas.Std.massert 2 then
+    if m1.isAppOfArity ``HaxLean.Aeneas.Std.massert 2 then
       let P := m1.getArg! 0
       let k1 := (mkApp k (mkConst ``Unit.unit)).headBeta
       return ← guardWith m P V k1 (← mkAppM ``pass_massert #[P, k])
@@ -1956,7 +1956,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         return ← mkAppM ``Reify.bindLit #[c, m1, k, V, ← readUnder α E k Vc]
     if (← synthInstance? (mkApp (mkConst ``AeVal) α)).isNone then
       let w ← whnf m1
-      if w.isAppOfArity ``Aeneas.Std.RustM.ok 2 then
+      if w.isAppOfArity ``HaxLean.Aeneas.Std.RustM.ok 2 then
         let v := w.getArg! 1
         let h ← mkExpectedTypeHint (← mkEqRefl m1) (← mkEq m1 w)
         let eq ← mkAppM ``bind_of_eq_ok #[m1, v, h, k]
@@ -1967,14 +1967,14 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
     let a := m.getArg! 3
     let b := m.getArg! 4
     let a' ← whnfR a
-    if a'.isAppOfArity ``Aeneas.Std.RustM.fail 2 then
+    if a'.isAppOfArity ``HaxLean.Aeneas.Std.RustM.fail 2 then
       let S ← mkAppM ``Not #[c]
       return ← guardWith m S V b (← mkAppM ``pass_iteFail #[c, a'.getArg! 1, b])
         (fun V' bit => do
           mkAppM ``Reify.iteFail #[c, a'.getArg! 1, b, V', ← reify crate E b (← guardVal bit V')])
         (reify crate E b)
     let b' ← whnfR b
-    if b'.isAppOfArity ``Aeneas.Std.RustM.fail 2 then
+    if b'.isAppOfArity ``HaxLean.Aeneas.Std.RustM.fail 2 then
       return ← guardWith m c V a (← mkAppM ``pass_iteFailElse #[c, a, b'.getArg! 1])
         (fun V' bit => do
           mkAppM ``Reify.iteFailElse #[c, a, b'.getArg! 1, V', ← reify crate E a (← guardVal bit V')])
@@ -1992,7 +1992,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         some v, none, none, some c, some dc, some a, some b, some V, some inst,
         some (← reify crate E a W), some (← reify crate E b W)]
     throwError "reifyAeneas%: no reading of the condition{indentExpr c}"
-  if m.isAppOfArity ``Aeneas.Std.loop 4 then
+  if m.isAppOfArity ``HaxLean.Aeneas.Std.loop 4 then
     let σ := m.getArg! 0
     let body := m.getArg! 2
     let init := m.getArg! 3
@@ -2008,7 +2008,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         let acc0 := init.getArg! 3
         let (f, hF) ← rangeStep body n σ'
         let E' ← mkAppOptM ``single #[some σ', none]
-        let hb ← withLocalDeclD `i (Lean.mkConst ``Aeneas.Std.Usize) fun i =>
+        let hb ← withLocalDeclD `i (Lean.mkConst ``HaxLean.Aeneas.Std.Usize) fun i =>
           withLocalDeclD `acc σ' fun acc => do
             let V' ← mkAppM ``vCons #[acc, ← mkAppM ``vCons #[i, ← mkAppM ``vCons #[n, V]]]
             let prf ← reify crate E' (mkApp2 f acc i).headBeta V'
@@ -2023,7 +2023,7 @@ meta partial def reify (crate : Name) (E m V : Expr) : MetaM Expr := do
         let cnt := (← whnfR (← inferType itE)).getArg! 4
         let (K, f, hF, hnone, hsome) ← indexedStep body σ' itE ib
         let E' ← mkAppOptM ``single #[some σ', none]
-        let hb ← withLocalDeclD `i (Lean.mkConst ``Aeneas.Std.Usize) fun i =>
+        let hb ← withLocalDeclD `i (Lean.mkConst ``HaxLean.Aeneas.Std.Usize) fun i =>
           withLocalDeclD `acc σ' fun acc => do
             let V' ← mkAppM ``vCons #[acc, ← mkAppM ``vCons #[i, ← mkAppM ``vCons #[cnt, V]]]
             let prf ← reify crate E' (mkApp2 f acc i).headBeta V'
@@ -2134,8 +2134,8 @@ elab "reifyAeneas% " f:ident : term => do
       let hws ← withLocalDeclD `y resT fun y => do
         let len ← mkAppM ``List.length #[(mkApp ws y).headBeta]
         mkLambdaFVars #[y] (← mkExpectedTypeHint (← mkEqRefl kE) (← mkEq len kE))
-      let outTy ← mkAppM ``Aeneas.Std.Array
-        #[mkConst ``Aeneas.Std.U64, ← mkAppM ``usz #[kE]]
+      let outTy ← mkAppM ``HaxLean.Aeneas.Std.Array
+        #[mkConst ``HaxLean.Aeneas.Std.U64, ← mkAppM ``usz #[kE]]
       withLocalDeclD `out outTy fun out => do
         let E ← mkAppM (structNs ++ `structRes) #[kE, hk, out, ws, hws]
         reifyFn c lvls xs rhs eqPrf #[out] (← mkAppM ``vCons #[out, V]) E true
@@ -2146,7 +2146,7 @@ end CatCrypt.Crypto.SecureCompilation.AeneasFront
 
 namespace reifyRwTest
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.AeneasFront (ReifyRw)
 
 /-- A doubling, read by the reader only through its rewrite `dbl_rw`. -/

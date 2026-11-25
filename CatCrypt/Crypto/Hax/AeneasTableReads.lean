@@ -46,7 +46,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.Hax
 
 open _root_.Hax (Value Builtins hax64Builtins hax64WordOps u64BinOp u64BinOp_natCast)
-open CatCrypt.Hax.RustSemantics Aeneas.Std
+open CatCrypt.Hax.RustSemantics HaxLean.Aeneas.Std
 
 /-! ## The word operations at width 64 -/
 
@@ -578,8 +578,8 @@ theorem hax64WExit_appIndex {a i r : AVal} (h : appIndex a i = .ok r) :
     obtain ⟨j, hj, h⟩ := rustM_bind_ok h
     obtain ⟨x, hx, h⟩ := rustM_bind_ok h
     cases h
-    unfold Aeneas.Std.Array.index_usize at hx
-    rw [Aeneas.Std.Array.getElem?_Usize_eq] at hx
+    unfold HaxLean.Aeneas.Std.Array.index_usize at hx
+    rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at hx
     split at hx
     · cases hx
     · rename_i y hy
@@ -602,8 +602,8 @@ theorem hax64WExit_appUpdate {a i v r : AVal} (h : appUpdate a i v = .ok r) :
     obtain ⟨x, hx, h⟩ := rustM_bind_ok h
     obtain ⟨arr', harr, h⟩ := rustM_bind_ok h
     cases h
-    unfold Aeneas.Std.Array.update at harr
-    rw [Aeneas.Std.Array.getElem?_Usize_eq] at harr
+    unfold HaxLean.Aeneas.Std.Array.update at harr
+    rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at harr
     split at harr
     · cases harr
     · rename_i y hy
@@ -791,7 +791,7 @@ theorem hax64WExit_appLen {a r : AVal} (h : appLen a = .ok r) :
     of at most `64` bits are admitted by `hax64WExit`: fewer than `2 ^ 64` words below
     `2 ^ 64`. -/
 theorem hax64LitAdmit_of_appArrayLit {vs : List AVal} {ty : UScalarTy} {n : Usize}
-    {arr : Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
+    {arr : HaxLean.Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
     (h : appArrayLit vs = .ok (.arr ty n arr)) : hax64LitAdmit (AVal.toValues vs) = true := by
   have hn64 : 2 ^ UScalarTy.Usize.numBits ≤ 2 ^ 64 :=
     Nat.pow_le_pow_right (by decide) usize_numBits_le
@@ -825,7 +825,7 @@ theorem hax64LitAdmit_of_appArrayLit {vs : List AVal} {ty : UScalarTy} {n : Usiz
 /-- **`array_lit`.** An array of words of at most `64` bits that the reading of
     `array_lit` returns is, encoded, the value of `hax64WExit` on the encoded arguments. -/
 theorem hax64WExit_appArrayLit {vs : List AVal} {ty : UScalarTy} {n : Usize}
-    {arr : Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
+    {arr : HaxLean.Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
     (h : appArrayLit vs = .ok (.arr ty n arr)) :
     hax64WExit "array_lit" (AVal.toValues vs) = some (AVal.arr ty n arr).toValue := by
   simp only [hax64WExit, ite_true, hax64LitAdmit_of_appArrayLit hty h, ← appArrayLit_ok h]
@@ -833,7 +833,7 @@ theorem hax64WExit_appArrayLit {vs : List AVal} {ty : UScalarTy} {n : Usize}
 /-- **`repeat`.** An array of words of at most `64` bits that the reading of `repeat`
     returns is, encoded, the value of `hax64WExit` on the encoded arguments. -/
 theorem hax64WExit_appRepeat {v m : AVal} {ty : UScalarTy} {n : Usize}
-    {arr : Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
+    {arr : HaxLean.Aeneas.Std.Array (UScalar ty) n} (hty : ty.numBits ≤ 64)
     (h : appRepeat v m = .ok (.arr ty n arr)) :
     hax64WExit "repeat" [v.toValue, m.toValue] = some (AVal.arr ty n arr).toValue := by
   obtain ⟨n0, hm0, hr⟩ := appRepeat_ok h

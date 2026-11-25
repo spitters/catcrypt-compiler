@@ -35,7 +35,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.rangeTest
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.AeneasFront
 open CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo
 
@@ -45,14 +45,14 @@ theorem optAdd_noPanic : ∀ (b : Bool) (x : U32), 1 ≤ (b.toNat : Int) ∧ (b.
   aeneasRange% joins.opt_add_1_or_panic [(1, 1), (0, 100)]
 
 /-- `incr_array a` has a value when the entries of `a` are at most `1000`. -/
-theorem incrArray_noPanic : ∀ (a : Aeneas.Std.Array U32 2#usize),
+theorem incrArray_noPanic : ∀ (a : HaxLean.Aeneas.Std.Array U32 2#usize),
     (∀ v ∈ a.val, 0 ≤ (v.val : Int) ∧ (v.val : Int) ≤ 1000) →
     ∃ y, arrays.incr_array a = .ok y :=
   aeneasRange% arrays.incr_array [(0, 1000)]
 
 /-- The sum `enum_range_sum a acc` of a counted loop has a value when the entries of `a` and
     `acc` are at most `1000`. -/
-theorem enumRangeSum_noPanic : ∀ (a : Aeneas.Std.Array U32 4#usize) (acc : U32),
+theorem enumRangeSum_noPanic : ∀ (a : HaxLean.Aeneas.Std.Array U32 4#usize) (acc : U32),
     (∀ v ∈ a.val, 0 ≤ (v.val : Int) ∧ (v.val : Int) ≤ 1000) →
     0 ≤ (acc.val : Int) ∧ (acc.val : Int) ≤ 1000 →
     ∃ y, iter_adapters.enum_range_sum a acc = .ok y :=

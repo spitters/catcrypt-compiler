@@ -45,7 +45,7 @@ set_option autoImplicit false
 
 namespace HaxAscent.RustSemantics
 
-open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics Aeneas.Std
+open CatCrypt CatCrypt.Hax CatCrypt.Hax.RustSemantics HaxLean.Aeneas.Std
 
 /-! ## Outcomes -/
 
@@ -683,7 +683,7 @@ theorem toRustMSB_of_toRustMS {app : String → List AVal → RustM AVal} {e : H
     (`some b`) or at the end of the range (`none`), the loop is `loopBS`. -/
 theorem loop_range_break {α β : Type}
     (body : core.ops.range.Range Usize × α →
-      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × α) (Option β × α)))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (core.ops.range.Range Usize × α) (Option β × α)))
     (f : α → Usize → RustM (Option β × α)) (n : Usize)
     (hbody : ∀ (s : Usize) (acc : α), body ({ start := s, «end» := n }, acc) =
       if s.val < n.val then

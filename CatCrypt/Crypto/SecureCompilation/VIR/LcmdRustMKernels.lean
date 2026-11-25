@@ -53,7 +53,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemLoop
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemMemFlagGuard
 open CatCrypt.Crypto.SecureCompilation.VIR.LcmdRustM
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin (x86_ADD x86_ADC x86_SUB)
-open Aeneas.Std (RustM Error)
+open HaxLean.Aeneas.Std (RustM Error)
 open _root_.Std.WP Lean.Order
 
 /-! ## 1. Specifications of the carry and the subtraction -/

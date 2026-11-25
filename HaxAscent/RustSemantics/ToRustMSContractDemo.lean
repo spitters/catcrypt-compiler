@@ -27,8 +27,8 @@ structure Spec {α}
 with the default proofs `by constructor; mvcgen <;> try grind` of the two pure fields and
 `by mvcgen[f] <;> try grind` of `contract`. The hax-lib proof library is not a dependency of
 this workspace, and its `RustM` is `ExceptT Error Option`, while the reading `toRustMS`
-returns in `Aeneas.Std.RustM`, the monad `HaxLean/HaxBackendPrelude.lean` names `RustM`.
-`Spec` below restates the upstream structure field by field over `Aeneas.Std.RustM`.
+returns in `HaxLean.Aeneas.Std.RustM`, the monad `HaxLean/HaxBackendPrelude.lean` names `RustM`.
+`Spec` below restates the upstream structure field by field over `HaxLean.Aeneas.Std.RustM`.
 
 `keyEqRun` is the reading of the haxpipe literal `keyEqLit` from two Aeneas byte arrays,
 and `keyEqRun.spec` is its contract in the printed form: the precondition `32 ≤ n`, the
@@ -54,12 +54,12 @@ set_option mvcgen.warning false
 
 namespace CatCrypt.Hax.RustSemantics.ContractDemo
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 open Hax.Ascent Hax.Ascent.Demo
 
 /-- The contract of a function as the hax Lean printer emits it: the structure `Spec` of
     the module `Hax.Rust_primitives.Spec` of the hax-lib Lean proof library, with the
-    same fields, over `Aeneas.Std.RustM`. `requires` and `ensures` are the monadic clauses of the
+    same fields, over `HaxLean.Aeneas.Std.RustM`. `requires` and `ensures` are the monadic clauses of the
     attributes; `pureRequires` and `pureEnsures` are their pure readings, and `contract`
     is the triple of `f` between them. -/
 structure Spec {α : Type} («requires» : RustM Prop) («ensures» : α → RustM Prop) (f : RustM α)
@@ -81,12 +81,12 @@ theorem triple_of_pure_imp {α : Type} {x : RustM α} {p : Prop} {Q : PostCond �
 
 /-- The reading of `keyEqLit` from two Aeneas byte arrays, as the function the contract
     is about. -/
-def keyEqRun {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) : RustM (AVal × AEnv) :=
+def keyEqRun {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) : RustM (AVal × AEnv) :=
   toRustMS keyEqApp keyEqLit (keyEqEnvA x y)
 
 /-- The contract of `keyEqRun` from the ascent: under `32 ≤ n` the returned value encodes
     `keyEq` of the two arrays, from `keyEqLit_triple`. -/
-theorem keyEqRun_contract {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
+theorem keyEqRun_contract {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) :
     ⦃⌜32 ≤ n.val⌝⦄ keyEqRun x y
     ⦃⇓ r => ⌜r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))⌝⦄ :=
   triple_of_pure_imp fun hn => keyEqLit_triple x y hn
@@ -94,7 +94,7 @@ theorem keyEqRun_contract {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
 /-- **The printed contract of `keyEqRun`.** The `Spec` declaration the hax Lean printer
     emits for `#[requires(32 <= n)]` and `#[ensures(|r| r == key_eq(x, y))]`; the pure
     fields by `mvcgen`, the `contract` field by `keyEqRun_contract`. -/
-def keyEqRun.spec {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
+def keyEqRun.spec {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) :
     Spec («requires» := do pure (32 ≤ n.val))
       («ensures» := fun r => do pure (r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))))
       (keyEqRun x y) where

@@ -86,7 +86,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyComplete
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax

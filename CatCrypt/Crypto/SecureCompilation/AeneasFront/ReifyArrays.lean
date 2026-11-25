@@ -36,7 +36,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
@@ -74,18 +74,18 @@ theorem litA_usize (n : Usize) : litA .Usize (n.val : Int) = .ok n := by
   simp [UScalar.val]
 
 /-- An array of words as an array of `u64` words. -/
-def a64 {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) :
-    Aeneas.Std.Array U64 n :=
+def a64 {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
+    HaxLean.Aeneas.Std.Array U64 n :=
   ⟨a.val.map toU64, by rw [List.length_map]; exact a.property⟩
 
-theorem arrV_a64 {ty : UScalarTy} [Le64 ty] {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) :
+theorem arrV_a64 {ty : UScalarTy} [Le64 ty] {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
     arrV (a64 a) = arrV a := by
   simp only [arrV, a64, List.map_map]
   congr 1
   exact List.map_congr_left fun x _ => wordV_toU64 x
 
 theorem readArr_arrV {ty : UScalarTy} [Le64 ty] {n : Usize}
-    (a : Aeneas.Std.Array (UScalar ty) n) :
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
     readArr (arrV a) = .ok ⟨n, a64 a⟩ := by
   have hl : (a.val.map toU64).length = n.val := by rw [List.length_map]; exact a.property
   have hn : litA .Usize ((a.val.map toU64).length : Int) = .ok n := by
@@ -96,21 +96,21 @@ theorem readArr_arrV {ty : UScalarTy} [Le64 ty] {n : Usize}
   · rfl
   · contradiction
 
-theorem index_a64 {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n)
+theorem index_a64 {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
     (i : Usize) :
     (a64 a).index_usize i = (a.index_usize i >>= fun z => .ok (toU64 z)) := by
-  unfold Aeneas.Std.Array.index_usize
+  unfold HaxLean.Aeneas.Std.Array.index_usize
   have e : (a64 a).val = a.val.map toU64 := rfl
-  rw [Aeneas.Std.Array.getElem?_Usize_eq, Aeneas.Std.Array.getElem?_Usize_eq, e,
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq, HaxLean.Aeneas.Std.Array.getElem?_Usize_eq, e,
     List.getElem?_map]
   cases a.val[i.val]? <;> rfl
 
-theorem update_a64 {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n)
+theorem update_a64 {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
     (i : Usize) (x : UScalar ty) :
     (a64 a).update i (toU64 x) = (a.update i x >>= fun a' => .ok (a64 a')) := by
-  unfold Aeneas.Std.Array.update
+  unfold HaxLean.Aeneas.Std.Array.update
   have e : (a64 a).val = a.val.map toU64 := rfl
-  rw [Aeneas.Std.Array.getElem?_Usize_eq, Aeneas.Std.Array.getElem?_Usize_eq]
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq, HaxLean.Aeneas.Std.Array.getElem?_Usize_eq]
   simp only [e, List.getElem?_map]
   cases a.val[i.val]? with
   | none => rfl
@@ -124,7 +124,7 @@ theorem update_a64 {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar t
 
 /-- `index` on an encoded array and an encoded `usize` index is the Aeneas `index_usize`. -/
 theorem aeCall2_index {ty : UScalarTy} [Le64 ty] {n : Usize}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) :
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) :
     aeCall2 "index" (arrV a) (wordV i) = (a.index_usize i >>= fun z => .ok (wordV z)) := by
   have h1 : wordOpAt? "index" = none := by decide +kernel
   have h2 : checkedAt? "index" = none := by decide +kernel
@@ -140,7 +140,7 @@ theorem aeCall2_index {ty : UScalarTy} [Le64 ty] {n : Usize}
 
 /-- `array_update` on an encoded array, index and value is the Aeneas `update`. -/
 theorem aeCall3_update {ty : UScalarTy} [Le64 ty] {n : Usize}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) :
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) :
     aeCall3 "array_update" (arrV a) (wordV i) (wordV x) =
       (a.update i x >>= fun a' => .ok (arrV a')) := by
   unfold aeCall3
@@ -153,15 +153,15 @@ theorem aeCall3_update {ty : UScalarTy} [Le64 ty] {n : Usize}
 /-! ## The NF value of an array -/
 
 /-- The NF value of an Aeneas array of words: the `64`-bit words of its entries. -/
-def embA {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) :
+def embA {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
     Fin n.val → BitVec 64 :=
   fun j => embW (a.val[j.1]'(by rw [a.property]; exact j.2))
 
 /-- An Aeneas array of words is an NF array of `64`-bit words. -/
-@[reducible] instance (ty : UScalarTy) (n : Usize) : AeVal (Aeneas.Std.Array (UScalar ty) n) :=
+@[reducible] instance (ty : UScalarTy) (n : Usize) : AeVal (HaxLean.Aeneas.Std.Array (UScalar ty) n) :=
   ⟨.arr n.val (.word 64), embA⟩
 
-theorem enc_embA {ty : UScalarTy} [Le64 ty] {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) :
+theorem enc_embA {ty : UScalarTy} [Le64 ty] {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
     ImpToNF.enc (.arr n.val (.word 64)) (embA a) = arrV a := by
   simp only [ImpToNF.enc, arrV, Value.array.injEq]
   apply List.ext_getElem
@@ -177,7 +177,7 @@ theorem mapM_dec_wordV {ty : UScalarTy} [Le64 ty] :
     rw [List.map_cons, List.mapM_cons, dec_wordV, mapM_dec_wordV xs]
     rfl
 
-theorem dec_arrV {ty : UScalarTy} [Le64 ty] {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) :
+theorem dec_arrV {ty : UScalarTy} [Le64 ty] {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) :
     dec (.arr n.val (.word 64)) (arrV a) = some (embA a) := by
   have hl : (a.val.map embW).length = n.val := by rw [List.length_map]; exact a.property
   rw [arrV, dec, mapM_dec_wordV, Option.bind_some]
@@ -203,7 +203,7 @@ theorem aeExpr_call {Γ : Ctxt nfDialect} {as : List NfTy} {r : NfTy} (f : Strin
 
 /-- `Array.index_usize` is the call `index`. -/
 instance reifyE_index {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDialect}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) (V : Valuation Γ)
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) (V : Valuation Γ)
     {va : Var Γ (.arr n.val (.word 64))} {vi : Var Γ (.word 64)}
     [ha : Lookup V (embA a) va] [hi : Lookup V (embW i) vi] :
     ReifyE (a.index_usize i) V
@@ -217,7 +217,7 @@ instance reifyE_index {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDialec
 
 /-- `Array.update` is the call `array_update`. -/
 instance reifyE_update {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDialect}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) (V : Valuation Γ)
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) (V : Valuation Γ)
     {va : Var Γ (.arr n.val (.word 64))} {vi vx : Var Γ (.word 64)}
     [ha : Lookup V (embA a) va] [hi : Lookup V (embW i) vi] [hx : Lookup V (embW x) vx] :
     ReifyE (a.update i x) V
@@ -230,10 +230,10 @@ instance reifyE_update {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDiale
     rw [ha.eq, hi.eq, hx.eq, enc_embA, enc_embW, enc_embW, aeCall3_update, ha']
     rfl
 
-instance {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) (c : Usize) :
+instance {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (c : Usize) :
     LitOf (a.index_usize c) .Usize c := ⟨⟩
 
-instance {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n) (c : Usize)
+instance {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (c : Usize)
     (x : UScalar ty) : LitOf (a.update c x) .Usize c := ⟨⟩
 
 end CatCrypt.Crypto.SecureCompilation.AeneasFront

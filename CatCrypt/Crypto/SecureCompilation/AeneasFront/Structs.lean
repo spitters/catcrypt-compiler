@@ -43,7 +43,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
 open CatCrypt.Crypto.SecureCompilation.VIR
@@ -88,21 +88,21 @@ termination_by _ _ vs _ => vs.length
 decreasing_by simp only [List.length_map, List.length_cons]; omega
 
 /-- The Aeneas array `a` with the entries from the index `i` on replaced by `xs`. -/
-def setFrom {n : Usize} : Aeneas.Std.Array U64 n → Nat → List U64 → Aeneas.Std.Array U64 n
+def setFrom {n : Usize} : HaxLean.Aeneas.Std.Array U64 n → Nat → List U64 → HaxLean.Aeneas.Std.Array U64 n
   | a, _, [] => a
   | a, i, x :: xs => setFrom (a.set (usz i) x) (i + 1) xs
 
 /-- An update at an index below the length is the array with the entry replaced. -/
-theorem arrUpdate_eq_set {n : Usize} (a : Aeneas.Std.Array U64 n) (i : Usize) (x : U64)
+theorem arrUpdate_eq_set {n : Usize} (a : HaxLean.Aeneas.Std.Array U64 n) (i : Usize) (x : U64)
     (h : i.val < n.val) : a.update i x = .ok (a.set i x) := by
   have hl : i.val < a.val.length := by rw [a.property]; exact h
-  unfold Aeneas.Std.Array.update
-  rw [Aeneas.Std.Array.getElem?_Usize_eq, List.getElem?_eq_getElem hl]
+  unfold HaxLean.Aeneas.Std.Array.update
+  rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq, List.getElem?_eq_getElem hl]
   rfl
 
 /-- The update of an array at an index below its length. -/
 theorem aeExpr_updE {Γ : Ctxt nfDialect} {n : Usize} (va : Var Γ (.arr n.val (.word 64)))
-    (vi vx : Var Γ (.word 64)) (V : Valuation Γ) (a : Aeneas.Std.Array U64 n) (i : Usize)
+    (vi vx : Var Γ (.word 64)) (V : Valuation Γ) (a : HaxLean.Aeneas.Std.Array U64 n) (i : Usize)
     (x : U64)
     (ha : va.lookup V = embA a) (hi : vi.lookup V = embW i) (hx : vx.lookup V = embW x)
     (hlt : i.val < n.val) : aeExpr (updE va vi vx) V = .ok (embA (a.set i x)) :=
@@ -117,7 +117,7 @@ theorem embW_mk (b : BitVec 64) : embW (⟨b⟩ : U64) = b := by
     stores from the index `i` return the array `a` with the entries from `i` on replaced by
     `bs`. -/
 theorem nfToRustM_storeFields {n : Usize} : ∀ {Γ : Ctxt nfDialect} (V : Valuation Γ)
-    (o : Var Γ (.arr n.val (.word 64))) (a : Aeneas.Std.Array U64 n) (vs : List (Var Γ (.word 64)))
+    (o : Var Γ (.arr n.val (.word 64))) (a : HaxLean.Aeneas.Std.Array U64 n) (vs : List (Var Γ (.word 64)))
     (bs : List (BitVec 64)) (i : Nat), o.lookup V = embA a →
     vs.map (fun v => v.lookup V) = bs → i + bs.length ≤ n.val →
     nfToRustM (storeFields o vs i) V =
@@ -149,7 +149,7 @@ theorem nfToRustM_storeFields {n : Usize} : ∀ {Γ : Ctxt nfDialect} (V : Valua
 termination_by _ _ _ _ vs => vs.length
 decreasing_by simp only [List.length_map, List.length_cons]; omega
 
-theorem setFrom_val {n : Usize} : ∀ (a : Aeneas.Std.Array U64 n) (i : Nat) (xs : List U64),
+theorem setFrom_val {n : Usize} : ∀ (a : HaxLean.Aeneas.Std.Array U64 n) (i : Nat) (xs : List U64),
     i + xs.length = a.val.length → (setFrom a i xs).val = a.val.take i ++ xs
   | a, i, [], h => by
     simp only [setFrom, List.length_nil, Nat.add_zero] at h ⊢
@@ -159,15 +159,15 @@ theorem setFrom_val {n : Usize} : ∀ (a : Aeneas.Std.Array U64 n) (i : Nat) (xs
     have hn : (usz i).val = i :=
       usz_val (lt_of_lt_of_le hi (by rw [a.property]; exact (UScalar.hBounds n).le))
     have hl : i + 1 + xs.length = (a.set (usz i) x).val.length := by
-      simp only [Aeneas.Std.Array.set_val_eq, List.length_set, List.length_cons] at h ⊢
+      simp only [HaxLean.Aeneas.Std.Array.set_val_eq, List.length_set, List.length_cons] at h ⊢
       omega
-    rw [setFrom, setFrom_val _ _ _ hl, Aeneas.Std.Array.set_val_eq, hn,
+    rw [setFrom, setFrom_val _ _ _ hl, HaxLean.Aeneas.Std.Array.set_val_eq, hn,
       List.set_eq_take_append_cons_drop, ite_eq_left hi]
     simp [List.take_append, Nat.le_of_lt hi]
 
 /-- The stores of `k` words from the index `0` into an array of `k` words give the array of
     the words. -/
-theorem setFrom_zero {k : Nat} (hk : k < 2 ^ 32) (a : Aeneas.Std.Array U64 (usz k))
+theorem setFrom_zero {k : Nat} (hk : k < 2 ^ 32) (a : HaxLean.Aeneas.Std.Array U64 (usz k))
     (bs : List (BitVec 64)) (h : bs.length = k) :
     setFrom a 0 (bs.map fun b => ⟨b⟩) = wordsArr (usz k) bs (h.trans (usz_val_small hk).symm) := by
   apply Subtype.ext
@@ -179,7 +179,7 @@ theorem setFrom_zero {k : Nat} (hk : k < 2 ^ 32) (a : Aeneas.Std.Array U64 (usz 
 /-- **The result map of a structure result** of `k` fields with the field words `ws`: the array
     of the field words. The out-region `out` is the ghost argument of the reading into which
     the program writes the words; the value does not depend on it. -/
-def structRes {S : Type} (k : Nat) (hk : k < 2 ^ 32) (out : Aeneas.Std.Array U64 (usz k))
+def structRes {S : Type} (k : Nat) (hk : k < 2 ^ 32) (out : HaxLean.Aeneas.Std.Array U64 (usz k))
     (ws : S → List (BitVec 64)) (hws : ∀ y, (ws y).length = k) (y : S) :
     Valuation (d := nfDialect) [.arr (usz k).val (.word 64)] :=
   have _ := out
@@ -188,7 +188,7 @@ def structRes {S : Type} (k : Nat) (hk : k < 2 ^ 32) (out : Aeneas.Std.Array U64
 /-- **A value of a structure result**: the stores of its field words into the out-region,
     from the index `0`. -/
 instance Reify.okStruct {S : Type} {Γ : Ctxt nfDialect} (k : Nat) (hk : k < 2 ^ 32)
-    (out : Aeneas.Std.Array U64 (usz k)) (ws : S → List (BitVec 64))
+    (out : HaxLean.Aeneas.Std.Array U64 (usz k)) (ws : S → List (BitVec 64))
     (hws : ∀ y, (ws y).length = k) (y : S) (V : Valuation Γ)
     {o : Var Γ (.arr (usz k).val (.word 64))} {vs : List (Var Γ (.word 64))}
     [ho : Lookup V (embA out) o] [hvs : LookupAll V (ws y) vs] :

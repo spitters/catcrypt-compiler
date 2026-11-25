@@ -40,7 +40,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 -- The `Std.WP` instances `Assertion Prop` and `PartialOrder Prop` are scoped.
 open _root_.Std.WP Lean.Order
 
@@ -66,7 +66,7 @@ theorem stdWP_triple_iff_stdDo {α : Type} {x : RustM α} {Q : α → Prop} :
     _root_.Std.WP.Triple x True Q Lean.Order.bot ↔
       Std.Do.Triple x (Std.Do.SPred.pure True)
         (Std.Do.PostCond.noThrow fun r => Std.Do.SPred.pure (Q r)) := by
-  rw [stdWP_triple_iff_exists_ok, Aeneas.Std.WP.triple_iff_exists_ok]
+  rw [stdWP_triple_iff_exists_ok, HaxLean.Aeneas.Std.WP.triple_iff_exists_ok]
   simp
 
 variable {bi : _root_.Hax.Builtins} {A β : Type} [_root_.Hax.Ascent.HaxEnc β]

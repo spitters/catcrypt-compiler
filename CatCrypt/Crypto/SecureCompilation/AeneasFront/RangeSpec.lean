@@ -38,7 +38,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics (WordOp AOp wordOpAt? checkedAt? tagTyAt? uTag litA
   rustM_bind_ok)
@@ -48,7 +48,7 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.NFDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.NFRange
 open CatCrypt.Crypto.SecureCompilation.RangeDomain
-open Aeneas.Std.WP (spec_imp_exists)
+open HaxLean.Aeneas.Std.WP (spec_imp_exists)
 
 namespace RangeSpec
 
@@ -950,7 +950,7 @@ theorem cmpVal_sound {p : NfPred} {c : CmpOp}
     simp only [cmpVal, CmpOp.aen] <;> split_ifs <;> simp <;> omega
 
 theorem readArr_nats (ns : List Nat) (h64 : ∀ k ∈ ns, k < 2 ^ 64) (hlen : ns.length < 2 ^ 32) :
-    ∃ arr : (Σ n : Usize, Aeneas.Std.Array U64 n),
+    ∃ arr : (Σ n : Usize, HaxLean.Aeneas.Std.Array U64 n),
       readArr (.array (ns.map fun (k : Nat) => Value.int (k : Int))) = .ok arr ∧
       arr.2.val.map UScalar.val = ns := by
   obtain ⟨us, hus, husv⟩ := readWs_nats ns h64
@@ -960,7 +960,7 @@ theorem readArr_nats (ns : List Nat) (h64 : ∀ k ∈ ns, k < 2 ^ 64) (hlen : ns
     omega
   obtain ⟨nU, hnU, hnUv⟩ := readW_nat (ty := .Usize) hlen'
   have hd : us.length = nU.val := hnUv.symm
-  refine ⟨⟨nU, Aeneas.Std.Array.make nU us hd⟩, ?_, husv⟩
+  refine ⟨⟨nU, HaxLean.Aeneas.Std.Array.make nU us hd⟩, ?_, husv⟩
   rw [readArr, hus, bind_tc_ok, show litA .Usize (us.length : Int) = .ok nU from hnU,
     bind_tc_ok, dite_eq_left_of_eq_true (eq_true hd)]
 
@@ -999,10 +999,10 @@ theorem aeXfer2_sound {f : String} {r t c : NfTy} {x : AVal t} {y : AVal c} {a :
               have hbound : iU.val < arr.2.length := by
                 have := congrArg List.length harrv
                 simp only [List.length_map] at this
-                simp only [Aeneas.Std.Array.length]
+                simp only [HaxLean.Aeneas.Std.Array.length]
                 omega
               have hz : arr.2.index_usize iU = .ok (arr.2.val[iU.val]'hbound) := by
-                simp [Aeneas.Std.Array.index_usize, hbound]
+                simp [HaxLean.Aeneas.Std.Array.index_usize, hbound]
               have hzmem : arr.2.val[iU.val]'hbound ∈ arr.2.val := List.getElem_mem hbound
               generalize arr.2.val[iU.val]'hbound = z at hz hzmem
               have hzns : z.val ∈ ns := harrv ▸ List.mem_map_of_mem hzmem
@@ -1179,12 +1179,12 @@ theorem aeXfer3_sound {f : String} {r t c d : NfTy} {x : AVal t} {y : AVal c} {z
         grind
       have hbound : iU.val < arr.2.length := by
         have : (m : Int) < n := lt_of_le_of_lt hm.2 hin
-        simp only [Aeneas.Std.Array.length]
+        simp only [HaxLean.Aeneas.Std.Array.length]
         omega
-      obtain ⟨arr', hupd, harr'⟩ : ∃ arr' : Aeneas.Std.Array U64 arr.1,
+      obtain ⟨arr', hupd, harr'⟩ : ∃ arr' : HaxLean.Aeneas.Std.Array U64 arr.1,
           arr.2.update iU u = .ok arr' ∧ arr'.val = arr.2.val.set iU.val u :=
         ⟨⟨arr.2.val.set iU.val u, by simp [arr.2.property]⟩,
-          by simp [Aeneas.Std.Array.update, hbound], rfl⟩
+          by simp [HaxLean.Aeneas.Std.Array.update, hbound], rfl⟩
       have hzlen : (arr'.val.map UScalar.val).length = n := by
         simp [harr', hal, hlen]
       have hzin : ∀ q ∈ arr'.val.map UScalar.val, (ivHull e vI).Has q := by

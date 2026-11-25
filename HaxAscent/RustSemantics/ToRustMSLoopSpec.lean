@@ -48,7 +48,7 @@ set_option mvcgen.warning false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 
 /-! ## The loop rule -/
 
@@ -95,23 +95,23 @@ theorem usize_ofNat_val {i : Nat} (hi : i < 2 ^ UScalarTy.Usize.numBits) :
   rfl
 
 /-- `index` of an array at a loop index below its length returns the entry. -/
-theorem appIndex_arr_ctr {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n)
+theorem appIndex_arr_ctr {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
     {i : Nat} (hi : i < n.val) :
     appIndex (.arr ty n a) (ctr i) = .ok (.w ty a.val[i]!) := by
   have hn := n.hBounds
   have hl : a.val.length = n.val := a.property
-  simp [appIndex, ctr, AVal.asW, Aeneas.Std.Array.index_usize,
+  simp [appIndex, ctr, AVal.asW, HaxLean.Aeneas.Std.Array.index_usize,
     usize_ofNat_val (Nat.lt_trans hi hn), hl, hi]
 
 /-- `array_update` of an array at a loop index below its length by a word of its width
     returns the array with that entry set. -/
-theorem appUpdate_arr_ctr {ty : UScalarTy} {n : Usize} (a : Aeneas.Std.Array (UScalar ty) n)
+theorem appUpdate_arr_ctr {ty : UScalarTy} {n : Usize} (a : HaxLean.Aeneas.Std.Array (UScalar ty) n)
     {i : Nat} (hi : i < n.val) (x : UScalar ty) :
     appUpdate (.arr ty n a) (ctr i) (.w ty x) =
       .ok (.arr ty n (a.set ⟨BitVec.ofNat UScalarTy.Usize.numBits i⟩ x)) := by
   have hn := n.hBounds
   have hl : a.val.length = n.val := a.property
-  simp [appUpdate, ctr, AVal.asW, Aeneas.Std.Array.update, Aeneas.Std.Array.set,
+  simp [appUpdate, ctr, AVal.asW, HaxLean.Aeneas.Std.Array.update, HaxLean.Aeneas.Std.Array.set,
     usize_ofNat_val (Nat.lt_trans hi hn), hl, hi]
   rfl
 

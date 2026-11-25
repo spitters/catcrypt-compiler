@@ -58,7 +58,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Crypto.SecureCompilation.AeneasFront.ReifyComplete
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Hax (Value)
 open CatCrypt.Hax.RustSemantics
 open CatCrypt.Crypto.Hax
@@ -130,7 +130,7 @@ theorem complete_bxor {ty : UScalarTy} [h : TableTy ty] [Le64 ty] {Γ : Ctxt nfD
 
 /-- `Array.index_usize`, complete direction: the call `index` fails when the index does. -/
 theorem complete_index {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDialect}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) (V : Valuation Γ)
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) (V : Valuation Γ)
     {va : Var Γ (.arr n.val (.word 64))} {vi : Var Γ (.word 64)}
     [ha : Lookup V (embA a) va] [hi : Lookup V (embW i) vi] :
     CompleteE (a.index_usize i) V
@@ -159,7 +159,7 @@ theorem complete_index {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDiale
 
 /-- `Array.update`, complete direction: the call `array_update` fails when the update does. -/
 theorem complete_update {ty : UScalarTy} [Le64 ty] {n : Usize} {Γ : Ctxt nfDialect}
-    (a : Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) (V : Valuation Γ)
+    (a : HaxLean.Aeneas.Std.Array (UScalar ty) n) (i : Usize) (x : UScalar ty) (V : Valuation Γ)
     {va : Var Γ (.arr n.val (.word 64))} {vi vx : Var Γ (.word 64)}
     [ha : Lookup V (embA a) va] [hi : Lookup V (embW i) vi] [hx : Lookup V (embW x) vx] :
     CompleteE (a.update i x) V
@@ -397,7 +397,7 @@ theorem Complete.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect}
     {v : Var Γ (AeVal.nty σ)}
     {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
     (F : core.ops.range.Range Usize × σ →
-      RustM (Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
+      RustM (HaxLean.Aeneas.Std.ControlFlow (core.ops.range.Range Usize × σ) σ))
     (n : Usize) (init : σ) (f : σ → Usize → RustM σ) (V : Valuation Γ)
     [hi : Lookup V (AeVal.emb init) v]
     (hF : ∀ (s : Usize) (acc : σ), F ({ start := s, «end» := n }, acc) =
@@ -407,7 +407,7 @@ theorem Complete.rangeForLoop {σ : Type} [AeVal σ] {Γ : Ctxt nfDialect}
       else .ok (.done acc))
     (hb : ∀ (i : Usize) (acc : σ),
       CompleteG single (f acc i) (vCons acc (vCons i (vCons n V))) pb) :
-    CompleteG single (Aeneas.Std.loop F ({ start := 0#usize, «end» := n }, init)) V
+    CompleteG single (HaxLean.Aeneas.Std.loop F ({ start := 0#usize, «end» := n }, init)) V
       (.var (litE n) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) := by
   intro W hW
   have hn : n.val < 2 ^ 64 := lt64 n
@@ -437,8 +437,8 @@ theorem Complete.indexedForLoop {I Item σ : Type} [AeVal σ] {Γ : Ctxt nfDiale
     {pb : NFProg nfDialect (AeVal.nty σ :: .word 64 :: .word 64 :: Γ) [AeVal.nty σ]}
     {next : I → RustM (Option Item × I)} {st₀ : I} {cnt : Usize}
     (it : IndexedIter next st₀ cnt)
-    (F : I × σ → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
-    (K : σ → Option Item × I → RustM (Aeneas.Std.ControlFlow (I × σ) σ))
+    (F : I × σ → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
+    (K : σ → Option Item × I → RustM (HaxLean.Aeneas.Std.ControlFlow (I × σ) σ))
     (f : σ → Usize → RustM σ) (init : σ) (V : Valuation Γ)
     [hi : Lookup V (AeVal.emb init) v]
     (hF : ∀ st acc, F (st, acc) = next st >>= K acc)
@@ -447,7 +447,7 @@ theorem Complete.indexedForLoop {I Item σ : Type} [AeVal σ] {Γ : Ctxt nfDiale
       f acc i >>= fun a => .ok (.cont (r, a)))
     (hb : ∀ (i : Usize) (acc : σ),
       CompleteG single (f acc i) (vCons acc (vCons i (vCons cnt V))) pb) :
-    CompleteG single (Aeneas.Std.loop F (st₀, init)) V
+    CompleteG single (HaxLean.Aeneas.Std.loop F (st₀, init)) V
       (.var (litE cnt) (.forLoop .here (.cons v.there .nil) pb (.ret (.cons .here .nil)))) := by
   intro W hW
   have hn : cnt.val < 2 ^ 64 := lt64 cnt
@@ -547,7 +547,7 @@ meta partial def toComplete (t : Expr) : MetaM Expr := do
   let ty ← whnfR (← inferType t)
   if ty.isAppOfArity ``ReifyG 7 || ty.isAppOfArity ``ReifyE 6 then
     let m ← whnfR (if ty.isAppOfArity ``ReifyG 7 then ty.getArg! 3 else ty.getArg! 2)
-    if m.isAppOfArity ``Aeneas.Std.RustM.ok 2 then
+    if m.isAppOfArity ``HaxLean.Aeneas.Std.RustM.ok 2 then
       return ← mkAppM (if ty.isAppOfArity ``ReifyG 7 then ``completeG_of_ok
         else ``completeE_of_ok) #[t]
   throwError "completeAeneas%: no complete twin of the node `{c}`{indentExpr t}"

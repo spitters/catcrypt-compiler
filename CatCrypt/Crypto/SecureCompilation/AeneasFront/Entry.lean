@@ -13,7 +13,7 @@ public import HaxLean.Rust
 
 The Aeneas Lean backend prints a Rust function as a Lean function into the result monad of
 the Aeneas `Std` library. Over the vendored model of that library (`HaxLean.Rust`, with the
-flat monad `Aeneas.Std.RustM`) such a function, uncurried, is
+flat monad `HaxLean.Aeneas.Std.RustM`) such a function, uncurried, is
 `fn : AeTy.Args args → RustM res.denote` for codes `args`, `res` of its argument and result
 types. This module makes these functions a source of the front-independent entry `NFEntry`
 of the compiler, so the compiler `NFEntry.compileR` and its correctness theorem
@@ -72,7 +72,7 @@ open CatCrypt.Crypto.SecureCompilation.Ascent.AddrMem (AState)
 open CatCrypt.Crypto.Hax.ImpToNF (enc PDenP entryCtx EntryVals)
 open CatCrypt.Crypto.Hax (hax64WExit)
 open _root_.Hax (Value Env)
-open Aeneas.Std (RustM UScalar UScalarTy)
+open HaxLean.Aeneas.Std (RustM UScalar UScalarTy)
 
 /-! ## The value map -/
 
@@ -83,18 +83,18 @@ inductive AeTy where
   /-- `UScalar ty`, of at most 64 bits. -/
   | u (ty : UScalarTy) (h : ty.numBits ≤ 64)
   /-- `IScalar ty`, of at most 64 bits. -/
-  | i (ty : Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64)
+  | i (ty : HaxLean.Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64)
   /-- `Bool`. -/
   | bool
   /-- `Array τ n`. -/
-  | arr (n : Aeneas.Std.Usize) (τ : AeTy)
+  | arr (n : HaxLean.Aeneas.Std.Usize) (τ : AeTy)
 
 /-- The Aeneas type of a code. -/
 @[reducible] def AeTy.denote : AeTy → Type
   | .u ty _ => UScalar ty
-  | .i ty _ => Aeneas.Std.IScalar ty
+  | .i ty _ => HaxLean.Aeneas.Std.IScalar ty
   | .bool => Bool
-  | .arr n τ => Aeneas.Std.Array τ.denote n
+  | .arr n τ => HaxLean.Aeneas.Std.Array τ.denote n
 
 /-- The NF type of a code: a scalar is a word of 64 bits, a boolean the word of 64 bits of
     the layout, an array of `n` values an array of length `n.val`. -/
@@ -217,7 +217,7 @@ theorem aeneasRuns_bool {σ : AbiLayout} {args : List AeTy}
 
 /-- **The read-back of a signed word**: the encoding of the image of a signed word under the
     value map is the integer of its bit pattern. -/
-theorem enc_val_i (ty : Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64) (x : Aeneas.Std.IScalar ty) :
+theorem enc_val_i (ty : HaxLean.Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64) (x : HaxLean.Aeneas.Std.IScalar ty) :
     enc (AeTy.i ty h).nf (AeTy.val (.i ty h) x) = .int (x.bv.toNat : Int) := by
   have hx : x.bv.toNat < 2 ^ 64 :=
     lt_of_lt_of_le x.bv.isLt (Nat.pow_le_pow_right (by decide) h)
@@ -226,8 +226,8 @@ theorem enc_val_i (ty : Aeneas.Std.IScalarTy) (h : ty.numBits ≤ 64) (x : Aenea
 /-- **A signed result is read back as its bit pattern**: at a source of the result code
     `AeTy.i ty h`, the value of a run is an integer `n` whose two's-complement reading at the
     width of `ty` is the value of the signed word the Aeneas function returns. -/
-theorem aeneasRuns_int {σ : AbiLayout} {args : List AeTy} {ty : Aeneas.Std.IScalarTy}
-    {h : ty.numBits ≤ 64} {fn : AeTy.Args args → RustM (Aeneas.Std.IScalar ty)}
+theorem aeneasRuns_int {σ : AbiLayout} {args : List AeTy} {ty : HaxLean.Aeneas.Std.IScalarTy}
+    {h : ty.numBits ≤ 64} {fn : AeTy.Args args → RustM (HaxLean.Aeneas.Std.IScalar ty)}
     {prog : NFProg nfDialect (args.map AeTy.nf) [(AeTy.i ty h).nf]}
     {cert : ∀ a y, fn a = .ok y → ∃ fuel,
       PDenP hax64WExit fuel prog (AeTy.vals args a) = some (.cons (AeTy.val (.i ty h) y) .nil)}

@@ -55,7 +55,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 
 /-- Checked unsigned addition returns, when it succeeds, the sum the runtime computes. -/
 theorem add_u_square {ty : UScalarTy} (x y : UScalar ty) :

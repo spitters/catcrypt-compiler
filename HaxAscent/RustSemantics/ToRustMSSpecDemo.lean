@@ -42,7 +42,7 @@ set_option mvcgen.warning false
 
 namespace CatCrypt.Hax.RustSemantics.SpecDemo
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 open Hax.Ascent Hax.Ascent.Demo
 
 /-- The reading of the calls of `addBuiltins`: `Add` on two integer literals as the addition

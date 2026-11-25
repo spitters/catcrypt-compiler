@@ -101,7 +101,7 @@ set_option autoImplicit false
 
 namespace CatCrypt.Hax.RustSemantics
 
-open Aeneas.Std Aeneas.Std.WP Std.Do
+open HaxLean.Aeneas.Std HaxLean.Aeneas.Std.WP Std.Do
 
 /-! ## Kinds -/
 
@@ -876,7 +876,7 @@ inductive KeyK where
 
 /-- The values of the kinds of the instance. -/
 def KeyK.Has : KeyK → AVal → Prop
-  | .arr, v => ∃ (n : Usize) (x : Aeneas.Std.Array (UScalar .U8) n), 32 ≤ n.val ∧
+  | .arr, v => ∃ (n : Usize) (x : HaxLean.Aeneas.Std.Array (UScalar .U8) n), 32 ≤ n.val ∧
       v = .arr .U8 n x
   | .byte, v => ∃ x : UScalar .U8, v = .w .U8 x
 
@@ -921,8 +921,8 @@ theorem keyEqApp_ok : AppOk demoBuiltins keyEqApp := by
       obtain ⟨x, hx, h⟩ := rustM_bind_ok h
       cases h
       have hi := AVal.asW_ok hj
-      unfold Aeneas.Std.Array.index_usize at hx
-      rw [Aeneas.Std.Array.getElem?_Usize_eq] at hx
+      unfold HaxLean.Aeneas.Std.Array.index_usize at hx
+      rw [HaxLean.Aeneas.Std.Array.getElem?_Usize_eq] at hx
       split at hx
       · cases hx
       · rename_i y hy
@@ -947,7 +947,7 @@ theorem keyEqApp_typed : AppTyped KeyK.Has keyEqSig keyEqApp := by
         apply Nat.mod_eq_of_lt
         rcases System.Platform.numBits_eq with h | h <;> simp [UScalarTy.numBits, h] <;> omega
       refine ⟨.w .U8 (x.val[i]'hlt), ?_, _, rfl⟩
-      simp [keyEqApp, appIndex, ctr, AVal.asW, Aeneas.Std.Array.index_usize, hv, hlt]
+      simp [keyEqApp, appIndex, ctr, AVal.asW, HaxLean.Aeneas.Std.Array.index_usize, hv, hlt]
   · match vs, hvs with
     | [u, w], .cons hu (.cons hw .nil) =>
       obtain ⟨x, rfl⟩ := hu
@@ -955,14 +955,14 @@ theorem keyEqApp_typed : AppTyped KeyK.Has keyEqSig keyEqApp := by
       exact ⟨_, rfl, _, rfl⟩
 
 /-- The integer array of the entries of an Aeneas byte array. -/
-def keyArr {n : Usize} (x : Aeneas.Std.Array (UScalar .U8) n) : Array Int :=
+def keyArr {n : Usize} (x : HaxLean.Aeneas.Std.Array (UScalar .U8) n) : Array Int :=
   (x.val.map fun w => (w.val : Int)).toArray
 
 /-- The environment binding the parameters of `keyEqLit` to two Aeneas byte arrays. -/
-def keyEqEnvA {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) : AEnv :=
+def keyEqEnvA {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) : AEnv :=
   bindA [("a", .arr .U8 n x), ("b", .arr .U8 n y)]
 
-theorem keyEqEnvA_ty {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) (hn : 32 ≤ n.val) :
+theorem keyEqEnvA_ty {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) (hn : 32 ≤ n.val) :
     EnvTy KeyK.Has keyEqΓ (keyEqEnvA x y) := by
   intro z k hz
   simp only [keyEqΓ, List.lookup] at hz
@@ -978,13 +978,13 @@ theorem keyEqEnvA_ty {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) (hn : 
       have h2 : (z == "b") = false := by simpa using hb
       simp [h1, h2] at hz
 
-theorem keyEqEntry_keyArr {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n) :
+theorem keyEqEntry_keyArr {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n) :
     keyEqEntry (keyArr x, keyArr y) = encEnv (keyEqEnvA x y) := by
   rw [keyEqEnvA, encEnv_bindA]
   simp [keyEqEntry, keyArr, AVal.toValue, HaxEnc.enc]
   rfl
 
-theorem keyEqGuard_keyArr {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
+theorem keyEqGuard_keyArr {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n)
     (hn : 32 ≤ n.val) : keyEqGuard (keyArr x, keyArr y) := by
   have hx := x.property
   have hy := y.property
@@ -995,7 +995,7 @@ theorem keyEqGuard_keyArr {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
     at least 32, from the correspondence `keyEq_fnCorres` and the kind assignment
     `keyEqLit_kind`: the reading returns a value, and the value encodes the comparison
     `keyEq` of the two arrays. -/
-theorem keyEqLit_triple {n : Usize} (x y : Aeneas.Std.Array (UScalar .U8) n)
+theorem keyEqLit_triple {n : Usize} (x y : HaxLean.Aeneas.Std.Array (UScalar .U8) n)
     (hn : 32 ≤ n.val) :
     ⦃⌜True⌝⦄ toRustMS keyEqApp keyEqLit (keyEqEnvA x y)
     ⦃⇓ r => ⌜r.1.toValue = HaxEnc.enc (keyEq (keyArr x) (keyArr y))⌝⦄ :=

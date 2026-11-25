@@ -13,7 +13,7 @@ public import CatCrypt.Crypto.SecureCompilation.Ascent.RustMSquareDouble
 /-!
 # `RustM` as a level of the double category of refinement squares
 
-The `Std.WP` interpretation of `Aeneas.Std.RustM` (total correctness: a value satisfies the
+The `Std.WP` interpretation of `HaxLean.Aeneas.Std.RustM` (total correctness: a value satisfies the
 postcondition, a failure the exception postcondition, divergence nothing) is exact at `pure`
 and at `bind`, so `RustM` is a level `WRPDouble.Level` of the thin double category of
 refinement squares. Beside it the specification level is `Id` with `Prop` assertions: a
@@ -63,7 +63,7 @@ universe u
 
 namespace CatCrypt.Hax.RustSemantics.RustMLevel
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open _root_.Std.WP Lean.Order
 open CatCrypt.Refinement RefinementWP
 

@@ -14,7 +14,7 @@ public import HaxAscent.Calculus.IFold
 
 This module gives the loop rule for the square `CorresM P G p V Q` of
 `Ascent/RustMSquare.lean` and derives it from the total-correctness invariant rule
-`Aeneas.Std.loop.spec_decr_nat` of hax-lean.
+`HaxLean.Aeneas.Std.loop.spec_decr_nat` of hax-lean.
 
 ## The loop form
 
@@ -75,7 +75,7 @@ set_option autoImplicit false
 
 namespace Hax.Ascent.RustM
 
-open Aeneas.Std
+open HaxLean.Aeneas.Std
 open CatCrypt.Crypto.SecureCompilation.Ascent (ifold)
 
 variable {C S A : Type}
@@ -84,16 +84,16 @@ variable {C S A : Type}
 
 /-- One trip of the counted loop of `N` trips: below the bound run `body i` and continue
     with the next counter, at the bound stop with the current concrete state. -/
-def countedBody (N : Nat) (body : Nat → C → Aeneas.Std.RustM (Unit × C)) (x : Nat × C) :
-    Aeneas.Std.RustM (ControlFlow (Nat × C) (Unit × C)) :=
+def countedBody (N : Nat) (body : Nat → C → HaxLean.Aeneas.Std.RustM (Unit × C)) (x : Nat × C) :
+    HaxLean.Aeneas.Std.RustM (ControlFlow (Nat × C) (Unit × C)) :=
   if x.1 < N then
     (body x.1 x.2) >>= fun r => .ok (.cont (x.1 + 1, r.2))
   else .ok (.done ((), x.2))
 
 /-- The counted loop of `N` trips over `body`, written with hax-lean's `loop`, starting
     the counter at `0`. -/
-def loopK (N : Nat) (body : Nat → C → Aeneas.Std.RustM (Unit × C)) :
-    C → Aeneas.Std.RustM (Unit × C) :=
+def loopK (N : Nat) (body : Nat → C → HaxLean.Aeneas.Std.RustM (Unit × C)) :
+    C → HaxLean.Aeneas.Std.RustM (Unit × C) :=
   fun c => loop (countedBody N body) (0, c)
 
 /-! ## The square of a `loop` from the invariant rule -/
@@ -104,7 +104,7 @@ def loopK (N : Nat) (body : Nat → C → Aeneas.Std.RustM (Unit × C)) :
     `(V σ, c')` with `Q c' σ`, give the square for the loop. The proof instantiates
     `loop.spec_decr_nat` at `inv σ` and `measure σ`. -/
 theorem corresM_loop {α : Type} {P Q : C → S → Prop} {G : S → Prop} {V : S → A}
-    {body : α → Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α}
+    {body : α → HaxLean.Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α}
     (inv : S → α → Prop) (measure : S → α → Nat)
     (hinit : ∀ c σ, P c σ → G σ → inv σ (init c))
     (hbody : ∀ σ, G σ → ∀ x, inv σ x → WP.spec (body x) (fun r => match r with
@@ -123,7 +123,7 @@ theorem corresM_loop {α : Type} {P Q : C → S → Prop} {G : S → Prop} {V : 
     `fun c => loop body (init c)` holds exactly when, from every entry state, `loop`
     returns `(V σ, c')` for a `c'` related to `σ` by `Q`. -/
 theorem corresM_loop_iff_spec {α : Type} {P Q : C → S → Prop} {G : S → Prop} {V : S → A}
-    {body : α → Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α} :
+    {body : α → HaxLean.Aeneas.Std.RustM (ControlFlow α (A × C))} {init : C → α} :
     CorresM P G (fun c => loop body (init c)) V Q ↔
       ∀ c σ, P c σ → G σ →
         WP.spec (loop body (init c)) (fun y => ∃ c', y = (V σ, c') ∧ Q c' σ) := by
@@ -142,7 +142,7 @@ theorem corresM_loop_iff_spec {α : Type} {P Q : C → S → Prop} {G : S → Pr
     `R c (ifold fa i σ)` either continues with the invariant at `i + 1` and a smaller
     measure `N - i`, or stops at `i = N` returning `((), c)` with `R c (ifold fa N σ)`. -/
 theorem countedBody_spec {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S → Prop}
-    {fa : Nat → S → S} {N : Nat} {body : Nat → C → Aeneas.Std.RustM (Unit × C)}
+    {fa : Nat → S → S} {N : Nat} {body : Nat → C → HaxLean.Aeneas.Std.RustM (Unit × C)}
     (hbody : ∀ i, i < N →
       CorresM R (Gb i) (body i) (fun _ => ()) (fun c σ => R c (fa i σ)))
     (hG : ∀ σ, G σ → ∀ i, i < N → Gb i (ifold fa i σ))
@@ -169,7 +169,7 @@ theorem countedBody_spec {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S
     at `ifold fa N σ`. It is `corresM_loop` at the invariant `i ≤ N ∧ R c (ifold fa i σ)`
     and the measure `N - i`. -/
 theorem corresM_loopK {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S → Prop}
-    {fa : Nat → S → S} {N : Nat} {body : Nat → C → Aeneas.Std.RustM (Unit × C)}
+    {fa : Nat → S → S} {N : Nat} {body : Nat → C → HaxLean.Aeneas.Std.RustM (Unit × C)}
     (hbody : ∀ i, i < N →
       CorresM R (Gb i) (body i) (fun _ => ()) (fun c σ => R c (fa i σ)))
     (hG : ∀ σ, G σ → ∀ i, i < N → Gb i (ifold fa i σ)) :
@@ -183,26 +183,26 @@ theorem corresM_loopK {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S �
 
 /-- An accumulator-passing program `C → RustM C` as a program of the square: the value
     is `()` and the concrete state is the accumulator. -/
-def unitAccK (p : C → Aeneas.Std.RustM C) : C → Aeneas.Std.RustM (Unit × C) :=
+def unitAccK (p : C → HaxLean.Aeneas.Std.RustM C) : C → HaxLean.Aeneas.Std.RustM (Unit × C) :=
   fun c => p c >>= fun c' => .ok ((), c')
 
 /-- `unitAccK p` returns `((), c')` exactly when `p` returns `c'`. -/
-theorem unitAccK_eq_ok {p : C → Aeneas.Std.RustM C} {c c' : C} :
+theorem unitAccK_eq_ok {p : C → HaxLean.Aeneas.Std.RustM C} {c c' : C} :
     unitAccK p c = .ok ((), c') ↔ p c = .ok c' := by
   unfold unitAccK
   cases p c <;> simp
 
 /-- Trip `i` of `fold_range s e inv init body` as a body of the counted loop: `body` at
     the index `s + i`, encoded as `⟨BitVec.ofNat _ (s.val + i)⟩` as in `foldRangeAux`. -/
-def foldRangeTrip {ty : UScalarTy} (s : UScalar ty) (body : C → UScalar ty → Aeneas.Std.RustM C)
-    (i : Nat) : C → Aeneas.Std.RustM (Unit × C) :=
+def foldRangeTrip {ty : UScalarTy} (s : UScalar ty) (body : C → UScalar ty → HaxLean.Aeneas.Std.RustM C)
+    (i : Nat) : C → HaxLean.Aeneas.Std.RustM (Unit × C) :=
   unitAccK fun c => body c ⟨BitVec.ofNat _ (s.val + i)⟩
 
 /-- hax-lean's `fold_range s e inv init body` as a program of the square, with value `()`
     and the accumulator as the concrete state. -/
 def foldRangeK {ty : UScalarTy} (s e : UScalar ty)
-    (inv : C → UScalar ty → Aeneas.Std.RustM Bool)
-    (body : C → UScalar ty → Aeneas.Std.RustM C) : C → Aeneas.Std.RustM (Unit × C) :=
+    (inv : C → UScalar ty → HaxLean.Aeneas.Std.RustM Bool)
+    (body : C → UScalar ty → HaxLean.Aeneas.Std.RustM C) : C → HaxLean.Aeneas.Std.RustM (Unit × C) :=
   unitAccK fun c => HaxBackend.Rust_primitives.Hax.Folds.fold_range s e inv c body
 
 /-- The index of trip `i < e - s` of `fold_range s e` has the value `s + i`: the encoding
@@ -217,7 +217,7 @@ theorem foldRange_index_val {ty : UScalarTy} {s e : UScalar ty} {i : Nat}
 /-- The counted loop from trip `i` with `k = N - i` trips left is `foldRangeAux` of `k`
     trips from the index `s + i`. -/
 theorem loop_countedBody_foldRangeTrip {ty : UScalarTy} (s : UScalar ty)
-    (body : C → UScalar ty → Aeneas.Std.RustM C) (N : Nat) :
+    (body : C → UScalar ty → HaxLean.Aeneas.Std.RustM C) (N : Nat) :
     ∀ k i c, i + k = N →
       loop (countedBody N (foldRangeTrip s body)) (i, c) =
         unitAccK (fun c => HaxBackend.foldRangeAux body k (s.val + i) c) c := by
@@ -245,8 +245,8 @@ theorem loop_countedBody_foldRangeTrip {ty : UScalarTy} (s : UScalar ty)
     `fold_range s e inv · body` is the counted loop `loopK N` over the trips
     `foldRangeTrip s body`, trip `i` running `body` at the index `s + i`. -/
 theorem foldRangeK_eq_loopK {ty : UScalarTy} (s e : UScalar ty)
-    (inv : C → UScalar ty → Aeneas.Std.RustM Bool)
-    (body : C → UScalar ty → Aeneas.Std.RustM C) :
+    (inv : C → UScalar ty → HaxLean.Aeneas.Std.RustM Bool)
+    (body : C → UScalar ty → HaxLean.Aeneas.Std.RustM C) :
     foldRangeK s e inv body = loopK (e.val - s.val) (foldRangeTrip s body) := by
   funext c
   rw [loopK, loop_countedBody_foldRangeTrip s body (e.val - s.val) (e.val - s.val) 0 c
@@ -261,8 +261,8 @@ theorem foldRangeK_eq_loopK {ty : UScalarTy} (s e : UScalar ty)
     `ifold fa (e - s) σ`. The accumulator is the concrete state and the value is `()`. -/
 theorem corresM_foldRange {R : C → S → Prop} {Gb : Nat → S → Prop} {G : S → Prop}
     {fa : Nat → S → S} {ty : UScalarTy} {s e : UScalar ty}
-    {inv : C → UScalar ty → Aeneas.Std.RustM Bool}
-    {body : C → UScalar ty → Aeneas.Std.RustM C}
+    {inv : C → UScalar ty → HaxLean.Aeneas.Std.RustM Bool}
+    {body : C → UScalar ty → HaxLean.Aeneas.Std.RustM C}
     (hbody : ∀ i, i < e.val - s.val →
       CorresM R (Gb i) (foldRangeTrip s body i) (fun _ => ()) (fun c σ => R c (fa i σ)))
     (hG : ∀ σ, G σ → ∀ i, i < e.val - s.val → Gb i (ifold fa i σ)) :
