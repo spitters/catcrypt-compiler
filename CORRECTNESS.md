@@ -680,6 +680,22 @@ Transfer enters both other techniques as a proof step: descent certifies dialect
 lowerings by `param_solve`, and an ascent result over words reaches a specification
 over `ZMod p` through a registered relation.
 
+Descent and ascent meet in one judgement, the refinement square of the
+[refinement-wp](https://github.com/spitters/refinement-wp) package (`Refines`), whose double
+categories are in CatCrypt-core (`CatCryptCore/Refinement/WRPDouble.lean`,
+`CatCryptCore/Refinement/WRPRelSemantics.lean`).
+[RefinementSquares.lean](CatCrypt/Crypto/SecureCompilation/RefinementSquares.lean) maps the
+lax squares of the pass chains and of the ascent levels into refinement squares by
+`WRPRelSemantics.relDouble`, which is full on squares (`WRPRelSemantics.relDouble_sq_iff`).
+The soundness of a certified pass chain is vertical pasting of refinement squares
+(`PassChain.Cert.refSq`, `PassChain.Cert.refSq_append`), and an ascent judgement gives the
+square in which the code refines its specification (`CLevel.refSq_spec_of_corres`,
+`JLevel.corresJ_iff_refSq_spec`, `MLevel.refSq_spec_of_corresM`). In
+[RustMLevel.lean](HaxAscent/RustSemantics/RustMLevel.lean) the `Std.WP` interpretation of
+`RustM` is exact (`RustMLevel.instWPMonadExact`), so `RustM` is a level of the double
+category, and a square with a specification on top and a `RustM` program at the bottom is a
+total-correctness triple (`RustMLevel.sq_iff_triple_guard`).
+
 ## Axioms of a theorem
 
 [BUILDING.md](BUILDING.md#check-axioms) describes how to print the axioms on which a
