@@ -1059,6 +1059,7 @@ CatCrypt.Quantum.Programs.TiltedCHSH
 CatCrypt.Quantum.PurificationFreedom
 CatCrypt.Quantum.QRegisterMeas
 CatCrypt.Quantum.QrunchConnect
+CatCrypt.Quantum.QrunchRefinesUpTo
 CatCrypt.Quantum.QuantumErrorCorrection
 CatCrypt.Quantum.Synthesis.MultiControlledX
 CatCrypt.Quantum.Synthesis.SKReplace
