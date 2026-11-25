@@ -602,8 +602,9 @@ theorem NFEntry.compileR_correct_linked_saved (E : NFEntry) (s : E.Src) (σ : Ab
     * either from a state `sa'` at which `prog` halts from `sa`, whose stack register holds
       its value in `sa`, and whose memory agrees with that of `sa` at every byte outside the
       stack words `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside the words of each pointer
-      region of `σ`, at the registers of `sa`; some run of the address machine on a body
-      from `entryA σ sa` then halts and stores to and loads from `layoutMem σ sa` only,
+      region of `σ`, at the registers of `sa` (the last conjunct, a run of the address machine
+      at some body and fuel,
+      does not relate that body to the bytes and states nothing of their accesses),
     * or, for a nonempty sublist `cs` with distinct names of the data of the linked functions
       of `s` (the table of the functions the program calls), the program is
       `pc ++ shiftProg pc.length Q` for the region `Q` of the code of `cs`, which decodes to
@@ -705,9 +706,10 @@ theorem haxc_correct_auto_saved (m : HaxModule) (σ : AbiLayout) (fname : String
     the bytes decode to a program `prog`, and from every entry state `sa` satisfying
     `σ.Regions`, every value `v` of a source run of `m` from `sa` (`haxRuns σ m sa v`) is read
     back by `σ`, either from a state at which `prog` halts from `sa`, with the entry stack
-    register, the entry bytes outside the stack words and the pointer regions of `σ`, and a
-    halting run of the address machine from `entryA σ sa` whose stores and loads lie in
-    `layoutMem σ sa`, or, for a program `pc ++ shiftProg pc.length Q` calling the region `Q` of
+    register and the entry bytes outside the stack words and the pointer regions of `σ` (the
+    last conjunct there, a run of the address machine at some body and fuel,
+    does not relate that body to the bytes and states nothing of their accesses),
+    or, for a program `pc ++ shiftProg pc.length Q` calling the region `Q` of
     the decoded blocks of the data `cs` of linked functions of `m`, from a state at which the
     program halts through the calls and from a state at which `pc` halts with its calls answered
     by the oracle `tabOracle` of the guarded blocks (`NFEntry.compileR_correct_linked`).

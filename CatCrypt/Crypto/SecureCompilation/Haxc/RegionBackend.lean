@@ -472,8 +472,8 @@ array self-moves, the multiplication fusion, and the cell fold. `regionCoB` and
   entry state satisfying `σ.Regions`, at every valuation the layout reads off it at which
   `p` denotes a value at some fuel, the bytes decode to a program that halts on the machine
   in a state from which `σ` reads back that value, with the entry stack register, the entry
-  System V callee-saved registers, the entry bytes outside the stack words and the pointer
-  regions, and a halting run of the address machine whose accesses lie in `layoutMem`.
+  System V callee-saved registers and the entry bytes outside the stack words and the
+  pointer regions.
 * `abiValOf_widen`, `denVal_wideTy_transTy`: a valuation the layout reads holds 64-bit
   words, so the layout reads its widening; the widened value of a result other than a narrow
   array is its value.
@@ -4100,10 +4100,9 @@ theorem renImage_entry_nil {σ : AbiLayout} {nm : String → String}
     run of `B` the value of its machine register; the stack register holds its value in
     `sa`; and the memory agrees with that of `sa` at every byte outside the stack words
     `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside the words of each pointer region of
-    `σ`, at the registers of `sa`. Some run of the address machine on `body` from
-    `entryA σ sa` halts and stores to and loads from `layoutMem σ sa` only: the accesses of
-    the image simulation lie in these words (`imgStores_export`), and so does the red-zone
-    word (`redW_mem_frameWords`). -/
+    `σ`, at the registers of `sa`. The last conjunct, a run of the address machine on `body`
+    at some frame and fuel, does not relate that frame to the bytes and states nothing of
+    their accesses. -/
 theorem renImage_bytes {σ : AbiLayout} {nm : String → String} {ps : List (String × String)}
     {R : Slots} {outs : List String} {body : Lcmd} {B : List LinstrRM}
     (hg : renImageB σ nm ps R outs body B = true)
@@ -7438,9 +7437,10 @@ theorem coRef_bytes {σ : AbiLayout} {nm : String → String} {fn : String}
     denotes `v` at some fuel, the decoded bytes of `body` halt on the machine from `sa` in
     a state from which `σ` reads back the source value of the result, whose stack register
     holds its value in `sa`, and whose memory agrees with that of `sa` at every byte outside
-    the stack words and the pointer regions of `σ`; some run of the address machine on
-    `body` from `entryA σ sa` halts and stores to and loads from `layoutMem σ sa` only
-    (`coRef_bytes_of_regionExp`). A run of the coalesced and renamed reference is carried to
+    the stack words and the pointer regions of `σ`. The last conjunct, a run of the address
+    machine on `body` at some frame and fuel, does not relate that frame to the bytes and
+    states nothing of their accesses (`coRef_bytes_of_regionExp`).
+    A run of the coalesced and renamed reference is carried to
     the merged code by `regCo_run`, to the code `nop` of the parts by `selfNop_run`, and,
     when that code has a site of the multiplication fusion, to the fused reference by
     `JasminLsemFuseMulHi.fuseMulHi_lsemFuelMemF_pre`, whose final states agree on every
@@ -11412,8 +11412,8 @@ theorem regionBack_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect
     register. The stack register of `sa'` holds its value in `sa`, and the memory of `sa'`
     agrees with that of `sa` at every byte outside the stack words `%rsp + o`,
     `frameLo ≤ o ≤ frameHi`, and outside the words of each pointer region of `σ`, at the
-    registers of `sa`; some run of the address machine on a body from `entryA σ sa` halts
-    and stores to and loads from `layoutMem σ sa` only. -/
+    registers of `sa`. The last conjunct, a run of the address machine at some body and fuel,
+    does not relate that body to the bytes and states nothing of their accesses. -/
 theorem regionBack_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
     {bytes : List (BitVec 8)} (h : regionBack σ a p = some (P, bytes))
@@ -11604,9 +11604,9 @@ theorem compileRegion_spec {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDial
     register of `sa'` holds its value in `sa`, so does every callee-saved register of
     System V (`DecodedCT.calleeSaved`: `%rbx`, `%rbp`, `%r12` to `%r15`), and the memory of
     `sa'` agrees with that of `sa` at every byte outside the stack words `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside
-    the words of each pointer region of `σ`, at the registers of `sa`; some run of the address
-    machine on a body from `entryA σ sa` halts and stores to and loads from `layoutMem σ sa`
-    only. -/
+    the words of each pointer region of `σ`, at the registers of `sa`. The last conjunct, a run
+    of the address machine at some body and fuel,
+    does not relate that body to the bytes and states nothing of their accesses. -/
 theorem compileRegion_correct_saved {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
     {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))
@@ -11638,9 +11638,9 @@ theorem compileRegion_correct_saved {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt j
     machine from `sa` in a state `sa'` from which `σ` reads back the widened result. The stack
     register of `sa'` holds its value in `sa`, and the memory of `sa'` agrees with that of
     `sa` at every byte outside the stack words `%rsp + o`, `frameLo ≤ o ≤ frameHi`, and outside
-    the words of each pointer region of `σ`, at the registers of `sa`; some run of the address
-    machine on a body from `entryA σ sa` halts and stores to and loads from `layoutMem σ sa`
-    only. -/
+    the words of each pointer region of `σ`, at the registers of `sa`. The last conjunct, a run
+    of the address machine at some body and fuel,
+    does not relate that body to the bytes and states nothing of their accesses. -/
 theorem compileRegion_correct {σ : AbiLayout} {a : AbiNames} {Γ : Ctxt jasminDialect}
     {t : JasminTy} {p : NFProg jasminDialect Γ [t]} {P : Lprog}
     {bytes : List (BitVec 8)} (h : compileRegion σ a p = some (P, bytes))

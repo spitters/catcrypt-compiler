@@ -226,8 +226,9 @@ theorem NFEntry.compileR_spec {E : NFEntry} {s : E.Src} {σ : AbiLayout} {fname 
     of the machine on the decoded bytes in a state from which `σ` reads back `v`, whose stack
     register and System V callee-saved registers (`DecodedCT.calleeSaved`) hold their entry
     values, and whose memory agrees with the entry memory at every byte outside the stack
-    words and the pointer regions of `σ`; some run of the address machine on a body from
-    `entryA σ sa` halts and stores to and loads from `layoutMem σ sa` only. The proof
+    words and the pointer regions of `σ`. The last conjunct, a run of the address machine at
+    some body and fuel, does not relate that body to the bytes and states nothing of their accesses.
+    The proof
     composes the leg of the region front `E.toFrontLegOfR` at the structured program of
     `NFEntry.compileR_spec` with `RegionBackend.compileRegion_correct_saved`: the compiled program has no `call`, so it
     denotes the same value at the environment in which every call refuses
@@ -263,8 +264,9 @@ theorem NFEntry.compileR_correct_saved (E : NFEntry) (s : E.Src) (σ : AbiLayout
     from `sa` is matched by a halting run of the machine on the decoded bytes in a state from
     which `σ` reads back `v`, whose stack register holds its entry value, and whose memory
     agrees with the entry memory at every byte outside the stack words and the pointer
-    regions of `σ`; some run of the address machine on a body from `entryA σ sa` halts and
-    stores to and loads from `layoutMem σ sa` only. The proof composes the leg of the region
+    regions of `σ`. The last conjunct, a run of the address machine at some body and fuel,
+    does not relate that body to the bytes and states nothing of their accesses.
+    The proof composes the leg of the region
     front `E.toFrontLegOfR` at the structured program of `NFEntry.compileR_spec` with
     `RegionBackend.compileRegion_correct`: the compiled program has no `call`, so it denotes
     the same value at the environment in which every call refuses

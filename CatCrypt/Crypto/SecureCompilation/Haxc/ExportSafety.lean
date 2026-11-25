@@ -8,13 +8,15 @@ module
 public import CatCrypt.Crypto.SecureCompilation.Haxc.ExportContract
 
 /-!
-# The memory accessed by a compiled export
+# The memory owned by the precondition of an export
 
-For a module without linked functions, the address machine runs the body of the compiled
-export from the entry state to a halt, and every store and every load of that run lies in the
-memory that the precondition `SepLogic.X86.abiPre σ rv` of the layout owns: the stack words
+The memory that the precondition `SepLogic.X86.abiPre σ rv` of a layout owns: the stack words
 `%rsp + o`, `frameLo ≤ o ≤ frameHi`, the words of each pointer region and the stack parameter
 words, at the entry register values `rv`.
+
+This module states no bound on the memory accesses of compiled code: the address-machine
+conjunct of `haxc_safe` and `haxc_contract_safe` quantifies the body and the fuel
+existentially and does not relate the body to the bytes.
 
 ## Main definitions
 
@@ -24,8 +26,9 @@ words, at the entry register values `rv`.
 
 * `layoutMem_subset_abiMem`: the stack words and the pointer regions at the registers of a
   state satisfying `abiPre σ rv` lie in `abiMem σ rv`.
-* `haxc_safe`: a compiled export accesses only the memory its precondition owns.
-* `haxc_contract_safe`: the contract `haxc_contract` together with the access bound.
+* `haxc_safe`: some body has a halting run of the address machine within `abiMem`. The body
+  is not related to the compiled bytes.
+* `haxc_contract_safe`: the contract `haxc_contract` together with the statement of `haxc_safe`.
 -/
 
 @[expose] public section
@@ -69,7 +72,9 @@ theorem layoutMem_subset_abiMem {σ : AbiLayout} {rv : String → BitVec 64} {sa
     rw [hp1] at hx
     exact Or.inl (Or.inr (Or.inr (Or.inr (mem_fp_bigSep.2 ⟨_, List.mem_map.2 ⟨p, hp, rfl⟩, hx⟩))))
 
-/-- **A compiled export accesses only the memory its precondition owns.** For the result of
+/-- **Some body runs within the memory of the precondition.** The body and the fuel are
+    existential and unrelated to `bytes`, so this is no bound on the accesses of the compiled
+    code. For the result of
     `compileA` on a module `m` with `m.linked = []`, at every entry state `sa` satisfying the
     precondition `abiPre σ rv` with a source run of `m` to a value, some run of the address
     machine on a body from the entry state `entryA σ sa` halts, and every store and every load
@@ -94,11 +99,13 @@ theorem haxc_safe (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lprog)
     haltedA_of_runA _ body fuel (entryA σ sa) false (s, zf) hrA,
     hacc.mono fun _ h => ⟨fun x hx => hsub (h.1 x hx), fun x hx => hsub (h.2 x hx)⟩⟩
 
-/-- **The compiler contract with the access bound.** For the result of `compileA` on a module
+/-- **The compiler contract with the statement of `haxc_safe`.** For the result of `compileA`
+    on a module
     `m` with `m.linked = []`, every program decoded from the bytes meets `exportSpec σ m`
     (`haxc_contract`), and from every state satisfying the precondition at the entry register
     values `rv` some halting run of the address machine on a body from `entryA σ sa` stores to
-    and loads from `abiMem σ rv` only (`haxc_safe`). -/
+    and loads from `abiMem σ rv` only (`haxc_safe`), where that body is not related to the
+    bytes: this is no bound on the accesses of the compiled code. -/
 theorem haxc_contract_safe (m : HaxModule) (σ : AbiLayout) (fname : String) (P : Lprog)
     (bytes : List (BitVec 8)) (hc : compileA m σ fname = some (P, bytes))
     (hlink : m.linked = []) (prog : List X86Backend.LprogBytesDecode.RInstr)
