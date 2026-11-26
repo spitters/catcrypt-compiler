@@ -376,17 +376,17 @@ theorem slice_update_square (s : Slice α) (r : core.ops.range.Range Usize) (ss 
     refine listRel_of_getElem? (by rw [hsz]; simpa using hlen) fun j a b ha hb => ?_
     rw [hget j] at hb
     by_cases h1 : j < r.start.val
-    · rw [List.setSlice!_getElem?_prefix _ _ _ _ h1] at ha
+    · rw [HaxLean.List.setSlice!_getElem?_prefix _ _ _ _ h1] at ha
       rw [ite_eq_right (by omega)] at hb
       exact listRel_getElem? hv ha hb
     · by_cases h2 : j < r.start.val + ss.val.length
       · have hj : j < s.val.length := by
           have := (List.getElem?_eq_some_iff.mp ha).1
           simpa using this
-        rw [List.setSlice!_getElem?_middle _ _ _ _ ⟨by omega, by omega, hj⟩] at ha
+        rw [HaxLean.List.setSlice!_getElem?_middle _ _ _ _ ⟨by omega, by omega, hj⟩] at ha
         rw [ite_eq_left ⟨by omega, h2, by omega⟩] at hb
         exact listRel_getElem? hs ha hb
-      · rw [List.setSlice!_getElem?_suffix _ _ _ _ (by omega)] at ha
+      · rw [HaxLean.List.setSlice!_getElem?_suffix _ _ _ _ (by omega)] at ha
         rw [ite_eq_right (by omega)] at hb
         exact listRel_getElem? hv ha hb
   · cases h
