@@ -1622,7 +1622,7 @@ theorem monoFCore :
     refine ⟨?_, hreg⟩
     intro blks
     induction blks with
-    | nil => intro s zf bz h; rwa [runFBsL_nil] at h ⊢
+    | nil => intro s zf bz h; rw [runFBsL_nil] at h ⊢ <;> assumption
     | cons blk rest ihr =>
         intro s zf bz h
         rw [runFBsL_cons] at h ⊢

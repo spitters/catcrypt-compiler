@@ -801,7 +801,7 @@ theorem monoCore (env : LeafEnvM) : ∀ wf, MonoAt env wf := by
     refine ⟨?_, hreg⟩
     intro blks
     induction blks with
-    | nil => intro s b h; rwa [runIBsL_nil] at h ⊢
+    | nil => intro s b h; rw [runIBsL_nil] at h ⊢ <;> assumption
     | cons blk rest ihr =>
         intro s b h
         rw [runIBsL_cons] at h ⊢

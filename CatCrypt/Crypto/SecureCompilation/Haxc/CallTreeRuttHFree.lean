@@ -5,7 +5,7 @@ Authors: CatCrypt Contributors
 -/
 module
 
-public import CatCryptCore.Container.CodeRel
+public import PolyFun.PFunctor.Free.QuotientRel
 public import CatCryptCore.Crypto.Party.ViewRelCode
 public import CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRutt
 public import CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeInterpSP
@@ -43,6 +43,7 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.Haxc.CallTreeRuttHFree
 
 open CatCrypt.Container CatCrypt.Core CatCrypt.Relational
+open PFunctor (SigRel HFreeRel RelLift)
 open CatCrypt.Crypto.Party (rHoareRelLift)
 open CatCrypt.Crypto.SecureCompilation.Haxc.NFCallTree
 open CatCrypt.Crypto.SecureCompilation.Haxc.TargetCallTree
