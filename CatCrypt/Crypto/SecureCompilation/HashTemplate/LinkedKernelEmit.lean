@@ -30,12 +30,15 @@ The command line:
   measures the stages one process at a time.
 
 A row prints one tab-separated line: the row name, `yes` or `no`, the frame size of the code,
-the byte count, the read-only flag of `frameCompile` (`-` for a compiler row), and the wall
-time of the call in milliseconds. A refused row prints `refused` and the process exits with code 3.
+the byte count, the read-only flag of `frameCompile` (`-` for a compiler row), for a row with a
+check `check=true` or `check=false`, and the wall time of the call in milliseconds. A row with a
+check writes its object only when the check is `true`; a row with a false check prints its line
+and the process exits with code 3 without writing the object. A refused row prints `refused` and
+the process exits with code 3.
 
 ## Main definitions
 
-* `Row`: a row, with its name, symbol, object path and call.
+* `Row`: a row, with its name, symbol, object path, call and optional check.
 * `rowFrameCompile`, `aeneasBytes`: the calls of a frame row and of a row of the Aeneas front.
 * `runRow`: run one row and write its bytes as an ELF object.
 * `FrameProg`, `stageNodes`: a straight-line program of a frame row and its node count after
@@ -65,6 +68,9 @@ structure Row where
   path : System.FilePath
   /-- The call of the back half. -/
   call : Unit → Out
+  /-- The check the object must pass before it is written (`frameCheck` of a frame row);
+      `none` for a row without one. -/
+  check : Option (Unit → Bool) := none
 
 /-- `frameCompile` without its printed program. -/
 def rowFrameCompile (σ : AbiLayout) (fname : String) {Γ : Ctxt jasminDialect} {t : JasminTy}
@@ -79,8 +85,9 @@ def aeneasBytes (s : AeneasFront.AeSrc) (σ : AbiLayout) (fname : String) : Out 
 def objectByteArray (bs : List (BitVec 8)) : ByteArray :=
   ByteArray.mk (bs.map fun b => b.toNat.toUInt8).toArray
 
-/-- Runs the row `r`: prints its line, and writes its object when the call is accepted;
-    `false` when the call is refused. -/
+/-- Runs the row `r`: prints its line, and writes its object when the call is accepted and the
+    check of the row, when it has one, is `true`; `false` when the call is refused or the check
+    is `false`. -/
 def runRow (r : Row) : IO Bool := do
   let t0 ← IO.monoMsNow
   let res ← IO.lazyPure fun _ => r.call ()
@@ -88,9 +95,16 @@ def runRow (r : Row) : IO Bool := do
   let out ← IO.getStdout
   match res with
   | some (F, bs, ro) =>
+      let chk : Option Bool ← match r.check with
+        | some f => do pure (some (← IO.lazyPure fun _ => f ()))
+        | none => pure none
+      let chkCol : List String := match chk with
+        | some b => [s!"check={b}"]
+        | none => []
       out.putStrLn ("\t".intercalate
-        [r.name, "yes", F, toString bs.length, ro, toString (t1 - t0)])
+        ([r.name, "yes", F, toString bs.length, ro] ++ chkCol ++ [toString (t1 - t0)]))
       (← IO.getStdout).flush
+      if chk == some false then return false
       if let some d := r.path.parent then IO.FS.createDirAll d
       IO.FS.writeBinFile r.path (objectByteArray (buildElfObject r.sym bs))
       return true

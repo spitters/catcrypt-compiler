@@ -7,6 +7,7 @@ import CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2LinkedData
 import CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2LinkedData
 import CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinkedData
 import CatCrypt.Crypto.SecureCompilation.HashTemplate.TemplateKernel
+import CatCrypt.Crypto.SecureCompilation.HashTemplate.NarrowKernel
 import CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmit
 import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.Compiled
 import CatCrypt.Crypto.SecureCompilation.AeneasFront.Demo.CompiledOptAdd
@@ -20,8 +21,11 @@ set_option compiler.extract_closed false
 
 The root of an executable, imported by no module. Each row evaluates `frameCompile` (the region
 back half at the frame of the code) on one straight-line kernel under the layout of its linked
-function, and writes the bytes it returns as an ELF64 relocatable object
-(`ElfObject.buildElfObject`) with one global symbol (`LinkedKernelEmit.runRow`). By
+function, and evaluates the check its linked module proves by `native_decide` (`frameCheck`;
+`narrowFrameCheck` for `sha256_compress`) with the store policy and clobber set of the
+`*LinkedData` module. The row writes the bytes it returns as an ELF64 relocatable object
+(`ElfObject.buildElfObject`) with one global symbol (`LinkedKernelEmit.runRow`) only when the
+check is `true`, and prints the check in its line. By
 `frameCompile_spec` these are the bytes that `compileRegion` returns at `redLayout σ F`, the
 layout of the kernel's linked function at the frame `F` of its code.
 
@@ -70,27 +74,40 @@ namespace CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedKernelEmit
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.Haxc
-open CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked (sha512Abi sha256Abi)
-open CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked (blake2bKAbi)
-open CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked (keccakFAbi keccakFLayoutBody)
+open CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked
+  (sha512Abi sha256Abi sha512Pol sha512Clob)
+open CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked (sha256KPol sha256KClob)
+open CatCrypt.Crypto.SecureCompilation.HashTemplate.Blake2Linked
+  (blake2bKAbi blake2bKPol blake2bKClob)
+open CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked
+  (keccakFAbi keccakFLayoutBody keccakFPol keccakFClob)
 
-/-- The rows of the executable. -/
+/-- The rows of the executable. Each frame row carries the check its `*Linked` module proves
+    by `native_decide`: `frameCheck`, and for `sha256_compress` `narrowFrameCheck`. -/
 def rows : List Row :=
   [ { name := "sha512_compress", sym := "catcrypt_sha512_compress"
       path := "bench/hash_linked_compare/gen/sha512_compress.o"
       call := fun _ => rowFrameCompile sha512Abi "sha512_compress"
-        (NFProg.ofCom (sha2CompressBodyP sha512P)) },
+        (NFProg.ofCom (sha2CompressBodyP sha512P))
+      check := some fun _ => frameCheck sha512Abi (nfAbiNames "sha512_compress" sha512Abi)
+        (NFProg.ofCom (sha2CompressBodyP sha512P)) sha512Pol sha512Clob },
     { name := "sha256_compress", sym := "catcrypt_sha256_compress"
       path := "bench/hash_linked_compare/gen/sha256_compress.o"
       call := fun _ => rowFrameCompile sha256Abi "sha256_compress"
-        (NFProg.ofCom (sha2CompressBodyP sha256P)) },
+        (NFProg.ofCom (sha2CompressBodyP sha256P))
+      check := some fun _ => narrowFrameCheck sha256Abi (nfAbiNames "sha256_compress" sha256Abi)
+        (NFProg.ofCom (sha2CompressBodyP sha256P)) sha256KPol sha256KClob },
     { name := "blake2b_compress", sym := "catcrypt_blake2b_compress"
       path := "bench/hash_linked_compare/gen/blake2b_compress.o"
       call := fun _ => rowFrameCompile blake2bKAbi "blake2b_compress"
-        (NFProg.ofCom (blake2CompressBodyP blake2bP)) },
+        (NFProg.ofCom (blake2CompressBodyP blake2bP))
+      check := some fun _ => frameCheck blake2bKAbi (nfAbiNames "blake2b_compress" blake2bKAbi)
+        (NFProg.ofCom (blake2CompressBodyP blake2bP)) blake2bKPol blake2bKClob },
     { name := "keccak_f1600", sym := "catcrypt_keccak_f1600"
       path := "bench/hash_linked_compare/gen/keccak_f1600.o"
-      call := fun _ => rowFrameCompile keccakFAbi "keccak_f" (NFProg.ofCom keccakFLayoutBody) },
+      call := fun _ => rowFrameCompile keccakFAbi "keccak_f" (NFProg.ofCom keccakFLayoutBody)
+      check := some fun _ => frameCheck keccakFAbi (nfAbiNames "keccak_f" keccakFAbi)
+        (NFProg.ofCom keccakFLayoutBody) keccakFPol keccakFClob },
     { name := "aeneas_incr_array", sym := "catcrypt_aeneas_incr_array"
       path := "bench/aeneas_front/gen/incr_array.o"
       call := fun _ => aeneasBytes AeneasFront.Demo.incrArraySrc AeneasFront.Demo.incrAbi

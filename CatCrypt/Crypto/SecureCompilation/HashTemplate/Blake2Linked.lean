@@ -29,7 +29,8 @@ reference compression `blake2CompressRef blake2bP`.
 
 * `blake2bKAbi` (module `Blake2LinkedData`): the layout at which the frame size of the code
   is read.
-* `blake2bKFrame`, `blake2bKPol`: the frame size of the code and its store policy.
+* `blake2bKFrame`: the frame size of the code.
+* `blake2bKPol`, `blake2bKClob` (module `Blake2LinkedData`): its store policy and clobber set.
 * `blake2bKRef`: the reference compression on source values.
 * `blake2bKData`: the data of the template kernel at a frame size.
 * `blake2bKernel`: the linked function of the compiled template.
@@ -65,21 +66,11 @@ open _root_.Hax (Value)
 
 /-! ## 1. The layout -/
 
-/-- The registers the code of the BLAKE2b compression may change: every general-purpose
-    register other than the stack register. -/
-def blake2bKClob : List String :=
-  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
-    "%r12", "%r13", "%r14", "%r15"]
-
 /-- **The frame size of the code of the BLAKE2b compression**: `codeFrame` of the compiled
     template under `blake2bKAbi`. -/
 def blake2bKFrame : Nat :=
   codeFrame blake2bKAbi (nfAbiNames "blake2b_compress" blake2bKAbi)
     (NFProg.ofCom (blake2CompressBodyP blake2bP))
-
-/-- **The store policy of the BLAKE2b compression**: the red zone of `redZone` bytes, and the
-    out window of the 8 words of the output array at the entry value of `%rdi`. -/
-def blake2bKPol : StorePol := ⟨redZone, [("%rdi", 0, 64)]⟩
 
 /-! ## 2. The meaning -/
 

@@ -28,7 +28,8 @@ reference compression `sha2CompressRef sha512P`.
 
 * `sha512Abi` (module `Sha2LinkedData`): the layout at which the frame size of the code is
   read.
-* `sha512Frame`, `sha512Pol`: the frame size of the code and its store policy.
+* `sha512Frame`: the frame size of the code.
+* `sha512Pol`, `sha512Clob` (module `Sha2LinkedData`): its store policy and clobber set.
 * `sha512Ref`: the reference compression on source values.
 * `sha512Data`: the data of the template kernel at a frame size.
 * `sha512Kernel`: the linked function of the compiled template.
@@ -64,21 +65,11 @@ open _root_.Hax (Value)
 
 /-! ## 1. The layout -/
 
-/-- The registers the code of the SHA-512 compression may change: every general-purpose
-    register other than the stack register. -/
-def sha512Clob : List String :=
-  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
-    "%r12", "%r13", "%r14", "%r15"]
-
 /-- **The frame size of the code of the SHA-512 compression**: `codeFrame` of the compiled
     template under `sha512Abi`. -/
 def sha512Frame : Nat :=
   codeFrame sha512Abi (nfAbiNames "sha512_compress" sha512Abi)
     (NFProg.ofCom (sha2CompressBodyP sha512P))
-
-/-- The store policy of the code of the SHA-512 compression: the red zone of `redZone` bytes,
-    and the out window of the 64 bytes of the output array at `%rdi`. -/
-def sha512Pol : StorePol := ⟨redZone, [("%rdi", 0, 64)]⟩
 
 /-! ## 2. The meaning -/
 

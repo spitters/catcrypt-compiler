@@ -7,9 +7,10 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2
 public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+public import CatCrypt.Crypto.SecureCompilation.HashTemplate.TemplateKernel
 
 /-!
-# The layouts of the SHA-2 compression kernels
+# The layouts, store policies and clobber sets of the SHA-2 compression kernels
 
 The layout `sha512Abi` of the linked SHA-512 compression `Sha2Linked.sha512Kernel` at which the
 frame size of its code is read, and the layout `sha256Abi` of the SHA-256 compression at the
@@ -23,6 +24,8 @@ so an executable that imports it computes no compile at start-up.
 * `sha512LayoutFrame`: the bound of the stack words of the layout.
 * `sha512Abi`: the layout at which the frame size of the code is read.
 * `sha256Abi`: the u64-slot layout of the SHA-256 compression.
+* `sha512Clob`, `sha512Pol`, `Sha256Linked.sha256KClob`, `Sha256Linked.sha256KPol`: the
+  clobber sets and the store policies of the two kernels, the inputs of their `frameCheck`.
 -/
 
 @[expose] public section
@@ -32,6 +35,17 @@ set_option autoImplicit false
 namespace CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked
 
 open CatCrypt.Crypto.SecureCompilation.Haxc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (StorePol)
+
+/-- The registers the code of the SHA-512 compression may change: every general-purpose
+    register other than the stack register. -/
+def sha512Clob : List String :=
+  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
+    "%r12", "%r13", "%r14", "%r15"]
+
+/-- The store policy of the code of the SHA-512 compression: the red zone of `redZone` bytes,
+    and the out window of the 64 bytes of the output array at `%rdi`. -/
+def sha512Pol : StorePol := ⟨redZone, [("%rdi", 0, 64)]⟩
 
 /-- The bound of the stack words of the layout at which the frame size of the code is read. -/
 def sha512LayoutFrame : Nat := 4096
@@ -53,3 +67,19 @@ def sha256Abi : AbiLayout :=
     (-(sha512LayoutFrame : Int)) (-8) [] []
 
 end CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha2Linked
+
+namespace CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked
+
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (StorePol)
+
+/-- The registers the code of the SHA-256 compression may change: every general-purpose
+    register other than the stack register. -/
+def sha256KClob : List String :=
+  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
+    "%r12", "%r13", "%r14", "%r15"]
+
+/-- **The store policy of the SHA-256 compression**: the red zone of `redZone` bytes, and the
+    out window of the 8 slots of the output array at the entry value of `%rdi`. -/
+def sha256KPol : StorePol := ⟨redZone, [("%rdi", 0, 64)]⟩
+
+end CatCrypt.Crypto.SecureCompilation.HashTemplate.Sha256Linked

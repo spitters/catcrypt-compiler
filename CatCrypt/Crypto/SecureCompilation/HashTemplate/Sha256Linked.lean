@@ -27,8 +27,8 @@ other initial hash values, which the kernel does not contain, so SHA-224 uses th
 
 ## Main definitions
 
-* `sha256KFrame`, `sha256KPol`, `sha256KClob`: the frame size of the code, its store policy and
-  its clobber set, at the layout `sha256Abi`.
+* `sha256KFrame`: the frame size of the code at the layout `sha256Abi`.
+* `sha256KPol`, `sha256KClob` (module `Sha2LinkedData`): its store policy and clobber set.
 * `sha256KRef`: the reference compression on source values.
 * `sha256KData`: the data of the narrow-width template kernel at a frame size.
 * `sha256Kernel`, `sha256KernelAbi`: the linked function of the compiled template, and its
@@ -67,21 +67,11 @@ open _root_.Hax (Value)
 
 /-! ## 1. The layout -/
 
-/-- The registers the code of the SHA-256 compression may change: every general-purpose
-    register other than the stack register. -/
-def sha256KClob : List String :=
-  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
-    "%r12", "%r13", "%r14", "%r15"]
-
 /-- **The frame size of the code of the SHA-256 compression**: `codeFrame` of the compiled
     template under `sha256Abi`. -/
 def sha256KFrame : Nat :=
   codeFrame sha256Abi (nfAbiNames "sha256_compress" sha256Abi)
     (NFProg.ofCom (sha2CompressBodyP sha256P))
-
-/-- **The store policy of the SHA-256 compression**: the red zone of `redZone` bytes, and the
-    out window of the 8 slots of the output array at the entry value of `%rdi`. -/
-def sha256KPol : StorePol := ⟨redZone, [("%rdi", 0, 64)]⟩
 
 /-! ## 2. The meaning -/
 

@@ -7,13 +7,15 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.HashTemplate.Keccak
 public import CatCrypt.Crypto.SecureCompilation.Haxc.AbiLayout
+public import CatCrypt.Crypto.SecureCompilation.HashTemplate.TemplateKernel
 
 /-!
 # The layout and the template of the Keccak-f[1600] kernel
 
 The layout `keccakFAbi` of the linked Keccak-f[1600] permutation `KeccakLinked.keccakFKernel`
-at which the frame size of its code is read, and the template `keccakFLayoutBody` over the
-context of the two arrays of that layout. The module defines no constant whose value runs the
+at which the frame size of its code is read, the template `keccakFLayoutBody` over the
+context of the two arrays of that layout, and the store policy and the clobber set of the
+check `frameCheck` of the kernel. The module defines no constant whose value runs the
 back half, so an executable that imports it computes no compile at start-up.
 
 ## Main definitions
@@ -22,6 +24,7 @@ back half, so an executable that imports it computes no compile at start-up.
   read.
 * `keccakFCtxt`, `keccakFHom`: the context of the layout and the renaming into it.
 * `keccakFLayoutBody`: the template over the context of the input and the output array.
+* `keccakFClob`, `keccakFPol`: the clobber set and the store policy of the kernel.
 -/
 
 @[expose] public section
@@ -33,6 +36,17 @@ namespace CatCrypt.Crypto.SecureCompilation.HashTemplate.KeccakLinked
 open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.Haxc
+open CatCrypt.Crypto.SecureCompilation.X86Backend.Callee (StorePol)
+
+/-- The registers the code of the permutation may change: every general-purpose register
+    other than the stack register. -/
+def keccakFClob : List String :=
+  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
+    "%r12", "%r13", "%r14", "%r15"]
+
+/-- The store policy of the code of the permutation: the red zone of `redZone` bytes, and the
+    out window of the 200 bytes of the output array at `%rdi`. -/
+def keccakFPol : StorePol := ⟨redZone, [("%rdi", 0, 200)]⟩
 
 /-- **The layout of the Keccak-f[1600] permutation** `keccak_f(dst, src)` at which the frame
     size of the code is read: the output array `dst` (25 words) at `%rdi`, the input array

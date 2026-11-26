@@ -34,6 +34,8 @@ frame fits and the template check holds at it) is decided by evaluation.
   frame size of the code is read.
 * `keccakFLayoutBody` (module `KeccakLinkedData`): the template over the context of the input
   and the output array.
+* `keccakFPol`, `keccakFClob` (module `KeccakLinkedData`): the store policy and the clobber set
+  of the kernel.
 * `keccakFRef`: the reference permutation on source values.
 * `keccakFFrame`: the frame size of the compiled code.
 * `keccakFData`: the data of the template kernel at a frame size.
@@ -68,16 +70,6 @@ open CatCrypt.Crypto.Hax (LinkedFn)
 open _root_.Hax (Value)
 
 /-! ## 1. The layout -/
-
-/-- The registers the code of the permutation may change: every general-purpose register
-    other than the stack register. -/
-def keccakFClob : List String :=
-  ["%rax", "%rbx", "%rcx", "%rdx", "%rsi", "%rdi", "%rbp", "%r8", "%r9", "%r10", "%r11",
-    "%r12", "%r13", "%r14", "%r15"]
-
-/-- The store policy of the code of the permutation: the red zone of `redZone` bytes, and the
-    out window of the 200 bytes of the output array at `%rdi`. -/
-def keccakFPol : StorePol := ⟨redZone, [("%rdi", 0, 200)]⟩
 
 /-! ## 2. The meaning -/
 
