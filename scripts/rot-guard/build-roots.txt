@@ -414,7 +414,7 @@ CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitMldsa
 CatCrypt.Crypto.SecureCompilation.FieldNtt8EmitQ
 CatCrypt.Crypto.SecureCompilation.FieldWidenMulEmitCurve
 CatCrypt.Crypto.SecureCompilation.FrontJasminCT
-CatCrypt.Crypto.SecureCompilation.HashTemplate.AesBitslice
+CatCrypt.Crypto.SecureCompilation.HashTemplate.AesCipher
 CatCrypt.Crypto.SecureCompilation.HashTemplate.ChaChaLinked
 CatCrypt.Crypto.SecureCompilation.HashTemplate.Gf128
 CatCrypt.Crypto.SecureCompilation.HashTemplate.LinkedAbi
