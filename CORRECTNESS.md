@@ -203,9 +203,9 @@ tables with the accepted programs.
   `nfToRustM_sim` (`AeneasFront/Loops.lean`) shows that its values are values of the compiler's
   denotation. `xcheck_sound` (`AeneasFront/XCheck.lean`) states that when the canonical forms of
   the hax and the Aeneas translations of a function are equal, a hax run and an Aeneas run from
-  one entry state return the same value. The flat certificate `f xs = .ok y` is the leaf `ok y` of upstream's
-  interaction-tree monad: `RustM.toITree` with `toITree_eq_ok_iff` and `loop_toITree_of_ok`
-  ([the module `ITreeResult` of hax-lean](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean)).
+  one entry state return the same value. The flat certificate `f xs = .ok y` is the result `ok y` of upstream's
+  interaction-tree monad: `toUp` with `toUp_eq_ok_iff` and `AgreesUp.loop` (package catcrypt-aeneas,
+  `CatCryptAeneas.Agree`).
   The Lean front `reifyImp%` / `reifyField%` reads a Lean function as a typed
   hax-lean literal that enters `compileA`, with `leanFront_correct` and
   `leanFront_correct_mixed` (section "The Lean front" below). On a module with linked functions,

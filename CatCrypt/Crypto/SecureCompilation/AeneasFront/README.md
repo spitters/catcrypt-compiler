@@ -123,12 +123,11 @@ Aeneas translations.
 
 **The interaction-tree monad of upstream Aeneas.** Upstream types generated code against
 `Result α := ITree RustEffect α`; the certificate of this front, `fn a = .ok y`, is in the flat
-`RustM`. The map `RustM.toITree` of hax-lean
-([the module `ITreeResult`](https://github.com/spitters/hax-lean/blob/master/HaxLean/Rust/ITreeResult.lean))
-is a monad morphism (`toITree_bind`) and injective, with `toITree x = ok y ↔ x = .ok y`
-(`toITree_eq_ok_iff`) and, for an `ok` run of the flat `loop`, an `ok` run of the upstream `loop`
-on the image of the body (`loop_toITree_of_ok`). A value of the Aeneas front is thus a leaf
-`ok y` of the upstream `Result` computation.
+`RustM`. The map `toUp` of the package catcrypt-aeneas (`CatCryptAeneas.Agree`) from the flat
+`RustM` to upstream `RustM` is a monad morphism (`toUp_bind`, `toUp_pure`) and injective, with
+`toUp x = ok y ↔ x = .ok y` (`toUp_eq_ok_iff`), and the flat and upstream `loop` agree on
+agreeing bodies, divergence included (`AgreesUp.loop`). A value of the Aeneas front is thus the
+result `ok y` of the upstream computation.
 
 **Bytes of Aeneas test functions.** Three functions of the Aeneas test suite (commit b08bf81,
 copied unchanged in `Demo/Test*.lean`) are compiled with both theorems instantiated:
