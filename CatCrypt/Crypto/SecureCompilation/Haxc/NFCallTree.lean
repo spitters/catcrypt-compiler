@@ -7,6 +7,7 @@ module
 
 public import CatCrypt.Crypto.SecureCompilation.Haxc.NFChain
 public import Cslib.Foundations.Data.PFunctor.Free
+public import CatCryptCore.Crypto.UCMonad.EventSig
 
 /-!
 # The call tree of the source semantics of `compileA`
@@ -66,17 +67,8 @@ open CatCrypt.Core
 
 /-! ## The free monad -/
 
-/-- An event signature: a type of events and, for each event, the type of its responses. -/
-structure EventSig where
-  /-- The events. -/
-  Event : Type
-  /-- The responses to an event. -/
-  Resp : Event → Type
-
-/-- The polynomial functor of an event signature: positions are events, directions answers. -/
-def sigPF (E : EventSig) : PFunctor.{0, 0} where
-  A := E.Event
-  B := E.Resp
+-- The event signatures of the bounded interaction trees and their polynomial functors.
+export UCMonad.ITreeNUC (EventSig sigPF)
 
 /-- The finite interaction tree over the event signature `E`: the free monad of the polynomial
     functor `sigPF E`. Its leaves and events are `CallTree.ret` and `CallTree.vis`. -/
