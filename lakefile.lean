@@ -3860,7 +3860,7 @@ lean_lib HaxAscent where
 -- `CatCryptCore.Crypto.RCGate`, which `Haxc.RCInstance` imports, and with the
 -- `CATCRYPT_KAT_MS_SCALE` factor of `#kat` that CI sets).
 require catcryptCore from git
-  "https://github.com/spitters/CatCrypt-core.git" @ "325a2886524eb9dc8a8fdcda4347878151000619"
+  "https://github.com/spitters/CatCrypt-core.git" @ "3293ade17126d008bcf8dfbe721aacbfa76d6875"
 
 -- IR lowering target (`Com` → Veir / MLIR). Pinned to the public fork
 -- `spitters/veir-catcrypt` (Apache-2.0): upstream VeIR `ae4fa0a1` plus the five
@@ -3871,13 +3871,13 @@ require Veir from git
 -- ParamTransfer (proof-transfer bridge), pinned by commit on its `main` branch,
 -- + CompPoly (NTT algebraic theory).
 require paramTransfer from git
-  "https://github.com/spitters/ParamTransfer.git" @ "e93ad6b334ec1a785de08b8782a7f7061705de43"
+  "https://github.com/spitters/ParamTransfer.git" @ "fd3eacb116c82bd18d0083cd1dbe422bc9108206"
 require CompPoly from git
   "https://github.com/Verified-zkEVM/CompPoly" @ "v4.36.0"
 
 -- hax-lean: the typed haxpipeT front (`Hax.TExpr`).
 require «hax-lean» from git
-  "https://github.com/spitters/hax-lean.git" @ "2bdf7c3d7e35ec2354bae06a4a1f61118a652cc8"
+  "https://github.com/spitters/hax-lean.git" @ "338550113b1cf801eb42b2ba323d5bf8ae26a1ac"
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.36.0"
