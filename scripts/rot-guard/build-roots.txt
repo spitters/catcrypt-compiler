@@ -458,6 +458,7 @@ CatCrypt.Crypto.SecureCompilation.Haxc.NFProgCallTreeTransEv
 CatCrypt.Crypto.SecureCompilation.Haxc.NFTreeFuelMono
 CatCrypt.Crypto.SecureCompilation.Haxc.NttInstances
 CatCrypt.Crypto.SecureCompilation.Haxc.ProducerBytes
+CatCrypt.Crypto.SecureCompilation.Haxc.R3UCallFree
 CatCrypt.Crypto.SecureCompilation.Haxc.R3UWord
 CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerLazyKey
 CatCrypt.Crypto.SecureCompilation.Haxc.RCHandlerRealize
