@@ -18,12 +18,11 @@ import all Init.Data.String.Defs
 import all Init.Data.String.ToSlice
 import all Init.Data.String.Decode
 import all Init.Data.String.Bootstrap
-public import CatCrypt.Tactic.KernelRfl
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopBytesEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubFrontDenote
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubShipped
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubBytesCorrect
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExportScalarAcc
+import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 
 @[expose] public section
 
@@ -64,6 +63,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR.CryptoToJasminCom (mapTy)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddSubFrontDenote (addUpdate addUpdate_eq subUpdate subUpdate_eq)
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+open CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+  (compileLoop compileLoopCont compileLoopCont_ret_here)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes encodeLprogChecked encodeLprog encodableLcmd)
 
 /-! ## 1. The exporter after canonicalisation -/
@@ -137,7 +138,11 @@ noncomputable def addCom : ComL ΓouterCarry (mapTy (.sword 64)) :=
 /-- **The linked program is the scalar-accumulator export of `addCom`.** -/
 theorem addLprogFront_eq : addLprogFront () = some (ComL.toLprogPhysAbiScalarAcc addCom
     "mpn_add_n_loop_owned" (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]) := by
-  unfold addLprogFront addRtProgOpt rolledForLoopNRt rolledForLoopNRtCont
+  unfold addLprogFront addRtProgOpt
+  change Option.map _ (compileLoop (Γouter := ΓouterCarry) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = addUpdate := Option.some.inj (hu.symm.trans addUpdate_eq)
@@ -400,7 +405,11 @@ noncomputable def subCom : ComL ΓouterCarry (mapTy (.sword 64)) :=
 /-- **The linked program is the scalar-accumulator export of `subCom`.** -/
 theorem subLprogFront_eq : subLprogFront () = some (ComL.toLprogPhysAbiScalarAcc subCom
     "mpn_sub_n_loop_owned" (fun _ => none) mpnSeedImm gmpAbiArgs [64, 64, 64, 64]) := by
-  unfold subLprogFront subRtProgOpt rolledForLoopNRt rolledForLoopNRtCont
+  unfold subLprogFront subRtProgOpt
+  change Option.map _ (compileLoop (Γouter := ΓouterCarry) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = subUpdate := Option.some.inj (hu.symm.trans subUpdate_eq)

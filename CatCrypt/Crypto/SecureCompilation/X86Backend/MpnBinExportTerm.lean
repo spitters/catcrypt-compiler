@@ -22,6 +22,7 @@ public import CatCrypt.Tactic.KernelRfl
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopBytesEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.DecodedLsemLoop
 public import CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped
+import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 
 @[expose] public section
 
@@ -79,6 +80,8 @@ open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRolledLoop (fron
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnAddCarryFrontPrototype (N)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnLoopFrontEmit
+open CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+  (compileLoop compileLoopCont compileLoopCont_ret_here)
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLsemExportCanonLogicShipped (binAndUpdate)
 open CatCrypt.Crypto.SecureCompilation.X86Backend.Jasmin
 open CatCrypt.Crypto.SecureCompilation.X86Backend.LprogBytes (encodeLfundefBytes encodeLprogChecked)
@@ -170,7 +173,12 @@ noncomputable def andCom : ComL ΓouterBin (mapTy (CryptoTy.memref N)) :=
 theorem andLprog_eq : andLprog () = some (ComL.toLprogPhysAbi andCom "mpn_and_n_loop_owned"
     (argName 0) [argName 1, argName 2] (fun _ => none) (fun _ => none)
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]) := by
-  unfold andLprog binLprog rolledForLoopNRtLprog rolledForLoopNRt rolledForLoopNRtCont
+  unfold andLprog binLprog rolledForLoopNRtLprog
+  change Option.map _ (compileLoop (Γouter := ΓouterBin) (accCTy := .memref N)
+    (invCTys := [.memref N, .memref N]) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = binAndUpdate := Option.some.inj (hu.symm.trans andFront_eq)
@@ -424,7 +432,12 @@ noncomputable def iorCom : ComL ΓouterBin (mapTy (CryptoTy.memref N)) :=
 theorem iorLprog_eq : iorLprog () = some (ComL.toLprogPhysAbi iorCom "mpn_ior_n_loop_owned"
     (argName 0) [argName 1, argName 2] (fun _ => none) (fun _ => none)
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]) := by
-  unfold iorLprog binLprog rolledForLoopNRtLprog rolledForLoopNRt rolledForLoopNRtCont
+  unfold iorLprog binLprog rolledForLoopNRtLprog
+  change Option.map _ (compileLoop (Γouter := ΓouterBin) (accCTy := .memref N)
+    (invCTys := [.memref N, .memref N]) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = binIorUpdate := Option.some.inj (hu.symm.trans iorFront_eq)
@@ -669,7 +682,12 @@ noncomputable def xorCom : ComL ΓouterBin (mapTy (CryptoTy.memref N)) :=
 theorem xorLprog_eq : xorLprog () = some (ComL.toLprogPhysAbi xorCom "mpn_xor_n_loop_owned"
     (argName 0) [argName 1, argName 2] (fun _ => none) (fun _ => none)
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]) := by
-  unfold xorLprog binLprog rolledForLoopNRtLprog rolledForLoopNRt rolledForLoopNRtCont
+  unfold xorLprog binLprog rolledForLoopNRtLprog
+  change Option.map _ (compileLoop (Γouter := ΓouterBin) (accCTy := .memref N)
+    (invCTys := [.memref N, .memref N]) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = binXorUpdate := Option.some.inj (hu.symm.trans xorFront_eq)

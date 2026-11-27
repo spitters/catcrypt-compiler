@@ -22,7 +22,7 @@ public import CatCrypt.Tactic.KernelRfl
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnBinExportTerm
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnRuntimeBytesEmit
 public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnShiftFrontDenote
-public import CatCrypt.Crypto.SecureCompilation.X86Backend.MpnCmpFrontDenote
+import CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
 
 @[expose] public section
 
@@ -51,6 +51,8 @@ open CatCrypt.Crypto.SecureCompilation.VIR
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminDialect
 open CatCrypt.Crypto.SecureCompilation.VIR.JasminLprogExport
 open CatCrypt.Crypto.SecureCompilation.Dialects.TranslateDialectRuntimeLoop
+open CatCrypt.Crypto.SecureCompilation.Dialects.FrontRoutePlan
+  (compileLoop compileLoopCont compileLoopCont_ret_here)
 open CatCrypt.Crypto.SecureCompilation.X86Backend
 open CatCrypt.Crypto.SecureCompilation.X86Backend.MpnBinExportTerm
   (physAbiOfCanon ofVirtCert_eq_physAbiOfCanon stripWidthTag_loadidx stripWidthTag_storeidx)
@@ -70,7 +72,13 @@ def shiftCom : ComL MpnShiftFrontEmit.Gouter MpnShiftFrontEmit.AR :=
 theorem shiftLprog_eq : MpnShiftFrontEmit.shiftRtLprogOpt "mpn_shift_rt" = some (ComL.toLprogPhysAbi shiftCom "mpn_shift_rt"
     (argName 0) [argName 1] (fun _ => none) (fun _ => none)
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]) := by
-  unfold MpnShiftFrontEmit.shiftRtLprogOpt MpnShiftFrontEmit.shiftRtProgOpt rolledForLoopNRt rolledForLoopNRtCont
+  unfold MpnShiftFrontEmit.shiftRtLprogOpt MpnShiftFrontEmit.shiftRtProgOpt
+  change Option.map _ (compileLoop (Γouter := MpnShiftFrontEmit.Gouter)
+    (accCTy := .memref MpnShiftFrontEmit.NRS)
+    (invCTys := [.memref MpnShiftFrontEmit.NUS, .sword 64]) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = MpnShiftFrontDenote.shiftUpdate := Option.some.inj (hu.symm.trans MpnShiftFrontDenote.shiftUpdate_eq)
@@ -336,7 +344,13 @@ def cmpCom : ComL MpnCmpFrontEmit.Gouter MpnCmpFrontEmit.AR :=
 theorem cmpLprog_eq : MpnCmpFrontEmit.cmpRtLprogOpt "mpn_cmp_ct" = some (ComL.toLprogPhysAbi cmpCom "mpn_cmp_ct"
     (argName 0) [argName 1, argName 2] (fun _ => none) (fun _ => none)
     ["RDI", "RSI", "RDX", "RCX"] [64, 64, 64, 64]) := by
-  unfold MpnCmpFrontEmit.cmpRtLprogOpt MpnCmpFrontEmit.cmpRtProgOpt rolledForLoopNRt rolledForLoopNRtCont
+  unfold MpnCmpFrontEmit.cmpRtLprogOpt MpnCmpFrontEmit.cmpRtProgOpt
+  change Option.map _ (compileLoop (Γouter := MpnCmpFrontEmit.Gouter)
+    (accCTy := .memref MpnCmpFrontEmit.NR)
+    (invCTys := [.memref MpnCmpFrontEmit.NU, .memref MpnCmpFrontEmit.NU, .sword 64]) .plain (.runtime _) _ _ _ _ _) = _
+  erw [← compileLoopCont_ret_here]
+  simp only [compileLoopCont]
+  unfold rolledForLoopNRtCont
   split
   next u hu =>
     have : u = MpnCmpFrontDenote.cmpUpdate := Option.some.inj (hu.symm.trans MpnCmpFrontDenote.cmpUpdate_eq)
